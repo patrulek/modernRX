@@ -1,0 +1,48 @@
+#pragma once
+
+/*
+* Defines helper function that returns reciprocal values.
+*/
+
+#include <bit>
+#include <cstdint>
+
+//	Calculates reciprocal = 2**x / divisor for highest integer x such that reciprocal < 2**64.
+//	divisor must not be 0 or a power of 2
+//
+//	Equivalent x86 assembly (divisor in rcx):
+//
+//	mov edx, 1
+//	mov r8, rcx
+//	xor eax, eax
+//	bsr rcx, rcx
+//	shl rdx, cl
+//	div r8
+//	ret
+constexpr uint64_t reciprocal(const uint64_t divisor) {
+	if (std::has_single_bit(divisor)) {
+		throw "invalid reciprocal divisor (cant be 0 or power of two)";
+	}
+
+	constexpr uint64_t p2exp63 = 1ULL << 63;
+	uint64_t quotient = p2exp63 / divisor, remainder = p2exp63 % divisor;
+
+	uint32_t bsr = 0; // Highest set bit in divisor.
+
+	for (uint64_t bit = divisor; bit > 0; bit >>= 1) {
+		bsr++;
+	}
+
+	for (uint32_t shift = 0; shift < bsr; shift++) {
+		if (remainder >= divisor - remainder) {
+			quotient = quotient * 2 + 1;
+			remainder = remainder * 2 - divisor;
+			continue;
+		}
+
+		quotient = quotient * 2;
+		remainder = remainder * 2;
+	}
+
+	return quotient;
+}

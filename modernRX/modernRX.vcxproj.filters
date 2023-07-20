@@ -1,0 +1,123 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="blake2b">
+      <UniqueIdentifier>{006bbf21-f80f-49a0-aa59-0c466da34570}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="argon2d">
+      <UniqueIdentifier>{c58a0c6d-66b7-4660-931d-2eec8d543b69}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="aes">
+      <UniqueIdentifier>{ddd89c2e-9f43-4808-9897-c2fa99fc6e3e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="superscalar">
+      <UniqueIdentifier>{c233f912-a4e2-45db-8344-a213ab253c56}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="utils">
+      <UniqueIdentifier>{54110183-fa4a-4b8a-b497-cd09b3c15398}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="interpreter">
+      <UniqueIdentifier>{b1d97ff8-31a4-48f2-ab6b-93380fd71307}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="dataset">
+      <UniqueIdentifier>{005ebbd1-232f-4c5b-bc85-0828b7ad420d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="modernRX">
+      <UniqueIdentifier>{6b8b4345-5925-445f-9f9d-5de7ad4c9378}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="blake2b.hpp">
+      <Filter>blake2b</Filter>
+    </ClInclude>
+    <ClInclude Include="blake2brandom.hpp">
+      <Filter>blake2b</Filter>
+    </ClInclude>
+    <ClInclude Include="argon2d.hpp">
+      <Filter>argon2d</Filter>
+    </ClInclude>
+    <ClInclude Include="aes.hpp">
+      <Filter>aes</Filter>
+    </ClInclude>
+    <ClInclude Include="superscalar.hpp">
+      <Filter>superscalar</Filter>
+    </ClInclude>
+    <ClInclude Include="utils.hpp">
+      <Filter>utils</Filter>
+    </ClInclude>
+    <ClInclude Include="intrinsics.hpp">
+      <Filter>utils</Filter>
+    </ClInclude>
+    <ClInclude Include="reciprocal.hpp">
+      <Filter>utils</Filter>
+    </ClInclude>
+    <ClInclude Include="interpreter.hpp">
+      <Filter>interpreter</Filter>
+    </ClInclude>
+    <ClInclude Include="dataset.hpp">
+      <Filter>dataset</Filter>
+    </ClInclude>
+    <ClInclude Include="randomxparams.hpp">
+      <Filter>modernRX</Filter>
+    </ClInclude>
+    <ClInclude Include="aes1rrandom.hpp">
+      <Filter>aes</Filter>
+    </ClInclude>
+    <ClInclude Include="aes4rrandom.hpp">
+      <Filter>aes</Filter>
+    </ClInclude>
+    <ClInclude Include="aes1rhash.hpp">
+      <Filter>aes</Filter>
+    </ClInclude>
+    <ClInclude Include="instructionset.hpp">
+      <Filter>superscalar</Filter>
+    </ClInclude>
+    <ClInclude Include="bytecode.hpp">
+      <Filter>interpreter</Filter>
+    </ClInclude>
+    <ClInclude Include="scratchpad.hpp">
+      <Filter>interpreter</Filter>
+    </ClInclude>
+    <ClInclude Include="sse.hpp">
+      <Filter>utils</Filter>
+    </ClInclude>
+    <ClInclude Include="logger.hpp">
+      <Filter>utils</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="blake2b.cpp">
+      <Filter>blake2b</Filter>
+    </ClCompile>
+    <ClCompile Include="blake2brandom.cpp">
+      <Filter>blake2b</Filter>
+    </ClCompile>
+    <ClCompile Include="argon2d.cpp">
+      <Filter>argon2d</Filter>
+    </ClCompile>
+    <ClCompile Include="aes1rrandom.cpp">
+      <Filter>aes</Filter>
+    </ClCompile>
+    <ClCompile Include="aes.cpp">
+      <Filter>aes</Filter>
+    </ClCompile>
+    <ClCompile Include="aes4rrandom.cpp">
+      <Filter>aes</Filter>
+    </ClCompile>
+    <ClCompile Include="aes1rhash.cpp">
+      <Filter>aes</Filter>
+    </ClCompile>
+    <ClCompile Include="superscalar.cpp">
+      <Filter>superscalar</Filter>
+    </ClCompile>
+    <ClCompile Include="dataset.cpp">
+      <Filter>dataset</Filter>
+    </ClCompile>
+    <ClCompile Include="interpreter.cpp">
+      <Filter>interpreter</Filter>
+    </ClCompile>
+    <ClCompile Include="scratchpad.cpp">
+      <Filter>interpreter</Filter>
+    </ClCompile>
+  </ItemGroup>
+</Project>
