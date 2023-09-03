@@ -42,7 +42,7 @@
     <ClInclude Include="superscalar.hpp">
       <Filter>superscalar</Filter>
     </ClInclude>
-    <ClInclude Include="utils.hpp">
+    <ClInclude Include="cast.hpp">
       <Filter>utils</Filter>
     </ClInclude>
     <ClInclude Include="intrinsics.hpp">
@@ -84,6 +84,15 @@
     <ClInclude Include="logger.hpp">
       <Filter>utils</Filter>
     </ClInclude>
+    <ClInclude Include="hasher.hpp">
+      <Filter>modernRX</Filter>
+    </ClInclude>
+    <ClInclude Include="aliases.hpp">
+      <Filter>utils</Filter>
+    </ClInclude>
+    <ClInclude Include="assertume.hpp">
+      <Filter>utils</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="blake2b.cpp">
@@ -118,6 +127,9 @@
     </ClCompile>
     <ClCompile Include="scratchpad.cpp">
       <Filter>interpreter</Filter>
+    </ClCompile>
+    <ClCompile Include="hasher.cpp">
+      <Filter>modernRX</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

@@ -1,7 +1,11 @@
 #pragma once
 
+/*
+* Wrapper over compiler intrinsics.
+* Used, but not defined by RandomX algorithm.
+*/
+
 #include <intrin.h>
-#include <span>
 
 namespace modernRX::intrinsics {
 	inline uint64_t smulh(const int64_t a, const int64_t b) {

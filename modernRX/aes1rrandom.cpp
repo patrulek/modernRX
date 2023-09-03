@@ -1,4 +1,8 @@
+#include <format>
+
+#include "aes.hpp"
 #include "aes1rrandom.hpp"
+#include "cast.hpp"
 
 namespace modernRX::aes {
 	namespace {
@@ -9,7 +13,7 @@ namespace modernRX::aes {
 		// key3 = 35 81 ef 6a 7c 31 ba b1 88 4c 31 16 54 91 16 49
 		//
 		// Every key is treated as four 4-byte integers (in little-endian byte order).
-		constexpr std::array<std::array<uint32_t, 4>, 4> keys = {
+		constexpr std::array<std::array<uint32_t, 4>, 4> keys{
 			std::array<uint32_t, 4>{ 0x6daca553, 0x62716609, 0xdbb5552b, 0xb4f44917 },
 			std::array<uint32_t, 4>{ 0x6d7caf07, 0x846a710d, 0x1725d378, 0x0da1dc4e },
 			std::array<uint32_t, 4>{ 0x3f1262f1, 0x9f947ec6, 0xf4c0794f, 0x3e20e345 },
@@ -17,29 +21,20 @@ namespace modernRX::aes {
 		};
 	}
 
-	Random1R::Random1R(const std::span<std::byte, 64> seed) {
-		std::memcpy(state.data(), seed.data(), seed.size());
-	}
-
-	void Random1R::fill(std::span<std::byte> output) {
+	void fill1R(std::span<std::byte> output, std::span<std::byte, 64> seed) {
 		if (output.size() % 64 != 0) {
-			throw "invalid output size";
+			throw std::format("invalid output size: {}", output.size());
 		}
 
-		for (auto i = 0; i < output.size(); i += 64) {
+		auto state{ stdexp::span_cast<std::array<uint32_t, 4>, 4>(seed.data()) };
+
+		for (size_t i = 0; i < output.size(); i += 64) {
 			decode(state[0], keys[0]);
 			encode(state[1], keys[1]);
 			decode(state[2], keys[2]);
 			encode(state[3], keys[3]);
 
-			std::memcpy(output.data() + i, state[0].data(), 16);
-			std::memcpy(output.data() + i + 16, state[1].data(), 16);
-			std::memcpy(output.data() + i + 32, state[2].data(), 16);
-			std::memcpy(output.data() + i + 48, state[3].data(), 16);
+			std::memcpy(output.data() + i, state.data(), 64);
 		}
-	}
-
-	std::byte* Random1R::data() {
-		return reinterpret_cast<std::byte*>(state.data());
 	}
 }

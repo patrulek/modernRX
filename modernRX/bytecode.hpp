@@ -1,10 +1,15 @@
 #pragma once
 
-#include <cstdint>
+/*
+* Definitions of all instructions in RandomX programs: https://github.com/tevador/RandomX/blob/master/doc/specs.md#5-instruction-set
+* This is used by RandomX program interpreter.
+*/
+
 #include <array>
 
-namespace modernRX {
+#include "randomxparams.hpp"
 
+namespace modernRX {
 	// Defines all instructions in RandomX programs.
 	enum class Bytecode : uint8_t {
 		ISUB_R = 0,		
@@ -43,16 +48,16 @@ namespace modernRX {
 	inline constexpr std::array<Bytecode, 256> LUT_Opcode = []() consteval {
 		std::array<Bytecode, 256> LUT_Opcode_{};
         constexpr std::array<std::pair<Bytecode, uint32_t>, 29>  opcode_frequencies{
-            std::pair{ Bytecode::IADD_RS, 16 }, { Bytecode::IADD_M, 7 }, { Bytecode::ISUB_R, 16 },
-            { Bytecode::ISUB_M, 7 }, { Bytecode::IMUL_R, 16 }, { Bytecode::IMUL_M, 4 },
-            { Bytecode::IMULH_R, 4 }, { Bytecode::IMULH_M, 1 }, { Bytecode::ISMULH_R, 4 },
-            { Bytecode::ISMULH_M, 1 }, { Bytecode::IMUL_RCP, 8 }, { Bytecode::INEG_R, 2 },
-            { Bytecode::IXOR_R, 15 }, { Bytecode::IXOR_M, 5 }, { Bytecode::IROR_R, 8 },
-            { Bytecode::IROL_R, 2 }, { Bytecode::ISWAP_R, 4 }, { Bytecode::FSWAP_R, 4 },
-            { Bytecode::FADD_R, 16 }, { Bytecode::FADD_M, 5 }, { Bytecode::FSUB_R, 16 },
-            { Bytecode::FSUB_M, 5 }, { Bytecode::FSCAL_R, 6 }, { Bytecode::FMUL_R, 32 },
-            { Bytecode::FDIV_M, 4 }, { Bytecode::FSQRT_R, 6 }, { Bytecode::CBRANCH, 25 },
-            { Bytecode::CFROUND, 1 }, { Bytecode::ISTORE, 16 },
+            std::pair{ Bytecode::IADD_RS, Rx_Freq_Iadd_Rs }, { Bytecode::IADD_M, Rx_Freq_Iadd_M}, { Bytecode::ISUB_R, Rx_Freq_Isub_R },
+            { Bytecode::ISUB_M, Rx_Freq_Isub_M }, { Bytecode::IMUL_R, Rx_Freq_Imul_R }, { Bytecode::IMUL_M, Rx_Freq_Imul_M },
+            { Bytecode::IMULH_R, Rx_Freq_Imulh_R }, { Bytecode::IMULH_M, Rx_Freq_Imulh_M }, { Bytecode::ISMULH_R, Rx_Freq_Ismulh_R },
+            { Bytecode::ISMULH_M, Rx_Freq_Ismulh_M }, { Bytecode::IMUL_RCP, Rx_Freq_Imul_Rcp }, { Bytecode::INEG_R, Rx_Freq_Ineg_R },
+            { Bytecode::IXOR_R, Rx_Freq_Ixor_R }, { Bytecode::IXOR_M, Rx_Freq_Ixor_M }, { Bytecode::IROR_R, Rx_Freq_Iror_R },
+            { Bytecode::IROL_R, Rx_Freq_Irol_R }, { Bytecode::ISWAP_R, Rx_Freq_Iswap_R }, { Bytecode::FSWAP_R, Rx_Freq_Fswap_R },
+            { Bytecode::FADD_R, Rx_Freq_Fadd_R }, { Bytecode::FADD_M, Rx_Freq_Fadd_M }, { Bytecode::FSUB_R, Rx_Freq_Fsub_R },
+            { Bytecode::FSUB_M, Rx_Freq_Fsub_M }, { Bytecode::FSCAL_R, Rx_Freq_Fscal_R }, { Bytecode::FMUL_R, Rx_Freq_Fmul_R },
+            { Bytecode::FDIV_M, Rx_Freq_Fdiv_M }, { Bytecode::FSQRT_R, Rx_Freq_Fsqrt_R }, { Bytecode::CBRANCH, Rx_Freq_Cbranch },
+            { Bytecode::CFROUND, Rx_Freq_Cfround }, { Bytecode::ISTORE, Rx_Freq_Istore },
         };
 
 		uint32_t counter{ 0 };
@@ -60,10 +65,6 @@ namespace modernRX {
 			for (uint32_t j = 0; j < freq; ++j) {
 				LUT_Opcode_[counter++] = code;
 			}
-		}
-
-		if (counter != 256) {
-			throw "frequencies have to sum up to 256";
 		}
 
 		return LUT_Opcode_;

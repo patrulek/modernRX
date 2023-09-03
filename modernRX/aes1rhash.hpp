@@ -7,7 +7,10 @@
 
 #include <span>
 
+#include "aliases.hpp"
+
 namespace modernRX::aes {
 	// Calculates a 64-byte fingerprint of its input.
-	void hash1R(std::span<std::byte, 64> output, const std::span<std::byte> input);
+	// The input size must be a multiple of 64 bytes, otherwise function will throw.
+	void hash1R(std::span<std::byte, 64> output, const_span<std::byte> input);
 }

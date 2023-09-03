@@ -1,26 +1,27 @@
 #pragma once
 
 /*
-* Single-threaded and no avx supported implementation of Blake2b based on: https://datatracker.ietf.org/doc/html/rfc7693 and https://github.com/tevador/RandomX
+* Single-threaded and no SIMD supported implementation of Blake2b based on: https://datatracker.ietf.org/doc/html/rfc7693 and https://github.com/tevador/RandomX
 * This is used by Argon2d algorithm, Blake2bRandom, Aes4RGenerator and by the RandomX algorithm to calculate final hash.
 */
 
 #include <array>
 #include <span>
 
-namespace modernRX::blake2b {
-	inline constexpr uint32_t Rounds{ 12 };
-	inline constexpr uint32_t Block_Size{ 128 }; // In bytes. Not fully filled blocks are padded with zeros.
-	inline constexpr uint32_t Max_Key_Size{ 64 };  // In bytes.
-	inline constexpr uint32_t Max_Digest_Size{ 64 }; // In bytes.
+#include "aliases.hpp"
 
-	inline constexpr std::array<uint32_t, 4> Rotation_Constants{ 32, 24, 16, 63 }; 
+namespace modernRX::blake2b {
+	inline constexpr uint32_t Block_Size{ 128 }; // In bytes. Not fully filled blocks are padded with zeros.
+	inline constexpr std::array<uint32_t, 4> Rotation_Constants{ 32, 24, 16, 63 }; // Rotation constants for G function.
 
 	// Initialization vector.
 	inline constexpr std::array<uint64_t, 8> IV{
 		0x6a09e667f3bcc908, 0xbb67ae8584caa73b, 0x3c6ef372fe94f82b, 0xa54ff53a5f1d36f1,
 		0x510e527fade682d1, 0x9b05688c2b3e6c1f, 0x1f83d9abfb41bd6b, 0x5be0cd19137e2179,
 	};
+
+	inline constexpr uint32_t Max_Digest_Size{ 64 }; // In bytes. Must be equal to size of initialization vector.
+	static_assert(Max_Digest_Size == sizeof(IV));
 
 	// Input data permutations.
 	inline constexpr std::array<std::array<uint32_t, 16>, 12> Sigma{
@@ -49,11 +50,9 @@ namespace modernRX::blake2b {
 	*
 	* Key must be in blake2b valid key size range(0-64), otherwise it will throw.
 	*/
-	void hash(std::span<std::byte> output, const std::span<std::byte> input, const std::span<std::byte> key);
+	void hash(std::span<std::byte> output, const_span<std::byte> input, const_span<std::byte> key);
 
-	/*
-	* The content of this namespace should be internal, but Argon2d implementation relies on these.
-	*/
+	// The content of this namespace should be internal, but Argon2d implementation relies on these.
 	inline namespace internal {
 		// Holds current state of blake2b algorithm.
 		struct Context {
@@ -64,9 +63,16 @@ namespace modernRX::blake2b {
 			size_t digest_size{ 0 };                    // Output size.
 		};
 
-		Context init(const std::span<std::byte> key, const uint32_t digest_size) noexcept;
-		void update(Context& ctx, const std::span<std::byte> input) noexcept;
+		// Initializes blake2b state. If key size > 0, treat it as a first block and compress.
+		[[nodiscard]] Context init(const_span<std::byte> key, const uint32_t digest_size) noexcept;
+
+		// Fills block buffer with input and compress all fully filled blocks.
+		void update(Context& ctx, const_span<std::byte> input) noexcept;
+
+		// Compress does all the magic with compressing block buffer. Works differently for last and non-last block buffer.
 		void compress(Context& ctx, const bool last) noexcept;
+		
+		// Compress last block and generates final state that is used to yield a blake2b hash.
 		void final(std::span<std::byte> hash, Context& ctx) noexcept;
 	}
 };
