@@ -16,14 +16,14 @@
     <Filter Include="utils">
       <UniqueIdentifier>{54110183-fa4a-4b8a-b497-cd09b3c15398}</UniqueIdentifier>
     </Filter>
-    <Filter Include="interpreter">
-      <UniqueIdentifier>{b1d97ff8-31a4-48f2-ab6b-93380fd71307}</UniqueIdentifier>
-    </Filter>
     <Filter Include="dataset">
       <UniqueIdentifier>{005ebbd1-232f-4c5b-bc85-0828b7ad420d}</UniqueIdentifier>
     </Filter>
     <Filter Include="modernRX">
       <UniqueIdentifier>{6b8b4345-5925-445f-9f9d-5de7ad4c9378}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="superscalar\interpreter">
+      <UniqueIdentifier>{b1d97ff8-31a4-48f2-ab6b-93380fd71307}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -52,7 +52,7 @@
       <Filter>utils</Filter>
     </ClInclude>
     <ClInclude Include="interpreter.hpp">
-      <Filter>interpreter</Filter>
+      <Filter>superscalar\interpreter</Filter>
     </ClInclude>
     <ClInclude Include="dataset.hpp">
       <Filter>dataset</Filter>
@@ -73,10 +73,10 @@
       <Filter>superscalar</Filter>
     </ClInclude>
     <ClInclude Include="bytecode.hpp">
-      <Filter>interpreter</Filter>
+      <Filter>superscalar\interpreter</Filter>
     </ClInclude>
     <ClInclude Include="scratchpad.hpp">
-      <Filter>interpreter</Filter>
+      <Filter>superscalar\interpreter</Filter>
     </ClInclude>
     <ClInclude Include="sse.hpp">
       <Filter>utils</Filter>
@@ -91,6 +91,15 @@
       <Filter>utils</Filter>
     </ClInclude>
     <ClInclude Include="assertume.hpp">
+      <Filter>utils</Filter>
+    </ClInclude>
+    <ClInclude Include="blake2bavx2.hpp">
+      <Filter>blake2b</Filter>
+    </ClInclude>
+    <ClInclude Include="argon2davx2.hpp">
+      <Filter>argon2d</Filter>
+    </ClInclude>
+    <ClInclude Include="avx2.hpp">
       <Filter>utils</Filter>
     </ClInclude>
   </ItemGroup>
@@ -123,10 +132,10 @@
       <Filter>dataset</Filter>
     </ClCompile>
     <ClCompile Include="interpreter.cpp">
-      <Filter>interpreter</Filter>
+      <Filter>superscalar\interpreter</Filter>
     </ClCompile>
     <ClCompile Include="scratchpad.cpp">
-      <Filter>interpreter</Filter>
+      <Filter>superscalar\interpreter</Filter>
     </ClCompile>
     <ClCompile Include="hasher.cpp">
       <Filter>modernRX</Filter>

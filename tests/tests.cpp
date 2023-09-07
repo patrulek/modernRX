@@ -107,7 +107,7 @@ void testBlake2bHash() {
 		0x18, 0xD3, 0x8A, 0xA8, 0xDB, 0xF1, 0x92, 0x5A, 0xB9, 0x23, 0x86, 0xED, 0xD4, 0x00, 0x99, 0x23
 	);
 
-	blake2b::hash(hash, span_cast<std::byte>(data), std::span<std::byte>());
+	blake2b::hash(hash, span_cast<std::byte>(data));
 	testAssert(hash == expected);
 
 	auto data2 = byte_array(
@@ -124,7 +124,9 @@ void testBlake2bHash() {
 		0xa8, 0x1e, 0x95, 0x7a, 0x09, 0xfb, 0xad, 0x42, 0x56, 0x75, 0x7e, 0xcf, 0x1b, 0x33, 0xda, 0x49
 	);
 
-	blake2b::hash(hash, data2, std::span<std::byte>());
+	// TODO: test data with 256 bytes
+
+	blake2b::hash(hash, data2);
 	testAssert(hash == expected);
 
 
@@ -138,7 +140,7 @@ void testBlake2bHash() {
 		0xda, 0x8b, 0xe2, 0x27, 0x56, 0xb3, 0x70, 0xea, 0x2a, 0x1a, 0xcc, 0x6d, 0xea, 0xcf, 0x2f, 0xac
 	);
 
-	blake2b::hash(hash, data3, std::span<std::byte>());
+	blake2b::hash(hash, data3);
 	testAssert(hash == expected);
 }
 
@@ -227,7 +229,7 @@ void testArgon2dBlake2bHash() {
 
 void testArgon2dFillMemory() {
 	std::vector<argon2d::Block> cache(Rx_Argon2d_Memory_Blocks);
-	argon2d::fillMemory(cache, key, Rx_Argon2d_Salt);
+	argon2d::fillMemory(cache, key);
 
 	using Argon2dBlock_64 = std::array<uint64_t, 128>;
 	auto b1 = std::bit_cast<Argon2dBlock_64>(cache[0]);
@@ -444,7 +446,7 @@ void testSuperscalarGenerate() {
 
 void testDatasetGenerate() {
 	std::vector<argon2d::Block> cache(Rx_Argon2d_Memory_Blocks);
-	argon2d::fillMemory(cache, key, Rx_Argon2d_Salt);
+	argon2d::fillMemory(cache, key);
 	blake2b::Random blakeRNG{ key, 0 };
 
 	Superscalar superscalar{ blakeRNG };

@@ -153,7 +153,7 @@ int main() {
 
 
 void blake2bBenchmark() {
-	blake2b::hash(hash, data, std::span<std::byte>());
+	blake2b::hash(hash, data);
 }
 
 void blake2bLongBenchmark() {
@@ -161,7 +161,7 @@ void blake2bLongBenchmark() {
 }
 
 void argon2dFillMemoryBenchmark() {
-	argon2d::fillMemory(memory, data, Rx_Argon2d_Salt);
+	argon2d::fillMemory(memory, data);
 }
 
 void aes1rHashBenchmark() {

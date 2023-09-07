@@ -110,6 +110,7 @@
       <EnableModules>false</EnableModules>
       <EnforceTypeConversionRules>true</EnforceTypeConversionRules>
       <RuntimeTypeInfo>false</RuntimeTypeInfo>
+      <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -137,6 +138,7 @@
       <RuntimeTypeInfo>false</RuntimeTypeInfo>
       <EnforceTypeConversionRules>true</EnforceTypeConversionRules>
       <ControlFlowGuard>false</ControlFlowGuard>
+      <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -182,6 +184,7 @@
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <EnforceTypeConversionRules>true</EnforceTypeConversionRules>
       <RuntimeTypeInfo>false</RuntimeTypeInfo>
+      <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -209,6 +212,7 @@
       <RuntimeTypeInfo>false</RuntimeTypeInfo>
       <EnforceTypeConversionRules>true</EnforceTypeConversionRules>
       <ControlFlowGuard>false</ControlFlowGuard>
+      <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -259,8 +263,11 @@
     <ClInclude Include="aes4rrandom.hpp" />
     <ClInclude Include="aliases.hpp" />
     <ClInclude Include="argon2d.hpp" />
+    <ClInclude Include="argon2davx2.hpp" />
     <ClInclude Include="assertume.hpp" />
+    <ClInclude Include="avx2.hpp" />
     <ClInclude Include="blake2b.hpp" />
+    <ClInclude Include="blake2bavx2.hpp" />
     <ClInclude Include="blake2brandom.hpp" />
     <ClInclude Include="bytecode.hpp" />
     <ClInclude Include="dataset.hpp" />

@@ -28,7 +28,7 @@ namespace modernRX::blake2b {
 
 	void Random::rehashIfNeeded(const size_t bytes_needed) {
 		if (position + bytes_needed > state.size()) {
-			hash(state, state, std::span<std::byte>{});
+			hash(state, state);
 			position = 0;
 		}
 	}

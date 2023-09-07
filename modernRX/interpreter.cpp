@@ -140,7 +140,7 @@ namespace modernRX {
         for (uint32_t i = 0; i < Rx_Program_Count - 1; ++i) {
             auto [ctx, program] { generateProgram() };
             executeProgram(ctx, program);
-            blake2b::hash(seed, span_cast<std::byte, sizeof(ctx.rf)>(ctx.rf), std::span<std::byte>{});
+            blake2b::hash(seed, span_cast<std::byte, sizeof(ctx.rf)>(ctx.rf));
         }
 
         auto [ctx, program] { generateProgram() };
@@ -148,7 +148,7 @@ namespace modernRX {
         aes::hash1R(span_cast<std::byte, sizeof(ctx.rf.a)>(ctx.rf.a), span_cast<std::byte, Rx_Scratchpad_L3_Size>(scratchpad.data()));
 
         std::array<std::byte, 32> output{};
-        blake2b::hash(output, span_cast<std::byte>(ctx.rf), std::span<std::byte>{});
+        blake2b::hash(output, span_cast<std::byte>(ctx.rf));
 
         return output;
     }

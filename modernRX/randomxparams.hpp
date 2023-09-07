@@ -9,18 +9,33 @@
 #include "cast.hpp"
 
 namespace modernRX {
+	// Blockchain Parameters.
+	inline constexpr uint32_t Rx_Block_Template_Size{ 76 }; // Size of the block template in bytes.
+
 	// Argon2d Parameters.
 	inline constexpr std::array<std::byte, 8> Rx_Argon2d_Salt{ byte_array(0x52, 0x61, 0x6e, 0x64, 0x6f, 0x6d, 0x58, 0x03) }; // RandomX\x03
 	inline constexpr uint32_t Rx_Argon2d_Parallelism{ 1 }; // The number of parallel lanes for cache initialization.
+	inline constexpr uint32_t Rx_Argon2d_Tag_Length{ 0 }; // No need to use tag for RandomX.
 	inline constexpr uint32_t Rx_Argon2d_Memory_Blocks{ 262144 }; // The number of 1KB blocks in the cache.
 	inline constexpr uint32_t Rx_Argon2d_Iterations{ 3 }; // The number of iterations for cache initialization.
 	inline constexpr uint32_t Rx_Argon2d_Max_Parallelism = 16'777'215; // Maximum number of lanes. 
+	inline constexpr uint32_t Rx_Argon2d_Type{ 0 }; // RandomX uses Argon2d algorithm, thus it needs to be 0.
+	inline constexpr uint32_t Rx_Argon2d_Version{ 0x13 }; // RandomX uses Argon2 version 0x13.
+	inline constexpr std::array<std::byte, 0> Rx_Argon2d_Secret{}; // No need to use secret for RandomX.
+	inline constexpr std::array<std::byte, 0> Rx_Argon2d_Data{}; // No need to use additional data for RandomX.
 
 	static_assert(Rx_Argon2d_Parallelism - 1 <= Rx_Argon2d_Max_Parallelism - 1, "Number of parallel lanes must be in range 1 - 16'777'215");
 	static_assert(Rx_Argon2d_Memory_Blocks >= 8 * Rx_Argon2d_Parallelism, "Number of memory blocks cannot be lesser than 8 * number of parallel lanes.");
 	static_assert(Rx_Argon2d_Memory_Blocks <= 2'097'152, "Total memory size of memory blocks cannot exceed 2GB.");
 	static_assert(std::has_single_bit(Rx_Argon2d_Memory_Blocks), "Number of memory blocks must be a power of 2.");
 	static_assert(Rx_Argon2d_Iterations - 1 <= std::numeric_limits<uint32_t>::max() - 1, "Number of iterations must be greater than 0.");
+	static_assert(Rx_Argon2d_Tag_Length == 0, "Tag length must be 0 for RandomX.");
+	static_assert(Rx_Argon2d_Type == 0, "Argon2d type must be 0 for RandomX.");
+	static_assert(Rx_Argon2d_Version == 0x13, "Argon2 version must be 0x13 for RandomX.");
+	static_assert(Rx_Argon2d_Secret.size() == 0, "Argon2 secret must be empty for RandomX.");
+	static_assert(Rx_Argon2d_Data.size() == 0, "Argon2 additional data must be empty for RandomX.");
+	static_assert(Rx_Argon2d_Salt.size() >= 8, "It is required by algorithm to use salt with length of at least 8 bytes.");
+
 
 	// Superscalar Parameters.
 	inline constexpr uint32_t Rx_Superscalar_Latency{ 170 }; // Target latency for superscalar program (in cycles of the reference CPU).
@@ -40,8 +55,8 @@ namespace modernRX {
 	static_assert(Rx_Scratchpad_L3_Size >= Rx_Scratchpad_L2_Size, "L3 scratchpad size must be greater than or equal to L2 scratchpad size.");
 
 	// Dataset Parameters.
-	inline constexpr uint32_t Rx_Dataset_Base_Size{ 2'147'483'648 }; // In bytes.
-	inline constexpr uint32_t Rx_Dataset_Extra_Size{ 33'554'368 }; // In bytes.
+	inline constexpr uint32_t Rx_Dataset_Base_Size{ 2'147'483'648 }; // In bytes (2GB).
+	inline constexpr uint32_t Rx_Dataset_Extra_Size{ 33'554'368 }; // In bytes (32MB - 64B).
 	inline constexpr uint32_t Rx_Cache_Accesses{ 8 }; // Number of random cache accesses per Dataset item.
 
 	static_assert(Rx_Dataset_Base_Size - 64 <= std::numeric_limits<uint32_t>::max() - 64, "Dataset base size must be in range 64 - 4'294'967'296.");
