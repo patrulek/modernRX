@@ -12,7 +12,7 @@ namespace modernRX::aes {
 		// state1 = 6e 99 8d 33 98 b7 c7 15 5a 12 9e f5 57 80 e7 ac
 		// state2 = 17 00 77 6a d0 c7 62 ae 6b 50 79 50 e4 7c a0 e8
 		// state3 = 0c 24 0a 63 8d 82 ad 07 05 00 a1 79 48 49 99 7e
-		constexpr auto initial_state{ stdexp::byte_array(
+		constexpr auto initial_state{ byte_array(
 			0x0d, 0x2c, 0xb5, 0x92, 0xde, 0x56, 0xa8, 0x9f, 0x47, 0xdb, 0x82, 0xcc, 0xad, 0x3a, 0x98, 0xd7,
 			0x6e, 0x99, 0x8d, 0x33, 0x98, 0xb7, 0xc7, 0x15, 0x5a, 0x12, 0x9e, 0xf5, 0x57, 0x80, 0xe7, 0xac,
 			0x17, 0x00, 0x77, 0x6a, 0xd0, 0xc7, 0x62, 0xae, 0x6b, 0x50, 0x79, 0x50, 0xe4, 0x7c, 0xa0, 0xe8,
@@ -41,10 +41,10 @@ namespace modernRX::aes {
 		for (uint64_t i = 0; i < input.size(); i += 64) {
 			const auto offset{ input.data() + i };
 
-			encode(state[0], stdexp::span_cast<uint32_t, 4>(offset));
-			decode(state[1], stdexp::span_cast<uint32_t, 4>(offset + 16));
-			encode(state[2], stdexp::span_cast<uint32_t, 4>(offset + 32));
-			decode(state[3], stdexp::span_cast<uint32_t, 4>(offset + 48));
+			encode(state[0], span_cast<uint32_t, 4>(offset));
+			decode(state[1], span_cast<uint32_t, 4>(offset + 16));
+			encode(state[2], span_cast<uint32_t, 4>(offset + 32));
+			decode(state[3], span_cast<uint32_t, 4>(offset + 48));
 		}
 
 		encode(state[0], keys[0]);

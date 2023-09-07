@@ -6,6 +6,9 @@
 
 namespace modernRX::blake2b {
 	namespace {
+		// Compress does all the magic with compressing block buffer. Works differently for last and non-last block buffer.
+		void compress(Context& ctx, const bool last) noexcept;
+
 		void round(std::span<uint64_t, 16> v, const_span<uint64_t, 16> m, const size_t r) noexcept;
 		void gmixing(std::span<uint64_t, 16> v, const uint32_t a, const uint32_t b, const uint32_t c, const uint32_t d, const uint64_t x, const uint64_t y) noexcept;
 	}
@@ -65,36 +68,6 @@ namespace modernRX::blake2b {
 			}
 		}
 
-		void compress(Context& ctx, const bool last) noexcept {
-			static constexpr uint32_t Rounds{ 12 };
-			std::array<uint64_t, 16> v{};
-
-			for (size_t i = 0; i < 8; i++) {
-				v[i] = ctx.state[i]; // Copy current state.
-				v[i + 8] = IV[i]; // Copy initialization vector.
-			}
-
-			v[12] ^= ctx.counters[0];
-			v[13] ^= ctx.counters[1]; // This code is not needed, because implementation do not support inputs bigger than 2^64 anyway.
-
-			if (last) {
-				v[14] = ~v[14];
-			}
-
-			// Treat each 128-byte block as sixteen 8-byte words
-			const auto m{ stdexp::span_cast<uint64_t, 16>(ctx.block) };
-
-			// Make cryptographic message mixing
-			for (size_t i = 0; i < Rounds; ++i) {
-				round(v, m, i);
-			}
-
-			// Mix the upper and lower halves of v
-			for (size_t i = 0; i < 8; ++i) {
-				ctx.state[i] ^= v[i] ^ v[i + 8];
-			}
-		}
-
 		void final(std::span<std::byte> hash, Context& ctx) noexcept {
 			ctx.counters[0] += ctx.block_idx;
 
@@ -116,6 +89,36 @@ namespace modernRX::blake2b {
 	}
 
 	namespace {
+		void compress(Context& ctx, const bool last) noexcept {
+			static constexpr uint32_t Rounds{ 12 };
+			std::array<uint64_t, 16> v{};
+
+			for (size_t i = 0; i < 8; i++) {
+				v[i] = ctx.state[i]; // Copy current state.
+				v[i + 8] = IV[i]; // Copy initialization vector.
+			}
+
+			v[12] ^= ctx.counters[0];
+			v[13] ^= ctx.counters[1]; // This code is not needed, because implementation do not support inputs bigger than 2^64 anyway.
+
+			if (last) {
+				v[14] = ~v[14];
+			}
+
+			// Treat each 128-byte block as sixteen 8-byte words
+			const auto m{ span_cast<uint64_t, 16>(ctx.block) };
+
+			// Make cryptographic message mixing
+			for (size_t i = 0; i < Rounds; ++i) {
+				round(v, m, i);
+			}
+
+			// Mix the upper and lower halves of v
+			for (size_t i = 0; i < 8; ++i) {
+				ctx.state[i] ^= v[i] ^ v[i + 8];
+			}
+		}
+
 		void round(std::span<uint64_t, 16> v, const_span<uint64_t, 16> m, const size_t r) noexcept {
 			gmixing(v, 0, 4, 8, 12, m[Sigma[r][0]], m[Sigma[r][1]]);
 			gmixing(v, 1, 5, 9, 13, m[Sigma[r][2]], m[Sigma[r][3]]);

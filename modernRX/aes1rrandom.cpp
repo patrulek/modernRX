@@ -26,7 +26,7 @@ namespace modernRX::aes {
 			throw std::format("invalid output size: {}", output.size());
 		}
 
-		auto state{ stdexp::span_cast<std::array<uint32_t, 4>, 4>(seed.data()) };
+		auto state{ span_cast<std::array<uint32_t, 4>, 4>(seed.data()) };
 
 		for (size_t i = 0; i < output.size(); i += 64) {
 			decode(state[0], keys[0]);

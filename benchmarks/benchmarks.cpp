@@ -31,7 +31,7 @@ void runBenchmarks(std::vector<Benchmark> benchmarks) {
 	for (auto& bench : benchmarks) {
 		constexpr std::string_view fmt_header{ "{:40s}\n-----\n" };
         constexpr std::string_view fmt{ "Iterations\tElapsed time\tThroughput\n{:>10d}\t{:>11.3f}s\t{:>6.1f}{:s}\n" };
-		double total_microseconds{ 10'000'000.0 }; // Minimum number of microseconds to run benchmark for. Equal to 10sec.
+		double total_microseconds{ 60'000'000.0 }; // Minimum number of microseconds to run benchmark for. Equal to 60sec.
 		double total_elapsed{ 0.0 };
 
 		std::print(fmt_header, bench.name);
@@ -112,7 +112,7 @@ Hasher hasher;
 std::atomic<uint32_t> nonce{ 0 };
 uint32_t seed{ 0 };
 
-std::array<std::byte, 76> block_template{ stdexp::byte_array(
+std::array<std::byte, 76> block_template{ byte_array(
 	0x07, 0x07, 0xf7, 0xa4, 0xf0, 0xd6, 0x05, 0xb3, 0x03, 0x26, 0x08, 0x16, 0xba, 0x3f, 0x10, 0x90, 0x2e, 0x1a, 0x14,
 	0x5a, 0xc5, 0xfa, 0xd3, 0xaa, 0x3a, 0xf6, 0xea, 0x44, 0xc1, 0x18, 0x69, 0xdc, 0x4f, 0x85, 0x3f, 0x00, 0x2b, 0x2e,
 	0xea, 0x00, 0x00, 0x00, 0x00, 0x77, 0xb2, 0x06, 0xa0, 0x2c, 0xa5, 0xb1, 0xd4, 0xce, 0x6b, 0xbf, 0xdf, 0x0a, 0xca,
@@ -130,15 +130,15 @@ int main() {
 		program = superscalar.generate();
 	}
 
-	hasher.reset(stdexp::span_cast<std::byte>(seed));
+	hasher.reset(span_cast<std::byte>(seed));
 
 	std::vector<Benchmark> benchmarks{
-		{ "Blake2b::hash (64B input/output)", 64, "B/s", blake2bBenchmark },
-		{ "Argon2d::Blake2b::hash (64B input, 1 KB output)", 64 + 1024, "B/s", blake2bLongBenchmark },
+		{ "Blake2b::hash (64B input/output)", 1, "H/s", blake2bBenchmark },
+		{ "Argon2d::Blake2b::hash (64B input, 1 KB output)", 1, "H/s", blake2bLongBenchmark },
 		{ "Argon2d::fillMemory (256MB input/output)", 256 * 1024 * 1024, "B/s", argon2dFillMemoryBenchmark },
-		{ "Aes::hash1R (2MB input, 64B output)", 2 * 1024 * 1024 + 64, "B/s", aes1rHashBenchmark },
-		{ "Aes::fill1R (64B input, 2MB output)", 64 + 2 * 1024 * 1024, "B/s", aes1rFillBenchmark },
-		{ "Aes::fill4R (64B input, 2176B output)", 64 + 2176, "B/s", aes4rFillBenchmark },
+		{ "Aes::fill1R (64B input, 2MB output)",  2 * 1024 * 1024, "B/s", aes1rFillBenchmark },
+		{ "Aes::fill4R (64B input, 2176B output)", 2176, "B/s", aes4rFillBenchmark },
+		{ "Aes::hash1R (2MB input, 64B output)", 1, "H/s", aes1rHashBenchmark },
 		{ "Superscalar::generate (1 Program output)", 1, "Program/s", superscalarGenerateBenchmark },
 		{ std::format("Dataset::generate ({:d}B output)", Rx_Dataset_Base_Size + Rx_Dataset_Extra_Size), Rx_Dataset_Base_Size + Rx_Dataset_Extra_Size, "B/s", datasetGenerateBenchmark },
 		{ "Hasher::run (1 hash output)", 1, "H/s", hasherBenchmark }

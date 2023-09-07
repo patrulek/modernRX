@@ -68,9 +68,6 @@ namespace modernRX::blake2b {
 
 		// Fills block buffer with input and compress all fully filled blocks.
 		void update(Context& ctx, const_span<std::byte> input) noexcept;
-
-		// Compress does all the magic with compressing block buffer. Works differently for last and non-last block buffer.
-		void compress(Context& ctx, const bool last) noexcept;
 		
 		// Compress last block and generates final state that is used to yield a blake2b hash.
 		void final(std::span<std::byte> hash, Context& ctx) noexcept;

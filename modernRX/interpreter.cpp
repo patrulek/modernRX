@@ -102,10 +102,10 @@ namespace modernRX {
 
     std::pair<ProgramContext, RxProgram> Interpreter::generateProgram() {
         RxProgram program{};
-        aes::fill4R(stdexp::span_cast<std::byte>(program), seed);
+        aes::fill4R(span_cast<std::byte>(program), seed);
 
         // Last 64 bytes of the program are now the new seed.
-        std::memcpy(seed.data(), stdexp::span_cast<std::byte>(program).data() + sizeof(RxProgram) - seed.size(), seed.size());
+        std::memcpy(seed.data(), span_cast<std::byte>(program).data() + sizeof(RxProgram) - seed.size(), seed.size());
 
         return std::make_pair(ProgramContext{ program }, program);
     }
@@ -140,15 +140,15 @@ namespace modernRX {
         for (uint32_t i = 0; i < Rx_Program_Count - 1; ++i) {
             auto [ctx, program] { generateProgram() };
             executeProgram(ctx, program);
-            blake2b::hash(seed, stdexp::span_cast<std::byte, sizeof(ctx.rf)>(ctx.rf), std::span<std::byte>{});
+            blake2b::hash(seed, span_cast<std::byte, sizeof(ctx.rf)>(ctx.rf), std::span<std::byte>{});
         }
 
         auto [ctx, program] { generateProgram() };
         executeProgram(ctx, program);
-        aes::hash1R(stdexp::span_cast<std::byte, sizeof(ctx.rf.a)>(ctx.rf.a), stdexp::span_cast<std::byte, Rx_Scratchpad_L3_Size>(scratchpad.data()));
+        aes::hash1R(span_cast<std::byte, sizeof(ctx.rf.a)>(ctx.rf.a), span_cast<std::byte, Rx_Scratchpad_L3_Size>(scratchpad.data()));
 
         std::array<std::byte, 32> output{};
-        blake2b::hash(output, stdexp::span_cast<std::byte>(ctx.rf), std::span<std::byte>{});
+        blake2b::hash(output, span_cast<std::byte>(ctx.rf), std::span<std::byte>{});
 
         return output;
     }
@@ -308,41 +308,41 @@ namespace modernRX {
             break;
         case FSWAP_R:
             if (dst_register < Float_Register_Count) {
-                ctx.rf.f[f_dst_register] = intrinsics::sse::vswap(ctx.rf.f[f_dst_register]);
+                ctx.rf.f[f_dst_register] = intrinsics::sse::vswap<double>(ctx.rf.f[f_dst_register]);
                 break;
             }
-                
-            ctx.rf.e[f_dst_register] = intrinsics::sse::vswap(ctx.rf.e[f_dst_register]);
+
+            ctx.rf.e[f_dst_register] = intrinsics::sse::vswap<double>(ctx.rf.e[f_dst_register]);
             break;
         case FADD_R:
-            ctx.rf.f[f_dst_register] = intrinsics::sse::vadd(ctx.rf.f[f_dst_register], ctx.rf.a[f_src_register]);
+            ctx.rf.f[f_dst_register] = intrinsics::sse::vadd<double>(ctx.rf.f[f_dst_register], ctx.rf.a[f_src_register]);
             break;
         case FADD_M:
-            ctx.rf.f[f_dst_register] = intrinsics::sse::vadd(ctx.rf.f[f_dst_register], f_src_value);
+            ctx.rf.f[f_dst_register] = intrinsics::sse::vadd<double>(ctx.rf.f[f_dst_register], f_src_value);
             break;
         case FSUB_R:
-            ctx.rf.f[f_dst_register] = intrinsics::sse::vsub(ctx.rf.f[f_dst_register], ctx.rf.a[f_src_register]);
+            ctx.rf.f[f_dst_register] = intrinsics::sse::vsub<double>(ctx.rf.f[f_dst_register], ctx.rf.a[f_src_register]);
             break;
         case FSUB_M:
-            ctx.rf.f[f_dst_register] = intrinsics::sse::vsub(ctx.rf.f[f_dst_register], f_src_value);
+            ctx.rf.f[f_dst_register] = intrinsics::sse::vsub<double>(ctx.rf.f[f_dst_register], f_src_value);
             break;
         case FSCAL_R:
         {
             const auto mask{ intrinsics::sse::vbcasti64<double>(0x80F0000000000000) };
-            ctx.rf.f[f_dst_register] = intrinsics::sse::vxor(ctx.rf.f[f_dst_register], mask);
+            ctx.rf.f[f_dst_register] = intrinsics::sse::vxor<double>(ctx.rf.f[f_dst_register], mask);
             break;
         }
         case FMUL_R:
-            ctx.rf.e[f_dst_register] = intrinsics::sse::vmul(ctx.rf.e[f_dst_register], ctx.rf.a[f_src_register]);
+            ctx.rf.e[f_dst_register] = intrinsics::sse::vmul<double>(ctx.rf.e[f_dst_register], ctx.rf.a[f_src_register]);
             break;
         case FDIV_M:
         {
             f_src_value = convertFloatRegister(f_src_value, ctx.cfg.e_mask);
-            ctx.rf.e[f_dst_register] = intrinsics::sse::vdiv(ctx.rf.e[f_dst_register], f_src_value);
+            ctx.rf.e[f_dst_register] = intrinsics::sse::vdiv<double>(ctx.rf.e[f_dst_register], f_src_value);
             break;
         }
         case FSQRT_R:
-            ctx.rf.e[f_dst_register] = intrinsics::sse::vsqrt(ctx.rf.e[f_dst_register]);
+            ctx.rf.e[f_dst_register] = intrinsics::sse::vsqrt<double>(ctx.rf.e[f_dst_register]);
             break;
         case CBRANCH:
         {
@@ -409,14 +409,14 @@ namespace modernRX {
 
         // Step 10.
         for (uint32_t i = 0; i < Float_Register_Count; ++i) {
-            ctx.rf.f[i] = intrinsics::sse::vxor(ctx.rf.f[i], ctx.rf.e[i]);
+            ctx.rf.f[i] = intrinsics::sse::vxor<double>(ctx.rf.f[i], ctx.rf.e[i]);
         }
 
         // Step 11.
         for (uint32_t i = 0; i < Float_Register_Count; ++i) {
             const auto offset{ ctx.sp_addr.mx + 16 * i };
-            scratchpad.write(offset, std::bit_cast<uint64_t>(ctx.rf.f[i][0]));
-            scratchpad.write(offset + 8, std::bit_cast<uint64_t>(ctx.rf.f[i][1]));
+            scratchpad.write(offset, std::bit_cast<uint64_t>(ctx.rf.f[i].m128d_f64[0]));
+            scratchpad.write(offset + 8, std::bit_cast<uint64_t>(ctx.rf.f[i].m128d_f64[1]));
         }
 
         // Step 12.
@@ -429,14 +429,10 @@ namespace modernRX {
         const auto entropy{ program.entropy };
         
         // "A-group" register initialization: https://github.com/tevador/RandomX/blob/master/doc/specs.md#452-group-a-register-initialization
-        rf.a[0][0] = getSmallPositiveFloat(entropy[0]);
-        rf.a[0][1] = getSmallPositiveFloat(entropy[1]);
-        rf.a[1][0] = getSmallPositiveFloat(entropy[2]);
-        rf.a[1][1] = getSmallPositiveFloat(entropy[3]);
-        rf.a[2][0] = getSmallPositiveFloat(entropy[4]);
-        rf.a[2][1] = getSmallPositiveFloat(entropy[5]);
-        rf.a[3][0] = getSmallPositiveFloat(entropy[6]);
-        rf.a[3][1] = getSmallPositiveFloat(entropy[7]);
+        rf.a[0] = { getSmallPositiveFloat(entropy[0]), getSmallPositiveFloat(entropy[1]) }; 
+        rf.a[1] = { getSmallPositiveFloat(entropy[2]), getSmallPositiveFloat(entropy[3]) };
+        rf.a[2] = { getSmallPositiveFloat(entropy[4]), getSmallPositiveFloat(entropy[5]) };
+        rf.a[3] = { getSmallPositiveFloat(entropy[6]), getSmallPositiveFloat(entropy[7]) };
 
         // Memory registers initialization: https://github.com/tevador/RandomX/blob/master/doc/specs.md#453-memory-registers
         mem.ma = static_cast<uint32_t>(entropy[8] & Cache_Line_Align_Mask);
@@ -555,8 +551,8 @@ namespace modernRX {
                 std::bit_cast<double>(mask[1]),
             };
 
-            const auto y{ intrinsics::sse::vand(x, xmm_mantissa_mask) };
-            return intrinsics::sse::vor(y, xmm_exponent_mask);
+            const auto y{ intrinsics::sse::vand<double>(x, xmm_mantissa_mask) };
+            return intrinsics::sse::vor<double>(y, xmm_exponent_mask);
         }
     }
 }

@@ -38,16 +38,24 @@ namespace modernRX::intrinsics::sse {
     // Modifies environment's rounding mode.
     // Mode limited to 4 values with modulo operation.
     inline void setFloatRoundingMode(const uint32_t mode, const uint32_t csr = Rx_Mxcsr_Default) noexcept {
-        _mm_setcsr(csr | (mode  << 13));
+        _mm_setcsr(csr | (mode << 13));
     }
 
+
     template<typename T>
-    using xmm = std::array<T, 16 / sizeof(T)> alignas(16);
+    struct xmm_wrapper {
+        using type = std::conditional_t<std::is_same_v<T, double>, __m128d, void>;
+
+        static_assert(!std::is_same_v<type, void>, "type must be double");
+    };
+
+    template<typename T>
+    using xmm = xmm_wrapper<T>::type;
 
     template<typename T>
     [[nodiscard]] xmm<T> vxor(xmm<T> x, xmm<T> y) noexcept {
         if constexpr (std::is_same<T, double>::value) {
-            return std::bit_cast<xmm<T>>(_mm_xor_pd(std::bit_cast<__m128d>(x), std::bit_cast<__m128d>(y)));
+            return _mm_xor_pd(x, y);
         } else {
             static_assert(!sizeof(T), "the only supported type for this operation is: float64");
         }
@@ -56,7 +64,7 @@ namespace modernRX::intrinsics::sse {
     template<typename T>
     [[nodiscard]] xmm<T> vand(xmm<T> x, xmm<T> y) noexcept {
         if constexpr (std::is_same<T, double>::value) {
-            return std::bit_cast<xmm<T>>(_mm_and_pd(std::bit_cast<__m128d>(x), std::bit_cast<__m128d>(y)));
+            return _mm_and_pd(x, y);
         } else {
             static_assert(!sizeof(T), "the only supported type for this operation is: float64");
         }
@@ -66,7 +74,7 @@ namespace modernRX::intrinsics::sse {
     template<typename T>
     [[nodiscard]] xmm<T> vor(xmm<T> x, xmm<T> y) noexcept {
         if constexpr (std::is_same<T, double>::value) {
-            return std::bit_cast<xmm<T>>(_mm_or_pd(std::bit_cast<__m128d>(x), std::bit_cast<__m128d>(y)));
+            return _mm_or_pd(x, y);
         } else {
             static_assert(!sizeof(T), "the only supported type for this operation is: float64");
         }
@@ -75,7 +83,7 @@ namespace modernRX::intrinsics::sse {
     template<typename T>
     void vstore(uintptr_t addr, xmm<T> x) noexcept {
         if constexpr (std::is_same<T, double>::value) {
-            return _mm_store_pd(addr, std::bit_cast<__m128d>(x));
+            return _mm_store_pd(addr, x);
         } else {
             static_assert(!sizeof(T), "the only supported type for this operation is: float64");
         }
@@ -84,9 +92,8 @@ namespace modernRX::intrinsics::sse {
     template<typename T>
     [[nodiscard]] xmm<T> vadd(xmm<T> x, xmm<T> y) noexcept {
         if constexpr (std::is_same<T, double>::value) {
-            return std::bit_cast<xmm<T>>(_mm_add_pd(std::bit_cast<__m128d>(x), std::bit_cast<__m128d>(y)));
-        } 
-        else {
+            return _mm_add_pd(x, y);
+        } else {
             static_assert(!sizeof(T), "the only supported type for this operation is: float64");
         }
     }
@@ -94,7 +101,7 @@ namespace modernRX::intrinsics::sse {
     template<typename T>
     [[nodiscard]] xmm<T> vsub(xmm<T> x, xmm<T> y) noexcept {
         if constexpr (std::is_same<T, double>::value) {
-            return std::bit_cast<xmm<T>>(_mm_sub_pd(std::bit_cast<__m128d>(x), std::bit_cast<__m128d>(y)));
+            return _mm_sub_pd(x, y);
         } else {
             static_assert(!sizeof(T), "the only supported type for this operation is: float64");
         }
@@ -103,7 +110,7 @@ namespace modernRX::intrinsics::sse {
     template<typename T>
     [[nodiscard]] xmm<T> vmul(xmm<T> x, xmm<T> y) noexcept {
         if constexpr (std::is_same<T, double>::value) {
-            return std::bit_cast<xmm<T>>(_mm_mul_pd(std::bit_cast<__m128d>(x), std::bit_cast<__m128d>(y)));
+            return _mm_mul_pd(x, y);
         } else {
             static_assert(!sizeof(T), "the only supported type for this operation is: float64");
         }
@@ -112,7 +119,7 @@ namespace modernRX::intrinsics::sse {
     template<typename T>
     [[nodiscard]] xmm<T> vdiv(xmm<T> x, xmm<T> y) noexcept {
         if constexpr (std::is_same<T, double>::value) {
-            return std::bit_cast<xmm<T>>(_mm_div_pd(std::bit_cast<__m128d>(x), std::bit_cast<__m128d>(y)));
+            return _mm_div_pd(x, y);
         } else {
             static_assert(!sizeof(T), "the only supported type for this operation is: float64");
         }
@@ -121,7 +128,7 @@ namespace modernRX::intrinsics::sse {
     template<typename T>
     [[nodiscard]] xmm<T> vsqrt(xmm<T> x) noexcept {
         if constexpr (std::is_same<T, double>::value) {
-            return std::bit_cast<xmm<T>>(_mm_sqrt_pd(std::bit_cast<__m128d>(x)));
+            return _mm_sqrt_pd(x);
         } else {
             static_assert(!sizeof(T), "the only supported type for this operation is: float64");
         }
@@ -130,7 +137,7 @@ namespace modernRX::intrinsics::sse {
     template<typename T>
     [[nodiscard]] xmm<T> vswap(xmm<T> x) noexcept {
         if constexpr (std::is_same<T, double>::value) {
-            return std::bit_cast<xmm<T>>(_mm_shuffle_pd(std::bit_cast<__m128d>(x), std::bit_cast<__m128d>(x), 1));
+            return _mm_shuffle_pd(x, x, 1);
         } else {
             static_assert(!sizeof(T), "the only supported type for this operation is: float64");
         }
@@ -139,16 +146,15 @@ namespace modernRX::intrinsics::sse {
 
     template<typename T1, typename T2>
     concept equal_greater_size = sizeof(T1) >= sizeof(T2);
-    
+
     // Converts 2 packed int32 values into two floating point values.
     template<typename To>
-    requires std::floating_point<To> && equal_greater_size<To, int32_t>
+        requires std::floating_point<To>&& equal_greater_size<To, int32_t>
     [[nodiscard]] xmm<To> vcvtpi32(const std::byte* addr) noexcept {
         if constexpr (std::is_same_v<To, double>) {
             __m128i x{ _mm_loadl_epi64(reinterpret_cast<const __m128i*>(addr)) };
-            return std::bit_cast<xmm<To>>(_mm_cvtepi32_pd(x));
-        }
-        else {
+            return _mm_cvtepi32_pd(x);
+        } else {
             static_assert(!sizeof(To), "the only supported type for this operation is: int32 -> float64");
         }
     }
@@ -158,9 +164,8 @@ namespace modernRX::intrinsics::sse {
     [[nodiscard]] xmm<T> vbcasti64(uint64_t x) noexcept {
         if constexpr (std::is_same_v<T, double>) {
             __m128i v{ _mm_set1_epi64x(x) };
-            return std::bit_cast<xmm<T>>(_mm_castsi128_pd(v));
-        }
-        else {
+            return _mm_castsi128_pd(v);
+        } else {
             static_assert(!sizeof(T), "the only supported type for this operation is: int64 -> float64");
         }
     }

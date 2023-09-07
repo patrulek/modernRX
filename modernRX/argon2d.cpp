@@ -84,7 +84,7 @@ namespace modernRX::argon2d {
 			const uint32_t initial_hash_size{ std::min(digest_size, Max_Digest_Size) };
 			Context ctx{ init(std::span<std::byte>{}, initial_hash_size) };
 
-			update(ctx, stdexp::span_cast<std::byte, sizeof(uint32_t)>(digest_size));
+			update(ctx, span_cast<const std::byte, sizeof(uint32_t)>(digest_size));
 			update(ctx, input);
 			final(output, ctx);
 
@@ -123,19 +123,19 @@ namespace modernRX::argon2d {
 			Context ctx{ init(std::span<std::byte>{}, Initial_Hash_Size) };
 
 			// Incrementally update the hash context with all inputs.
-			update(ctx, stdexp::span_cast<std::byte, sizeof(uint32_t)>(params.parallelism));
-			update(ctx, stdexp::span_cast<std::byte, sizeof(uint32_t)>(params.tag_length));
-			update(ctx, stdexp::span_cast<std::byte, sizeof(uint32_t)>(params.memory_blocks));
-			update(ctx, stdexp::span_cast<std::byte, sizeof(uint32_t)>(params.iterations));
-			update(ctx, stdexp::span_cast<std::byte, sizeof(uint32_t)>(params.version));
-			update(ctx, stdexp::span_cast<std::byte, sizeof(uint32_t)>(params.type));
-			update(ctx, stdexp::span_cast<std::byte, sizeof(uint32_t)>(password.size()));
+			update(ctx, span_cast<const std::byte, sizeof(uint32_t)>(params.parallelism));
+			update(ctx, span_cast<const std::byte, sizeof(uint32_t)>(params.tag_length));
+			update(ctx, span_cast<const std::byte, sizeof(uint32_t)>(params.memory_blocks));
+			update(ctx, span_cast<const std::byte, sizeof(uint32_t)>(params.iterations));
+			update(ctx, span_cast<const std::byte, sizeof(uint32_t)>(params.version));
+			update(ctx, span_cast<const std::byte, sizeof(uint32_t)>(params.type));
+			update(ctx, span_cast<const std::byte, sizeof(uint32_t)>(password.size()));
 			update(ctx, password);
-			update(ctx, stdexp::span_cast<std::byte, sizeof(uint32_t)>(salt.size()));
+			update(ctx, span_cast<const std::byte, sizeof(uint32_t)>(salt.size()));
 			update(ctx, salt);
-			update(ctx, stdexp::span_cast<std::byte, sizeof(uint32_t)>(params.secret.size()));
+			update(ctx, span_cast<const std::byte, sizeof(uint32_t)>(params.secret.size()));
 			update(ctx, params.secret);
-			update(ctx, stdexp::span_cast<std::byte, sizeof(uint32_t)>(params.data.size()));
+			update(ctx, span_cast<const std::byte, sizeof(uint32_t)>(params.data.size()));
 			update(ctx, params.data);
 
 			std::array<std::byte, Initial_Hash_Size> hash{};
@@ -202,7 +202,7 @@ namespace modernRX::argon2d {
 				for (uint64_t prev_idx = 2, idx = 3; idx < blocks_per_slice; ++prev_idx, ++idx) {
 					const auto cur_idx{ lane_start_idx + idx };
 					const auto ref_length{ prev_idx }; // for slice 0 and iteration 0 it will always be up to previous block
-					const auto J1{ stdexp::bytes_cast<uint64_t>(memory[prev_idx]) & 0x00000000ffffffff };
+					const auto J1{ bytes_cast<uint64_t>(memory[prev_idx]) & 0x00000000ffffffff };
 					const auto x{ (J1 * J1) >> 32 };
 					const auto y{ (ref_length * x) >> 32 };
 					const auto z{ ref_length - 1 - y };
@@ -220,8 +220,8 @@ namespace modernRX::argon2d {
 					for (uint32_t idx = 0; idx < blocks_per_slice; ++idx) {
 						const auto cur_idx{ lane_start_idx + slice * blocks_per_slice + idx };
 						const auto prev_idx{ cur_idx - 1 };
-						const auto J1{ stdexp::bytes_cast<uint64_t>(memory[prev_idx]) & 0x00000000ffffffff };
-						const auto J2{ stdexp::bytes_cast<uint64_t>(memory[prev_idx]) >> 32 };
+						const auto J1{ bytes_cast<uint64_t>(memory[prev_idx]) & 0x00000000ffffffff };
+						const auto J2{ bytes_cast<uint64_t>(memory[prev_idx]) >> 32 };
 						const auto ref_lane{ J2 % params.parallelism };
 
 						// if block from different lane, we can pick max s finished slices * blocks_per_slice
@@ -259,8 +259,8 @@ namespace modernRX::argon2d {
 				for (uint32_t lane = 0; lane < params.parallelism; ++lane) {
 					const auto lane_start_idx{ blocks_per_lane * lane };
 					const auto prev_idx{ lane_start_idx + blocks_per_lane - 1 };
-					const auto J1{ stdexp::bytes_cast<uint64_t>(memory[prev_idx]) & 0x00000000ffffffff };
-					const auto J2{ stdexp::bytes_cast<uint64_t>(memory[prev_idx]) >> 32 };
+					const auto J1{ bytes_cast<uint64_t>(memory[prev_idx]) & 0x00000000ffffffff };
+					const auto J2{ bytes_cast<uint64_t>(memory[prev_idx]) >> 32 };
 					const auto ref_lane{ J2 % params.parallelism };
 
 					// we can pick up to (sync_points - 1) 3 * blocks_per_slice blocks
@@ -283,8 +283,8 @@ namespace modernRX::argon2d {
 						for (uint32_t idx = (slice == 0); idx < blocks_per_slice; ++idx) {
 							const auto cur_idx{ lane_start_idx + idx };
 							const auto prev_idx{ cur_idx - 1 };
-							const auto J1{ stdexp::bytes_cast<uint64_t>(memory[prev_idx]) & 0x00000000ffffffff };
-							const auto J2{ stdexp::bytes_cast<uint64_t>(memory[prev_idx]) >> 32 };
+							const auto J1{ bytes_cast<uint64_t>(memory[prev_idx]) & 0x00000000ffffffff };
+							const auto J2{ bytes_cast<uint64_t>(memory[prev_idx]) >> 32 };
 							const auto ref_lane{ J2 % params.parallelism };
 							auto ref_length{ blocks_per_lane - blocks_per_slice }; // we can pick up to (sync_points - 1) * blocks_per_slice blocks
 							if (ref_lane == lane) {

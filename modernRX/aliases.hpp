@@ -11,7 +11,7 @@
 
 // Convenient alias for `const std::span<const T>`.
 template<typename T, size_t Size = std::numeric_limits<size_t>::max()>
-using const_span = const std::span<const T>;
+using const_span = const std::span<const T, Size>;
 
 // Convenient alias for `const std::array<const T, Size>`.
 template<typename T, size_t Size>

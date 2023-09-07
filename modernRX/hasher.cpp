@@ -6,11 +6,11 @@
 #include "superscalar.hpp"
 
 namespace modernRX {
-    Hasher::Hasher(std::span<std::byte> key) {
+    Hasher::Hasher(const_span<std::byte> key) {
         reset(key);
     }
 
-    void Hasher::reset(std::span<std::byte> key) {
+    void Hasher::reset(const_span<std::byte> key) {
         static constexpr uint32_t programs_count{ Rx_Cache_Accesses }; // Number of superscalar programs should be equal to number of cache accesses.
 
         if (!this->key.empty() && std::equal(key.begin(), key.end(), this->key.begin())) {

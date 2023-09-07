@@ -38,15 +38,15 @@ Sample output:
 ```console
 [ 0] Blake2b::hash                            ... Passed (<1ms)
 [ 1] Argon2d::Blake2b::hash                   ... Passed (<1ms)
-[ 2] Argon2d::fillMemory                      ... Passed (0.708s)
+[ 2] Argon2d::fillMemory                      ... Passed (0.709s)
 [ 3] AesGenerator1R::fill                     ... Passed (<1ms)
 [ 4] AesGenerator4R::fill                     ... Passed (<1ms)
 [ 5] AesHash1R                                ... Passed (<1ms)
 [ 6] Blake2brandom::get                       ... Passed (<1ms)
 [ 7] Reciprocal                               ... Passed (<1ms)
 [ 8] Superscalar::generate                    ... Passed (0.001s)
-[ 9] Dataset::generate                        ... Passed (1327.236s)
-[10] Hasher::run                              ... Passed (1319.264s)
+[ 9] Dataset::generate                        ... Passed (1330.564s)
+[10] Hasher::run                              ... Passed (1339.843s)
 ```
 
 ### Portability
@@ -90,13 +90,15 @@ CPU frequency turbo boost was disabled (3.2GHz base frequency).
 
 Benchmarks compare modernRX implementation with fully optimized RandomX implementation and with RandomX implementation that match optimizations available in current modernRX version.
 
-|                                | Blake2b [MB/s] | Blake2bLong [MB/s] | Argon2d [MB/s] | Aes1R [MB/s] | Aes4R [MB/s] | AesHash1R [MB/s] | Superscalar [Prog/s] | Dataset [MB/s] | Hash [H/s] |
-| ------------------------------ | -------------- | ------------------ | -------------- | ------------ | ------------ | ---------------- | -------------------- | -------------- | ---------- |
-| RandomX (901f8ef7)             |            N/A |                N/A |            N/A |          N/A |          N/A |              N/A |                  N/A |         ~734.0 |       4295 |
-| RandomX (901f8ef7)<sup>1</sup> |            N/A |                N/A |            N/A |          N/A |          N/A |              N/A |                  N/A |           ~2.2 |         19 |
-| modernRX 0.1.0                 |          128.5 |               70.5 |          401.7 |       2765.2 |        711.8 |           1125.1 |                 7988 |            1.6 |         24 |
+|                                | Blake2b [H/s] | Blake2bLong [H/s] | Argon2d [MB/s] | Aes1R [MB/s] | Aes4R [MB/s] | AesHash1R [H/s] | Superscalar [Prog/s] | Dataset [MB/s] | Hash [H/s] | Efficiency [H/Watt/s] |
+| ------------------------------ | :-----------: | :---------------: | :------------: | :----------: | :----------: | :-------------: | :------------------: | :------------: | :--------: | :-------------------: |
+| RandomX (901f8ef7)             |        3.178M |           102.18K |          912.9 |      48987.6 |      12004.5 |           23510 |                 3997 |         ~731.5 |       4510 |                ~73.93 |
+| RandomX (901f8ef7)<sup>1</sup> |        3.178M |           102.18K |          400.6 |       2412.8 |        548.5 |            1153 |                 3997 |           ~2.1 |       19.9 |                 ~0.71 |
+| modernRX 0.1.1 (reference)     |        2.134M |            69.48K |          407.2 |       2877.2 |        735.4 |            1434 |                 8223 |            1.7 |       26.4 |                 ~0.91 |
 
  <sup>1)</sup> no avx argon2d, interpreted mode, software AES mode, small pages mode, no batch, single-threaded, full memory mode
+
+ Original RandomX provides benchmark only for calculating final hashes. All other values were estimated (based on information benchmark provides) or some custom benchmarks were written on top of original RandomX implementation, thus values may not be 100% accurate.
 
  Benchmarks description:
 
@@ -109,6 +111,7 @@ Benchmarks compare modernRX implementation with fully optimized RandomX implemen
 * Superscalar - generating superscalar program.
 * Dataset - generating >2GB of dataset.
 * Hash - calculating final RandomX hash.
+* Efficiency - calculating final RandomX hash per watt per second. Power consumption was measured by wattmeter.
 
 ## Coding guidelines
 
@@ -148,8 +151,11 @@ Project follows [zero-based versioning](https://0ver.org/) with several specific
 
 ## Changelog
 
+* **v0.1.1 - 07.09.2023:** cleanup some code and projects properties
 * **v0.1.0 - 03.09.2023:** reference implementation
 * **v0.0.1 - 10.08.2023:** initial implementation
+
+For more details see [CHANGELOG.md](CHANGELOG.md).
 
 ### Code statistics (via [gocloc](https://github.com/hhatto/gocloc))
 
@@ -158,11 +164,11 @@ $> gocloc /exclude-ext xml,json,txt .
 -------------------------------------------------------------------------------
 Language                     files          blank        comment           code
 -------------------------------------------------------------------------------
-C++                             14            451            258           2145
-C++ Header                      23            214            270           1030
-Markdown                         1             44              0            133
+C++                             14            467            259           2220
+C++ Header                      23            220            274           1043
+Markdown                         2             53              0            155
 -------------------------------------------------------------------------------
-TOTAL                           38            709            528           3308
+TOTAL                           39            740            533           3418
 -------------------------------------------------------------------------------
 ```
 

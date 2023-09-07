@@ -10,7 +10,7 @@
 
 namespace modernRX {
 	// Argon2d Parameters.
-	inline constexpr std::array<std::byte, 8> Rx_Argon2d_Salt{ stdexp::byte_array(0x52, 0x61, 0x6e, 0x64, 0x6f, 0x6d, 0x58, 0x03) }; // RandomX\x03
+	inline constexpr std::array<std::byte, 8> Rx_Argon2d_Salt{ byte_array(0x52, 0x61, 0x6e, 0x64, 0x6f, 0x6d, 0x58, 0x03) }; // RandomX\x03
 	inline constexpr uint32_t Rx_Argon2d_Parallelism{ 1 }; // The number of parallel lanes for cache initialization.
 	inline constexpr uint32_t Rx_Argon2d_Memory_Blocks{ 262144 }; // The number of 1KB blocks in the cache.
 	inline constexpr uint32_t Rx_Argon2d_Iterations{ 3 }; // The number of iterations for cache initialization.
