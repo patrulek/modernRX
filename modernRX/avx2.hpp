@@ -23,6 +23,8 @@ namespace modernRX::intrinsics::avx2 {
     [[nodiscard]] constexpr ymm<T> vset(Args... args) noexcept {
         if constexpr (std::is_same_v<T, uint64_t>) {
             return _mm256_set_epi64x(args...);
+        } else if constexpr (std::is_same_v<T, uint32_t>) {
+            return _mm256_set_epi32(args...);
         } else {
             static_assert(!sizeof(T), "the only supported types for this operation is uint64");
         }
@@ -36,10 +38,27 @@ namespace modernRX::intrinsics::avx2 {
             static_assert(!sizeof(T), "the only supported type for this operation is: uint64");
         }
     }
+
     template<typename T>
     [[nodiscard]] constexpr ymm<T> vmul(const ymm<T> x, const ymm<T> y) noexcept {
         if constexpr (std::is_same_v<T, uint64_t>) {
             return _mm256_mul_epu32(x, y);
+        } else {
+            static_assert(!sizeof(T), "the only supported type for this operation is: uint64");
+        }
+    }
+
+    template<typename T>
+    [[nodiscard]] constexpr ymm<T> vmul64(const ymm<T> x, const ymm<T> y) noexcept {
+        if constexpr (std::is_same_v<T, uint64_t>) {
+            const auto a1{ _mm256_mul_epu32(x, y) };    // (x & 0xffffffff) * (y & 0xffffffff)
+            const auto a2{ _mm256_srli_epi64(x, 32) };  // (x >> 32)
+            const auto a3{ _mm256_mul_epu32(a2, y) };   // (x >> 32) * (y & 0xffffffff)
+            const auto a4{ _mm256_srli_epi64(y, 32) };  // (y >> 32)
+            const auto a5{ _mm256_mul_epu32(x, a4) };   // (x & 0xffffffff) * (y >> 32)
+            auto high{ _mm256_add_epi64(a3, a5) };      // (x >> 32) * (y & 0xffffffff) + (x & 0xffffffff) * (y >> 32)
+            high = _mm256_slli_epi64(high, 32);         // ((x >> 32) * (y & 0xffffffff) + (x & 0xffffffff) * (y >> 32)) << 32
+            return _mm256_add_epi64(a1, high);          // (x & 0xffffffff) * (y & 0xffffffff) + ((x >> 32) * (y & 0xffffffff) + (x & 0xffffffff) * (y >> 32)) << 32
         } else {
             static_assert(!sizeof(T), "the only supported type for this operation is: uint64");
         }

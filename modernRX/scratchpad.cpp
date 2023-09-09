@@ -8,7 +8,7 @@ namespace modernRX {
         aes::fill1R(memory, seed);
 
         // Last 64 bytes of the scratchpad are now the new seed.
-        std::copy(memory.end() - seed.size(), memory.end(), seed.begin());
+        std::memcpy(seed.data(), memory.data() + Rx_Scratchpad_L3_Size - seed.size(), seed.size());
     }
 
     uint64_t Scratchpad::read(const uint64_t offset) const noexcept {

@@ -112,7 +112,7 @@ namespace modernRX {
 
     Interpreter::Interpreter(std::span<std::byte, 64> seed, const std::vector<DatasetItem>& dataset)
         : dataset(dataset), scratchpad(seed) {
-        std::copy(seed.begin(), seed.end(), this->seed.begin());
+        std::memcpy(this->seed.data(), seed.data(), seed.size());
     }
 
     void Interpreter::executeProgram(ProgramContext& ctx, const RxProgram& program) {

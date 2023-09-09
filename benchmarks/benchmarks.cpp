@@ -135,7 +135,7 @@ int main() {
 	std::vector<Benchmark> benchmarks{
 		{ "Blake2b::hash (64B input/output)", 1, "H/s", blake2bBenchmark },
 		{ "Argon2d::Blake2b::hash (64B input, 1 KB output)", 1, "H/s", blake2bLongBenchmark },
-		{ "Argon2d::fillMemory (256MB input/output)", 256 * 1024 * 1024, "B/s", argon2dFillMemoryBenchmark },
+		{ "Argon2d::fillMemory (256MB output)", 256 * 1024 * 1024, "B/s", argon2dFillMemoryBenchmark },
 		{ "Aes::fill1R (64B input, 2MB output)",  2 * 1024 * 1024, "B/s", aes1rFillBenchmark },
 		{ "Aes::fill4R (64B input, 2176B output)", 2176, "B/s", aes4rFillBenchmark },
 		{ "Aes::hash1R (2MB input, 64B output)", 1, "H/s", aes1rHashBenchmark },
@@ -161,7 +161,7 @@ void blake2bLongBenchmark() {
 }
 
 void argon2dFillMemoryBenchmark() {
-	argon2d::fillMemory(memory, data);
+	argon2d::fillMemory(memory, block_template);
 }
 
 void aes1rHashBenchmark() {

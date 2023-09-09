@@ -28,7 +28,7 @@ namespace modernRX::argon2d {
 		//   - This function is only called with memory that size is Rx_Argon2d_Memory_Blocks.
 		//   - This function is only called with password that size is equal to block template.
 		ASSERTUME(memory.size() == Rx_Argon2d_Memory_Blocks);
-		ASSERTUME(password.size() == Rx_Block_Template_Size);
+		ASSERTUME(password.size() > 0 && password.size() <= Rx_Block_Template_Size);
 
 		const auto hash{ initialize(password) };
 		makeFirstPass(memory, hash);
@@ -85,7 +85,7 @@ namespace modernRX::argon2d {
 			//   - Rx_Argon2d_Salt is required by RandomX to be at least 8 bytes long.
 			//   - This function is only called with password that size is equal to block template.
 			ASSERTUME(Rx_Argon2d_Salt.size() >= 8);
-			ASSERTUME(password.size() == Rx_Block_Template_Size);
+			ASSERTUME(password.size() > 0 && password.size() <= Rx_Block_Template_Size);
 
 			using namespace modernRX::blake2b;
 
@@ -163,7 +163,7 @@ namespace modernRX::argon2d {
 
 			// Calculate first three blocks for first slice.
 			std::array<std::byte, Initial_Hash_Size + 2 * sizeof(uint32_t)> input{};
-			std::copy(hash.begin(), hash.end(), input.begin());
+			std::memcpy(input.data(), hash.data(), Initial_Hash_Size);
 
 			// First block.
 			blake2b::hash(std::span<std::byte>{ memory[0] }, input);

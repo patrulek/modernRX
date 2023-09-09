@@ -34,21 +34,21 @@ To build this repository you should download the most recent Visual Studio versi
 
 Library requires support for AVX2 instructions. There are no runtime checks so if its crashing, make sure your CPU supports AVX2.
 
-To run tests open solution, set `tests` project as the startup one and click "run". Currently tests will run for about 5 minutes, because of partially optimized dataset generation.
+To run tests open solution, set `tests` project as the startup one and click "run".
 Sample output:
 
 ```console
 [ 0] Blake2b::hash                            ... Passed (<1ms)
 [ 1] Argon2d::Blake2b::hash                   ... Passed (<1ms)
-[ 2] Argon2d::fillMemory                      ... Passed (0.316s)
+[ 2] Argon2d::fillMemory                      ... Passed (0.604s)
 [ 3] AesGenerator1R::fill                     ... Passed (<1ms)
 [ 4] AesGenerator4R::fill                     ... Passed (<1ms)
 [ 5] AesHash1R                                ... Passed (<1ms)
 [ 6] Blake2brandom::get                       ... Passed (<1ms)
 [ 7] Reciprocal                               ... Passed (<1ms)
-[ 8] Superscalar::generate                    ... Passed (0.001s)
-[ 9] Dataset::generate                        ... Passed (134.343s)
-[10] Hasher::run                              ... Passed (125.761s)
+[ 8] Superscalar::generate                    ... Passed (<1ms)
+[ 9] Dataset::generate                        ... Passed (60.371s)
+[10] Hasher::run                              ... Passed (60.562s)
 ```
 
 ### Portability
@@ -96,7 +96,8 @@ Benchmarks compare modernRX implementation with fully optimized RandomX implemen
 | ------------------------------ | :-----------: | :---------------: | :------------: | :----------: | :----------: | :-------------: | :------------------: | :------------: | :--------: | :-------------------: |
 | RandomX (901f8ef7)             |        3.178M |           102.18K |          912.9 |  **48987.6** |  **12004.5** |       **23510** |                 3997 |     **~731.5** |   **4510** |            **~73.93** |
 | RandomX (901f8ef7)<sup>2</sup> |        3.178M |           102.18K |          912.9 |       2412.8 |        548.5 |            1153 |                 3997 |          ~28.8 |       19.9 |                 ~0.71 |
-| modernRX 0.2.0                 |    **4.902M** |       **154.70K** |      **990.3** |       2893.3 |        751.6 |            1419 |             **9409** |           19.2 |       25.8 |                 ~0.86 |
+| modernRX 0.2.1                 |    **4.903M** |       **156.11K** |          973.0 |       2868.4 |        734.8 |            1436 |             **9458** |           36.0 |       25.9 |                 ~0.89 |
+| modernRX 0.2.0                 |		  4.902M |           154.70K |      **990.3** |       2893.3 |        751.6 |            1419 |                 9409 |           19.2 |       25.8 |                 ~0.86 |
 | RandomX (901f8ef7)<sup>1</sup> |        3.178M |           102.18K |          400.6 |       2412.8 |        548.5 |            1153 |                 3997 |           ~2.1 |       19.9 |                 ~0.71 |
 | modernRX 0.1.1 (reference)     |        2.134M |            69.48K |          407.2 |       2877.2 |        735.4 |            1434 |                 8223 |            1.7 |       26.4 |                 ~0.91 |
 
@@ -157,6 +158,7 @@ Project follows [zero-based versioning](https://0ver.org/) with several specific
 
 ## Changelog
 
+* **v0.2.1 - 09.09.2023:** dataset generation optimizations (item batching and caching reciprocals)
 * **v0.2.0 - 08.09.2023:** dataset generation optimizations (multithreading and AVX2 support)
 * **v0.1.1 - 07.09.2023:** cleanup some code and projects properties
 * **v0.1.0 - 03.09.2023:** reference implementation
@@ -171,11 +173,11 @@ $> gocloc /exclude-ext xml,json,txt .
 -------------------------------------------------------------------------------
 Language                     files          blank        comment           code
 -------------------------------------------------------------------------------
-C++                             14            466            291           2170
-C++ Header                      26            262            317           1557
-Markdown                         2             58              0            178
+C++                             14            484            306           2241
+C++ Header                      26            266            318           1574
+Markdown                         2             66              0            195
 -------------------------------------------------------------------------------
-TOTAL                           42            786            608           3905
+TOTAL                           42            816            624           4010
 -------------------------------------------------------------------------------
 ```
 

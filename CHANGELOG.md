@@ -1,5 +1,26 @@
 ## Changelog
 
+
+### v0.2.1 - 09.09.2023:
+
+Dataset items batching and caching reciprocals in superscalar programs.
+All optimization decisions made in this version:
+
+* add batching to dataset generation with batch size of 4 items (this should be nicely AVX2-able when JIT compiler is ready)
+* add AVX2 instructions for Dataset generation
+* add reciprocals caching in superscalar programs to not calculate them every time item is generated
+* add assumption for reciprocal function that it will always be called with valid argument (thats guaranteed by RandomX design)
+* change std::copy to std::memcpy as it seems that std::memcpy is willing to produce better code
+
+Bug fixes:
+* fix Argon2d input size assumption (to satisfy tests)
+
+Improvements:
+* add another Argon2d test case
+
+Lessons learned:
+* std::memcpy may produce better code than std::copy
+
 ### v0.2.0 - 08.09.2023:
 
 Dataset multithreading and AVX2 support for Blake2b and Argon2d.

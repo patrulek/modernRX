@@ -33,6 +33,8 @@ namespace modernRX {
 		uint32_t imm32{ 0 }; // Immediate (constant) unsigned 32-bit value.
 		uint8_t mod{ 0 }; // Used to modify source register value.
 
+		uint64_t reciprocal{ 0 }; // Reciprocal of imm32. Used for IMUL_RCP instruction.
+
 		// Returns numbers of bits from mod used for shifting.
 		[[nodiscard]] uint8_t modShift() const noexcept {
 			return (mod >> 2) % 4;

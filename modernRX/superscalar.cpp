@@ -363,6 +363,7 @@ namespace modernRX {
 			break;
 		case InstructionType::IMUL_RCP:
 			do { instruction.imm32 = blakeRNG.getUint32(); } while (std::has_single_bit(instruction.imm32));
+			instruction.reciprocal = reciprocal(instruction.imm32);
 			break;
 		default:
 			std::unreachable();
@@ -412,7 +413,7 @@ namespace modernRX {
 				registers[instr.dst_register] = intrinsics::smulh(registers[instr.dst_register], registers[instr.src_register.value()]);
 				break;
 			case InstructionType::IMUL_RCP:
-				registers[instr.dst_register] *= reciprocal(instr.imm32);
+				registers[instr.dst_register] *= instr.reciprocal;
 				break;
 			default:
 				std::unreachable();

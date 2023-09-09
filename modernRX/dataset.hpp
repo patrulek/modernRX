@@ -2,7 +2,7 @@
 
 
 /*
-* Multi-threaded implementation of RandomX Dataset: https://github.com/tevador/RandomX/blob/master/doc/specs.md#7-dataset
+* Multi-threaded and AVX2 enhanced implementation of RandomX Dataset: https://github.com/tevador/RandomX/blob/master/doc/specs.md#7-dataset
 * This is used as read-only memory by RandomX programs to calculate hashes.
 */
 
