@@ -12,7 +12,6 @@ namespace modernRX {
     using namespace intrinsics;
 
     namespace {
-        [[nodiscard]] DatasetItem generateItem(const argon2d::Memory& cache, const_span<Program, Rx_Cache_Accesses> programs, const uint32_t item_number) noexcept;
         [[nodiscard]] std::array<DatasetItem, 4> generate4Items(const argon2d::Memory& cache, const_span<Program, Rx_Cache_Accesses> programs, const uint64_t item_number) noexcept;
         void initializeItem(avx2::ymm<uint64_t>(&ymm_item)[2], const uint64_t item_number) noexcept;
     }
@@ -22,17 +21,25 @@ namespace modernRX {
         ASSERTUME(cache.size() == Rx_Argon2d_Memory_Blocks);
 
         // Allocate memory for dataset.
-        constexpr uint32_t Dataset_Items_Count{ (Rx_Dataset_Base_Size + Rx_Dataset_Extra_Size) / sizeof(DatasetItem) };
+        const uint32_t thread_count{ std::thread::hardware_concurrency() };
+
+        // Dataset padding size adds additional memory to dataset to make it divisible by thread count * batch_size(4) without remainder.
+        // This is needed to make sure that each thread will have the same amount of work and no additional function for handling remainders is needed.
+        // Additional data will be ignored during hash calculation, its purpose is to simplify dataset generation.
+        const uint32_t dataset_alignment{ thread_count * 4 * sizeof(DatasetItem) };
+        const uint32_t dataset_padding_size{ dataset_alignment - ((Rx_Dataset_Base_Size + Rx_Dataset_Extra_Size) % dataset_alignment) };
+        const uint32_t Dataset_Items_Count{ (Rx_Dataset_Base_Size + Rx_Dataset_Extra_Size + dataset_padding_size) / sizeof(DatasetItem) };
         std::vector<DatasetItem> memory(Dataset_Items_Count);
 
-        const uint32_t thread_count{ std::thread::hardware_concurrency() };
         const uint32_t items_per_thread{ Dataset_Items_Count / thread_count }; // Number of items per additional thread.
-        const uint32_t items_first_thread{ items_per_thread + Dataset_Items_Count % thread_count }; // First thread will possibly have more items to process to make sure no item is left behind.
+
+        // Assume that number of items per thread is always greater than 0. If not, invalid or exotic configuration is used.
+        ASSERTUME(items_per_thread > 0);
         
         // Task that will be executed by each thread.
-        const auto task = [&cache, &programs, items_first_thread](const uint32_t tid, std::span<DatasetItem> submemory) {
+        const auto task = [&cache, &programs](const uint32_t tid, std::span<DatasetItem> submemory) {
             const uint32_t size{ static_cast<uint32_t>(submemory.size()) };
-            uint32_t start_item{ items_first_thread + (tid - 1) * size };
+            uint32_t start_item{ tid * size };
             const uint32_t end_item{ start_item + size };
 
             // Do as much 4-batch calculations as possible.
@@ -41,37 +48,17 @@ namespace modernRX {
                 std::memcpy(submemory.data() + i * 4, items.data(), sizeof(DatasetItem) * 4);
                 start_item += 4;
             }
-
-            // Calculate remaining items.
-            const uint64_t remainder{ submemory.size() % 4 };
-            const uint64_t last_idx{ submemory.size() - remainder };
-
-            switch (remainder) {
-            case 3:
-                submemory[last_idx + 2] = generateItem(cache, programs, start_item + 2);
-                [[fallthrough]];
-            case 2:
-                submemory[last_idx + 1] = generateItem(cache, programs, start_item + 1);
-                [[fallthrough]];
-            case 1:
-                submemory[last_idx] = generateItem(cache, programs, start_item);
-                [[fallthrough]];
-            case 0:
-                break;
-            default:
-                std::unreachable();
-            }
         };
 
         // Start threads.
         std::vector<std::thread> threads(thread_count);
 
         for (uint32_t tid = 1; tid < thread_count; ++tid) {
-            threads[tid] = std::thread{ task, tid, std::span<DatasetItem>{ memory.begin() + items_first_thread + (tid - 1) * items_per_thread, items_per_thread } };
+            threads[tid] = std::thread{ task, tid, std::span<DatasetItem>{ memory.begin() + tid * items_per_thread, items_per_thread } };
         }
 
         // Execute task on main thread.
-        task(0, std::span<DatasetItem>{ memory.begin(), items_first_thread });
+        task(0, std::span<DatasetItem>{ memory.begin(), items_per_thread });
 
         // Wait for threads to finish.
         for (uint64_t tid = 1; tid < thread_count; ++tid) {
@@ -82,44 +69,6 @@ namespace modernRX {
     }
     
     namespace {
-        // Calculates single DatasetItem (64-bytes of data) according to https://github.com/tevador/RandomX/blob/master/doc/specs.md#73-dataset-block-generation.
-        // Enhanced by AVX2 intrinsics.
-        DatasetItem generateItem(const argon2d::Memory& cache, const_span<Program, Rx_Cache_Accesses> programs, const uint32_t item_number) noexcept {
-            // It can be assumed that cache size is fixed and equal to Rx_Argon2d_Memory_Blocks.
-            ASSERTUME(cache.size() == Rx_Argon2d_Memory_Blocks);
-
-            // 1. Initialize DatasetItem.
-            DatasetItem dt_item;
-            avx2::ymm<uint64_t>(&ymm_item)[2] { reinterpret_cast<avx2::ymm<uint64_t>(&)[2]>(dt_item) };
-            initializeItem(ymm_item, item_number);
-
-            // 2. Initialize cache index.
-            constexpr uint32_t cache_item_count{ argon2d::Memory_Size / sizeof(DatasetItem) };
-            uint64_t cache_index{ item_number };
-            DatasetItem cache_item{};
-
-            // 3. For all programs...
-            for (const auto& prog : programs) {
-                // 4. Load cache item.
-                const auto cache_offset{ (cache_index % cache_item_count) * sizeof(DatasetItem) };
-                const auto block_index{ cache_offset / argon2d::Block_Size };
-                const auto block_offset{ cache_offset % argon2d::Block_Size };
-                std::memcpy(cache_item.data(), cache[block_index].data() + block_offset, sizeof(DatasetItem));
-
-                // 5. Execute program with dt_item as registers.
-                executeSuperscalar(dt_item, prog);
-
-                // 6. XOR data and cache items.
-                ymm_item[0] = avx2::vxor<uint64_t>(ymm_item[0], (avx2::ymm<uint64_t>&)cache_item[0]);
-                ymm_item[1] = avx2::vxor<uint64_t>(ymm_item[1], (avx2::ymm<uint64_t>&)cache_item[4]);
-
-                // 7. Set cache index
-                cache_index = dt_item[prog.address_register];
-            }
-
-            return dt_item;
-        }
-
         // Calculates 4-batch DatasetItem (4x64-bytes of data) according to https://github.com/tevador/RandomX/blob/master/doc/specs.md#73-dataset-block-generation.
         // Enhanced by AVX2 intrinsics.
         std::array<DatasetItem, 4> generate4Items(const argon2d::Memory& cache, const_span<Program, Rx_Cache_Accesses> programs, const uint64_t item_number) noexcept {

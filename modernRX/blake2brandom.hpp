@@ -13,16 +13,16 @@ namespace modernRX::blake2b {
 	public:
 		// Calculates blake2b hash from given seed and nonce and set it as a current state.
 		// Seed max size is 60 bytes (bigger buffers will be truncated).
-		[[nodiscard]] explicit Random(const_span<std::byte> seed, const uint32_t nonce = 0);
+		[[nodiscard]] explicit Random(const_span<std::byte> seed, const uint32_t nonce = 0) noexcept;
 
 		// Return 8-bit unsigned int. Rehashes state if no bytes available. 
-		[[nodiscard]] uint8_t getUint8();
+		[[nodiscard]] uint8_t getUint8() noexcept;
 
 		// Return 32-bit unsigned int. Rehashes state if less than 4 bytes available.
-		[[nodiscard]] uint32_t getUint32();
+		[[nodiscard]] uint32_t getUint32() noexcept;
 	private:
 		// Generates new state (blake2b hash) if left less bytes than needed.
-		void rehashIfNeeded(const size_t bytes_needed);
+		void rehashIfNeeded(const size_t bytes_needed) noexcept;
 
 		std::array<std::byte, Max_Digest_Size> state{};
 		uint32_t position{ 0 };

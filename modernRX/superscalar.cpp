@@ -259,7 +259,7 @@ namespace modernRX {
 		return prog;
 	}
 
-	const DecodeBuffer& Superscalar::selectDecodeBuffer(const InstructionType type, const uint32_t decode_cycle, const uint32_t mul_count) {
+	const DecodeBuffer& Superscalar::selectDecodeBuffer(const InstructionType type, const uint32_t decode_cycle, const uint32_t mul_count) noexcept {
 		// If the current RandomX instruction is "IMULH", the next fetch configuration must be 3-3-10
 		// because the full 128-bit multiplication instruction is 3 bytes long and decodes to 2 uOPs on Intel CPUs.
 		// Intel CPUs can decode at most 4 uOPs per cycle, so this requires a 2-1-1 configuration for a total of 3 macro ops.
@@ -282,7 +282,7 @@ namespace modernRX {
 		return Decode_Buffers[blakeRNG.getUint8() % 4];
 	}
 
-	InstructionType Superscalar::selectInstructionTypeForDecodeBuffer(const DecodeBuffer& decode_buffer, const uint32_t buffer_index) {
+	InstructionType Superscalar::selectInstructionTypeForDecodeBuffer(const DecodeBuffer& decode_buffer, const uint32_t buffer_index) noexcept {
 		static constexpr std::array<InstructionType, 4> slot_3{ InstructionType::ISUB_R, InstructionType::IXOR_R, InstructionType::IMULH_R, InstructionType::ISMULH_R };
 		static constexpr std::array<InstructionType, 2> slot_4{ InstructionType::IROR_C, InstructionType::IADD_RS };
 		static constexpr std::array<InstructionType, 2> slot_7{ InstructionType::IXOR_C7, InstructionType::IADD_C7 };
@@ -322,7 +322,7 @@ namespace modernRX {
 		}
 	}
 
-	Instruction Superscalar::initializeInstruction(const InstructionType type) {
+	Instruction Superscalar::initializeInstruction(const InstructionType type) noexcept {
 		Instruction instruction{
 			.info{ &isa[static_cast<uint8_t>(type)] },
 		};
@@ -372,7 +372,7 @@ namespace modernRX {
 		return instruction;
 	}
 
-	uint8_t Superscalar::selectRegister(const_span<reg_idx_t> available_registers) {
+	uint8_t Superscalar::selectRegister(const_span<reg_idx_t> available_registers) noexcept {
 		return available_registers.size() == 1 ? available_registers[0] : available_registers[blakeRNG.getUint32() % available_registers.size()];
 	}
 

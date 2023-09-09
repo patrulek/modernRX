@@ -123,19 +123,19 @@ namespace modernRX {
 		// instr defines last fetched instruction.
 		// decode_cycle defines current decoding cycle number.
 		// mul_count defines number of currently fetched IMUL* instructions.
-		[[nodiscard]] const DecodeBuffer& selectDecodeBuffer(const InstructionType instr, const uint32_t decode_cycle, const uint32_t mul_count);
+		[[nodiscard]] const DecodeBuffer& selectDecodeBuffer(const InstructionType instr, const uint32_t decode_cycle, const uint32_t mul_count) noexcept;
 
 		// Returns an instruction that should be fetched next, based on given decode_buffer and index pointing to the buffer slot (which holds instruction size in bytes).
 		// Rules for selection are defined in: https://github.com/tevador/RandomX/blob/master/doc/specs.md#632-instruction-selection
 		// In a case when given slot may be occupied by several instructions, blakeRNG is used to randomly select next instruction.
-		[[nodiscard]] InstructionType selectInstructionTypeForDecodeBuffer(const DecodeBuffer& decode_buffer, const uint32_t buffer_index);
+		[[nodiscard]] InstructionType selectInstructionTypeForDecodeBuffer(const DecodeBuffer& decode_buffer, const uint32_t buffer_index) noexcept;
 
 		// Initializes instructions depending on a given type
 		// according to rules from table 6.1.1: https://github.com/tevador/RandomX/blob/master/doc/specs.md#61-instructions
-		[[nodiscard]] Instruction initializeInstruction(const InstructionType type);
+		[[nodiscard]] Instruction initializeInstruction(const InstructionType type) noexcept;
 
 		// Randomly selects a register index from passed available registers.
-		[[nodiscard]] uint8_t selectRegister(const_span<reg_idx_t> available_registers);
+		[[nodiscard]] uint8_t selectRegister(const_span<reg_idx_t> available_registers) noexcept;
 
 		blake2b::Random blakeRNG;
 	};

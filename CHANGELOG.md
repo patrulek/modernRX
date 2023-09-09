@@ -1,5 +1,15 @@
 ## Changelog
 
+### v0.2.2 - 09.09.2023:
+
+Dataset generation simplification by adding padding to the end of the dataset.
+
+Improvements:
+* remove some unnecessary code to handle remainder dataset items (now 4-batch function will never leave remainder items)
+* this will simplify JIT compiling code (no need to code two compiler versions for superscalar programs) 
+
+Bug fixes:
+* fix Blake2bRandom and Superscalar functions to use noexcept
 
 ### v0.2.1 - 09.09.2023:
 
