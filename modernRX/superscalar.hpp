@@ -9,6 +9,7 @@
 
 #include <vector>
 
+#include "avx2.hpp"
 #include "blake2brandom.hpp"
 #include "instructionset.hpp"
 #include "randomxparams.hpp"
@@ -140,6 +141,13 @@ namespace modernRX {
 		blake2b::Random blakeRNG;
 	};
 
-	// Executes given program using provided registers.
-	void executeSuperscalar(std::span<uint64_t, Register_Count> registers, const Program& program) noexcept;
+	// Executes given program with batch of 4 DatasetItem's viewed as registers.
+	// Layout of registers is as follows:
+	// A0 B0 C0 D0
+	// A1 B1 C1 D1
+	// ...
+	// A7 B7 C7 D7
+	//
+	// Enhanced by AVX2 intrinsics.
+	void executeSuperscalar(std::span<intrinsics::avx2::ymm<uint64_t>, Register_Count> registers, const Program& program) noexcept;
 }

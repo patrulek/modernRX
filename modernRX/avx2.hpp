@@ -21,8 +21,13 @@ namespace modernRX::intrinsics::avx2 {
 
     template<typename T, typename... Args>
     [[nodiscard]] constexpr ymm<T> vset(Args... args) noexcept {
+
         if constexpr (std::is_same_v<T, uint64_t>) {
-            return _mm256_set_epi64x(args...);
+            if constexpr (sizeof...(Args) == 1) {
+                return _mm256_set1_epi64x(args...);
+            } else {
+                return _mm256_set_epi64x(args...);
+            }
         } else if constexpr (std::is_same_v<T, uint32_t>) {
             return _mm256_set_epi32(args...);
         } else {
@@ -40,9 +45,31 @@ namespace modernRX::intrinsics::avx2 {
     }
 
     template<typename T>
+    [[nodiscard]] constexpr ymm<T> vshift(const ymm<T> x, const int shift) noexcept {
+        if constexpr (std::is_same_v<T, uint64_t>) {
+            if (shift < 0) {
+                return _mm256_slli_epi64(x, -shift);
+            } else {
+                return _mm256_srli_epi64(x, shift);
+            }
+        } else {
+            static_assert(!sizeof(T), "the only supported type for this operation is: uint64");
+        }
+    }
+
+    template<typename T>
     [[nodiscard]] constexpr ymm<T> vmul(const ymm<T> x, const ymm<T> y) noexcept {
         if constexpr (std::is_same_v<T, uint64_t>) {
             return _mm256_mul_epu32(x, y);
+        } else {
+            static_assert(!sizeof(T), "the only supported type for this operation is: uint64");
+        }
+    }
+
+    template<typename T>
+    [[nodiscard]] constexpr ymm<T> vsub(const ymm<T> x, const ymm<T> y) noexcept {
+        if constexpr (std::is_same_v<T, uint64_t>) {
+            return _mm256_sub_epi64(x, y);
         } else {
             static_assert(!sizeof(T), "the only supported type for this operation is: uint64");
         }
@@ -62,6 +89,87 @@ namespace modernRX::intrinsics::avx2 {
         } else {
             static_assert(!sizeof(T), "the only supported type for this operation is: uint64");
         }
+    }
+
+    // https://stackoverflow.com/a/28827013
+    template<typename T>
+    [[nodiscard]] constexpr ymm<T> vmulhi64(const ymm<T> x, const ymm<T> y) noexcept {
+        if constexpr (std::is_same_v<T, uint64_t>) {
+            ymm<T> lomask = _mm256_set1_epi64x(0xffffffff);
+
+            ymm<T> xh = _mm256_shuffle_epi32(x, 0xB1);  // x0l, x0h, x1l, x1h
+            ymm<T> yh = _mm256_shuffle_epi32(y, 0xB1);  // y0l, y0h, y1l, y1h
+
+            ymm<T> w0 = _mm256_mul_epu32(x, y);         // x0l*y0l, x1l*y1l
+            ymm<T> w1 = _mm256_mul_epu32(x, yh);        // x0l*y0h, x1l*y1h
+            ymm<T> w2 = _mm256_mul_epu32(xh, y);        // x0h*y0l, x1h*y0l
+            ymm<T> w3 = _mm256_mul_epu32(xh, yh);       // x0h*y0h, x1h*y1h
+
+            ymm<T> w0l = _mm256_and_si256(w0, lomask);
+            ymm<T> w0h = _mm256_srli_epi64(w0, 32);
+
+            ymm<T> s1 = _mm256_add_epi64(w1, w0h);
+            ymm<T> s1l = _mm256_and_si256(s1, lomask);
+            ymm<T> s1h = _mm256_srli_epi64(s1, 32);
+
+            ymm<T> s2 = _mm256_add_epi64(w2, s1l);
+            ymm<T> s2l = _mm256_slli_epi64(s2, 32);        
+            ymm<T> s2h = _mm256_srli_epi64(s2, 32);
+
+            ymm<T> hi1 = _mm256_add_epi64(w3, s1h);
+            return _mm256_add_epi64(hi1, s2h);
+        } else {
+            static_assert(!sizeof(T), "the only supported type for this operation is: uint64");
+        }
+    }
+
+    // https://stackoverflow.com/a/28827013
+    template<typename T>
+    [[nodiscard]] constexpr ymm<T> vsmulhi64(const ymm<T> x, const ymm<T> y) noexcept {
+        if constexpr (std::is_same_v<T, uint64_t>) {
+            auto hi{ vmulhi64<T>(x, y) };
+
+            //hi -= ((x<0) ? y : 0)  + ((y<0) ? x : 0);
+            ymm<T> xs = _mm256_cmpgt_epi64(_mm256_setzero_si256(), x);
+            ymm<T> ys = _mm256_cmpgt_epi64(_mm256_setzero_si256(), y);
+            ymm<T> t1 = _mm256_and_si256(y, xs);
+            ymm<T> t2 = _mm256_and_si256(x, ys);
+
+            hi = _mm256_sub_epi64(hi, t1);
+            return _mm256_sub_epi64(hi, t2);
+        } else {
+            static_assert(!sizeof(T), "the only supported type for this operation is: uint64");
+        }
+    }
+
+    constexpr void vtranspose8x4pi64(ymm<uint64_t>(&mx)[8]) noexcept {
+        for (int i = 0; i < 8; i += 2) {
+            auto tmp1 = mx[i];
+            mx[i] = _mm256_permute2x128_si256(mx[i + 1], mx[i], 0x02);
+            mx[i + 1] = _mm256_permute2x128_si256(mx[i + 1], tmp1, 0x13);
+        }
+
+        for (int i = 0; i < 8; i+=4) {
+            auto tmp1 = mx[i];
+            mx[i] = _mm256_unpacklo_epi64(mx[i], mx[i+2]);
+            mx[i] = _mm256_permute4x64_epi64(mx[i], 0b11'01'10'00);
+            mx[i+2] = _mm256_unpackhi_epi64(tmp1, mx[i+2]);
+            mx[i+2] = _mm256_permute4x64_epi64(mx[i+2], 0b11'01'10'00);
+
+            tmp1 = mx[i + 1];
+            mx[i+1] = _mm256_unpacklo_epi64(mx[i+1], mx[i+3]);
+            mx[i+1] = _mm256_permute4x64_epi64(mx[i+1], 0b11'01'10'00);
+            mx[i+3] = _mm256_unpackhi_epi64(tmp1, mx[i+3]);
+            mx[i+3] = _mm256_permute4x64_epi64(mx[i+3], 0b11'01'10'00);
+        }
+
+        auto tmp1 = mx[1];
+        mx[1] = mx[4];
+        mx[4] = tmp1;
+
+        tmp1 = mx[3];
+        mx[3] = mx[6];
+        mx[6] = tmp1;
     }
 
     template<typename T>
@@ -180,6 +288,16 @@ namespace modernRX::intrinsics::avx2 {
         }
     }
 
+    // Right rotate packed 64-bit integers.
+    template<typename T>
+    [[nodiscard]] constexpr ymm<T> vrorpi64(const ymm<T> x, const int shift) noexcept {
+        if constexpr (std::is_same_v<T, uint64_t>) {
+            // value >> shift | value << (64 - shift);
+            return vor<T>(vshift<T>(x, shift), vshift<T>(x, shift - 64));
+        } else {
+            static_assert(!sizeof(T), "the only supported type for this operation is: uint64");
+        }
+    }
 
 
     template<typename T, int imm8>

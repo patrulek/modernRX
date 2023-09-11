@@ -40,15 +40,15 @@ Sample output:
 ```console
 [ 0] Blake2b::hash                            ... Passed (<1ms)
 [ 1] Argon2d::Blake2b::hash                   ... Passed (<1ms)
-[ 2] Argon2d::fillMemory                      ... Passed (0.592s)
+[ 2] Argon2d::fillMemory                      ... Passed (0.614s)
 [ 3] AesGenerator1R::fill                     ... Passed (<1ms)
 [ 4] AesGenerator4R::fill                     ... Passed (<1ms)
 [ 5] AesHash1R                                ... Passed (<1ms)
 [ 6] Blake2brandom::get                       ... Passed (<1ms)
 [ 7] Reciprocal                               ... Passed (<1ms)
-[ 8] Superscalar::generate                    ... Passed (<1ms)
-[ 9] Dataset::generate                        ... Passed (56.519s)
-[10] Hasher::run                              ... Passed (61.661s)
+[ 8] Superscalar::generate                    ... Passed (0.001s)
+[ 9] Dataset::generate                        ... Passed (22.705s)
+[10] Hasher::run                              ... Passed (22.924s)
 ```
 
 ### Portability
@@ -96,6 +96,7 @@ Benchmarks compare modernRX implementation with fully optimized RandomX implemen
 | ------------------------------ | :-----------: | :---------------: | :------------: | :----------: | :----------: | :-------------: | :------------------: | :------------: | :--------: | :-------------------: |
 | RandomX (901f8ef7)             |        3.178M |           102.18K |          912.9 |  **48987.6** |  **12004.5** |       **23510** |                 3997 |     **~731.5** |   **4510** |            **~73.93** |
 | RandomX (901f8ef7)<sup>2</sup> |        3.178M |           102.18K |          912.9 |       2412.8 |        548.5 |            1153 |                 3997 |          ~28.8 |       19.9 |                 ~0.71 |
+| modernRX 0.2.3                 |		  4.872M |           154.30K |		    957.1 |       2789.8 |        732.6 |            1394 |                 9356 |          113.1 |       26.2 |                 ~0.87 |
 | modernRX 0.2.2                 |		  4.893M |           156.04K |		    988.0 |       2789.2 |        742.4 |            1415 |                 9419 |           38.7 |       25.8 |                 ~0.83 |
 | modernRX 0.2.1                 |    **4.903M** |       **156.11K** |          973.0 |       2868.4 |        734.8 |            1436 |             **9458** |           36.0 |       25.9 |                 ~0.89 |
 | modernRX 0.2.0                 |		  4.902M |           154.70K |      **990.3** |       2893.3 |        751.6 |            1419 |                 9409 |           19.2 |       25.8 |                 ~0.86 |
@@ -105,8 +106,6 @@ Benchmarks compare modernRX implementation with fully optimized RandomX implemen
 <sup>1)</sup> no avx argon2d, interpreted mode, software AES mode, small pages mode, no batch, single-threaded, full memory mode
 
 <sup>2)</sup> avx2 argon2d, interpreted mode, software AES mode, small pages mode, no batch, multi-threaded dataset, single-threaded hash, full memory mode
-
-<sup>3)</sup> avx2 argon2d, JIT-compiled superscalar programs, interpreted final hash mode, software AES mode, small pages mode, no batch, multi-threaded dataset, single-threaded hash, full memory mode
 
 Original RandomX provides benchmark only for calculating final hashes. All other values were estimated (based on information benchmark provides) or some custom benchmarks were written on top of original RandomX implementation, thus values may not be 100% accurate.
 
@@ -161,9 +160,10 @@ Project follows [zero-based versioning](https://0ver.org/) with several specific
 
 ## Changelog
 
+* **v0.2.3 - 09.09.2023:** dataset generation optimizations (item batching and AVX2 support for superscalar program execution)
 * **v0.2.2 - 09.09.2023:** dataset generation simplification (add dataset padding)
 * **v0.2.1 - 09.09.2023:** dataset generation optimizations (item batching and caching reciprocals)
-* **v0.2.0 - 08.09.2023:** dataset generation optimizations (multithreading and AVX2 support)
+* **v0.2.0 - 08.09.2023:** dataset generation optimizations (multithreading and AVX2 support for Blake2b and Argon2d)
 * **v0.1.1 - 07.09.2023:** cleanup some code and projects properties
 * **v0.1.0 - 03.09.2023:** reference implementation
 * **v0.0.1 - 10.08.2023:** initial implementation
@@ -177,11 +177,11 @@ $> gocloc /exclude-ext xml,json,txt .
 -------------------------------------------------------------------------------
 Language                     files          blank        comment           code
 -------------------------------------------------------------------------------
-C++                             14            476            299           2205
-C++ Header                      26            266            318           1574
-Markdown                         2             70              0            205
+C++                             14            483            307           2217
+C++ Header                      26            284            330           1670
+Markdown                         2             73              0            215
 -------------------------------------------------------------------------------
-TOTAL                           42            812            617           3984
+TOTAL                           42            840            637           4102
 -------------------------------------------------------------------------------
 ```
 

@@ -1,5 +1,18 @@
 ## Changelog
 
+### v0.2.3 - 11.09.2023:
+
+Superscalar program execution optimizations.
+All optimization decisions made in this version:
+* use batch of 4 dataset items in single superscalar program execution (previously superscalar program was called for each item separately)
+* add AVX2 instructions to superscalar program execution
+
+Improvements:
+* add new assertions in dataset generation test
+
+Bug fixes:
+* fix project filters
+
 ### v0.2.2 - 09.09.2023:
 
 Dataset generation simplification by adding padding to the end of the dataset.

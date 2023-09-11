@@ -7,13 +7,11 @@
 #include "logger.hpp"
 #include "superscalar.hpp"
 
-
 namespace modernRX {
     using namespace intrinsics;
 
     namespace {
         [[nodiscard]] std::array<DatasetItem, 4> generate4Items(const argon2d::Memory& cache, const_span<Program, Rx_Cache_Accesses> programs, const uint64_t item_number) noexcept;
-        void initializeItem(avx2::ymm<uint64_t>(&ymm_item)[2], const uint64_t item_number) noexcept;
     }
 
     std::vector<DatasetItem> generateDataset(const argon2d::Memory& cache, const_span<Program, Rx_Cache_Accesses> programs) {
@@ -42,7 +40,7 @@ namespace modernRX {
             uint32_t start_item{ tid * size };
             const uint32_t end_item{ start_item + size };
 
-            // Do as much 4-batch calculations as possible.
+            // Generate DatasetItem's in batches of 4 items.
             for (size_t i = 0; i < submemory.size() / 4; ++i) {
                 const auto items{ generate4Items(cache, programs, start_item) };
                 std::memcpy(submemory.data() + i * 4, items.data(), sizeof(DatasetItem) * 4);
@@ -75,62 +73,77 @@ namespace modernRX {
             // It can be assumed that cache size is fixed and equal to Rx_Argon2d_Memory_Blocks.
             ASSERTUME(cache.size() == Rx_Argon2d_Memory_Blocks);
 
-            // 1. Initialize DatasetItem.
+            // 1. Initialize DatasetItem's with "register-wise" layout:
+            // A0 B0 C0 D0
+            // A1 B1 C1 D1
+            // ...
+            // A7 B7 C7 D7
             std::array<DatasetItem, 4> dt_items;
-            avx2::ymm<uint64_t>(&ymm_items)[4][2] { reinterpret_cast<avx2::ymm<uint64_t>(&)[4][2]>(dt_items) };
-            initializeItem(ymm_items[0], item_number);
-            initializeItem(ymm_items[1], item_number + 1);
-            initializeItem(ymm_items[2], item_number + 2);
-            initializeItem(ymm_items[3], item_number + 3);
 
-            // 2. Initialize cache index.
+            // ymm_items is an avx2 view of dt_items.
+            avx2::ymm<uint64_t>(&ymm_items)[8] { reinterpret_cast<avx2::ymm<uint64_t>(&)[8]>(dt_items) };
+
+            const auto mul_consts{ avx2::vset<uint64_t>(6364136223846793005ULL) };
+            const auto item_numbers{ avx2::vset<uint64_t>(item_number + 4, item_number + 3, item_number + 2, item_number + 1) };
+
+            ymm_items[0] = avx2::vmul64<uint64_t>(item_numbers, mul_consts);
+            ymm_items[1] = avx2::vxor<uint64_t>(ymm_items[0], avx2::vset<uint64_t>(9298411001130361340ULL));
+            ymm_items[2] = avx2::vxor<uint64_t>(ymm_items[0], avx2::vset<uint64_t>(12065312585734608966ULL));
+            ymm_items[3] = avx2::vxor<uint64_t>(ymm_items[0], avx2::vset<uint64_t>(9306329213124626780ULL));
+            ymm_items[4] = avx2::vxor<uint64_t>(ymm_items[0], avx2::vset<uint64_t>(5281919268842080866ULL));
+            ymm_items[5] = avx2::vxor<uint64_t>(ymm_items[0], avx2::vset<uint64_t>(10536153434571861004ULL));
+            ymm_items[6] = avx2::vxor<uint64_t>(ymm_items[0], avx2::vset<uint64_t>(3398623926847679864ULL));
+            ymm_items[7] = avx2::vxor<uint64_t>(ymm_items[0], avx2::vset<uint64_t>(9549104520008361294ULL));
+
+            // 2. Initialize cache indexes.
             constexpr uint32_t cache_item_count{ argon2d::Memory_Size / sizeof(DatasetItem) };
             std::array<uint64_t, 4> cache_indexes{ item_number, item_number + 1, item_number + 2, item_number + 3 };
-            std::array<DatasetItem, 4> cache_items{};
+            std::array<DatasetItem, 4> cache_items;
 
             // 3. For all programs...
             for (const auto& prog : programs) {
+                // 4. Load cache items.
                 for (uint32_t i = 0; i < 4; ++i) {
-                    // 4. Load cache item.
-                    const auto cache_offset{ (cache_indexes[i] % cache_item_count) * sizeof(DatasetItem)};
+                    const auto cache_offset{ (cache_indexes[i] % cache_item_count) * sizeof(DatasetItem) };
                     const auto block_index{ cache_offset / argon2d::Block_Size };
                     const auto block_offset{ cache_offset % argon2d::Block_Size };
+
                     std::memcpy(cache_items[i].data(), cache[block_index].data() + block_offset, sizeof(DatasetItem));
                 }
 
-                // 5. Execute program with dt_item as registers.
-                for (uint32_t i = 0; i < 4; ++i) {
-                    executeSuperscalar(dt_items[i], prog);
-                }
+                // 5. Execute program for 4-batch of DatasetItem's viewed as registers.
+                executeSuperscalar(ymm_items, prog);
 
-                // 6. XOR data and cache items.
+
+                // 6. XOR dataset and cache items.
                 for (uint32_t i = 0; i < 4; ++i) {
-                    ymm_items[i][0] = avx2::vxor<uint64_t>(ymm_items[i][0], (avx2::ymm<uint64_t>&)cache_items[i][0]);
-                    ymm_items[i][1] = avx2::vxor<uint64_t>(ymm_items[i][1], (avx2::ymm<uint64_t>&)cache_items[i][4]);
+                    const DatasetItem& cache_item{ cache_items[i]};
+
+                    // Fallback to scalar code for simplicity.
+                    dt_items[0][i] ^= cache_item[0];
+                    dt_items[0][4 + i] ^= cache_item[1];
+
+                    dt_items[1][i] ^= cache_item[2];
+                    dt_items[1][4 + i] ^= cache_item[3];
+
+                    dt_items[2][i] ^= cache_item[4];
+                    dt_items[2][4 + i] ^= cache_item[5];
+
+                    dt_items[3][i] ^= cache_item[6];
+                    dt_items[3][4 + i] ^= cache_item[7];
                     
-                    // 7. Set cache index
-                    cache_indexes[i] = dt_items[i][prog.address_register];
+                    // 7. Set cache indexes. Prog.address_register is an index of given item's register so it needs to be mapped properly as at this point it's still "register-wise" layout.
+                    cache_indexes[i] = dt_items[prog.address_register / 2][(prog.address_register % 2) * 4 + i];
                 }
             }
 
+            // Transpose DatasetItem's to "DatasetItem-wise" layout:
+            // A0 A1 A2 A3 A4 A5 A6 A7
+            // B0 B1 ...
+            // C0 C1 ...
+            // D0 D1 D2 D3 D4 D5 D6 D7
+            avx2::vtranspose8x4pi64(ymm_items);
             return dt_items;
-        }
-
-        // Performs first step of DatasetItem initialization according to: https://github.com/tevador/RandomX/blob/master/doc/specs.md#73-dataset-block-generation
-        // Uses AVX2 intrinsics.
-        void initializeItem(avx2::ymm<uint64_t>(&ymm_item)[2], const uint64_t item_number) noexcept {
-            const auto item_numbers{ avx2::vset<uint64_t>(item_number + 1, item_number + 1, item_number + 1, item_number + 1) };
-            const auto mul_consts{ avx2::vset<uint64_t>(0x5851F42D4C957F2D, 0x5851F42D4C957F2D, 0x5851F42D4C957F2D, 0x5851F42D4C957F2D) };
-            const avx2::ymm<uint64_t> xor_consts[2]{
-                avx2::vset<uint64_t>(9306329213124626780ULL, 12065312585734608966ULL, 9298411001130361340ULL, 0ULL),
-                avx2::vset<uint64_t>(9549104520008361294ULL, 3398623926847679864ULL, 10536153434571861004ULL, 5281919268842080866ULL)
-            };
-
-            ymm_item[0] = avx2::vmul64<uint64_t>(item_numbers, mul_consts);
-            ymm_item[0] = avx2::vxor<uint64_t>(ymm_item[0], xor_consts[0]);
-
-            ymm_item[1] = avx2::vmul64<uint64_t>(item_numbers, mul_consts);
-            ymm_item[1] = avx2::vxor<uint64_t>(ymm_item[1], xor_consts[1]);
         }
     }
 }

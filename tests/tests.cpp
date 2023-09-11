@@ -131,8 +131,6 @@ void testBlake2bHash() {
 		0xa8, 0x1e, 0x95, 0x7a, 0x09, 0xfb, 0xad, 0x42, 0x56, 0x75, 0x7e, 0xcf, 0x1b, 0x33, 0xda, 0x49
 	);
 
-	// TODO: test data with 256 bytes
-
 	blake2b::hash(hash, data2);
 	testAssert(hash == expected);
 
@@ -418,7 +416,7 @@ void testBlake2bRandom() {
 
 	testAssert(actual == expected);
 
-	// force reseed
+	// Force reseed.
 	for (auto i = 0; i < 15; i++) auto _ = gen.getUint32();
 
 	expected = 3927737455;
@@ -442,22 +440,22 @@ void testSuperscalarGenerate() {
 	Superscalar superscalar{ gen };
 	Program ssProg{ superscalar.generate() };
 
-	// first program
-	testAssert(ssProg.instructions[0].type() == InstructionType::IMUL_R); // first
-	testAssert(ssProg.instructions[215].type() == InstructionType::IADD_C7); // some in the middle
-	testAssert(ssProg.instructions[446].type() == InstructionType::ISMULH_R); // last
-	testAssert(ssProg.instructions[447].type() == InstructionType::INVALID); // follwing last
+	// First program.
+	testAssert(ssProg.instructions[0].type() == InstructionType::IMUL_R); // First.
+	testAssert(ssProg.instructions[215].type() == InstructionType::IADD_C7); // Some in the middle.
+	testAssert(ssProg.instructions[446].type() == InstructionType::ISMULH_R); // Last.
+	testAssert(ssProg.instructions[447].type() == InstructionType::INVALID); // Following last.
 	testAssert(ssProg.address_register == 4);
 
-	// iterate to last program
+	// Iterate to last program.
 	for (auto i = 1; i < Rx_Cache_Accesses; i++) {
 		ssProg = superscalar.generate();
 	}
 
-	testAssert(ssProg.instructions[0].type() == InstructionType::IMUL_R); // first
-	testAssert(ssProg.instructions[177].type() == InstructionType::ISMULH_R); // some in the middle
-	testAssert(ssProg.instructions[436].type() == InstructionType::IMUL_RCP); // last
-	testAssert(ssProg.instructions[437].type() == InstructionType::INVALID); // follwing last
+	testAssert(ssProg.instructions[0].type() == InstructionType::IMUL_R); // First.
+	testAssert(ssProg.instructions[177].type() == InstructionType::ISMULH_R); // Some in the middle.
+	testAssert(ssProg.instructions[436].type() == InstructionType::IMUL_RCP); // Last.
+	testAssert(ssProg.instructions[437].type() == InstructionType::INVALID); // Following last.
 	testAssert(ssProg.address_register == 0);
 }
 
@@ -472,12 +470,17 @@ void testDatasetGenerate() {
 		ssPrograms[i] = superscalar.generate();
 	}
 
-	auto dt = generateDataset(cache, ssPrograms);
+	const auto dt{ generateDataset(cache, ssPrograms) };
 
 	testAssert(dt[0][0] == 0x680588a85ae222db);
+	testAssert(dt[2][1] == 0xbbe8d699a7c504dc);
+	testAssert(dt[3][7] == 0x7908e227a0effb29);
+	testAssert(dt[213][7] == 0x81bcac0872ee9d29);
+	testAssert(dt[2137213][7] == 0x1dac57c3f3a27a8);
 	testAssert(dt[10000000][0] == 0x7943a1f6186ffb72);
 	testAssert(dt[20000000][0] == 0x9035244d718095e1);
 	testAssert(dt[30000000][0] == 0x145a5091f7853099);
+	testAssert(dt[34078719][7] == 0x10844958c957dfc2);
 }
 
 void testHasher() {

@@ -1,10 +1,13 @@
 #include <utility>
 
+#include "avx2.hpp"
 #include "intrinsics.hpp"
 #include "reciprocal.hpp"
 #include "superscalar.hpp"
 
 namespace modernRX {
+	using namespace intrinsics;
+
 	namespace {
 		constexpr reg_idx_t Register_Needs_Displacement{ 5 }; // This register cannot be destination for IADD_RS.
 		constexpr uint32_t Rx_Superscalar_Op_Max_Latency{ maxOpLatency(isa) }; // Maximum latency of all instructions (in cycles of reference CPU).
@@ -376,44 +379,50 @@ namespace modernRX {
 		return available_registers.size() == 1 ? available_registers[0] : available_registers[blakeRNG.getUint32() % available_registers.size()];
 	}
 
-	void executeSuperscalar(std::span<uint64_t, Register_Count> registers, const Program& program) noexcept {
+	
+	void executeSuperscalar(std::span<avx2::ymm<uint64_t>, Register_Count> registers, const Program& program) noexcept { 
 		for (uint32_t i = 0; i < program.size; ++i) {
 			const auto& instr = program.instructions[i];
+			const auto src_register{ instr.src_register.has_value() ? instr.src_register.value() : 0 }; // 0 is used for simplification. Src value is not used for instructions that dont have src register anyway.
+
+			const avx2::ymm<uint64_t>& src{ registers[src_register] };
+			avx2::ymm<uint64_t>& dst{ registers[instr.dst_register] };
 
 			switch (instr.type()) {
 			case InstructionType::ISUB_R:
-				registers[instr.dst_register] -= registers[instr.src_register.value()];
+				dst = avx2::vsub<uint64_t>(dst, src);
 				break;
 			case InstructionType::IXOR_R:
-				registers[instr.dst_register] ^= registers[instr.src_register.value()];
+				dst = avx2::vxor<uint64_t>(dst, src);
 				break;
 			case InstructionType::IADD_RS:
-				registers[instr.dst_register] += registers[instr.src_register.value()] << instr.modShift();
+				dst = avx2::vadd<uint64_t>(dst, avx2::vshift<uint64_t>(src, 0 - static_cast<int>(instr.modShift())));
 				break;
 			case InstructionType::IMUL_R:
-				registers[instr.dst_register] *= registers[instr.src_register.value()];
+				dst = avx2::vmul64<uint64_t>(dst, src);
 				break;
 			case InstructionType::IROR_C:
-				registers[instr.dst_register] = std::rotr(registers[instr.dst_register], instr.imm32);
+				ASSERTUME(instr.imm32 > 0 && instr.imm32 < 64);
+				dst = avx2::vrorpi64<uint64_t>(dst, instr.imm32);
 				break;
 			case InstructionType::IADD_C7: [[fallthrough]];
 			case InstructionType::IADD_C8: [[fallthrough]];
 			case InstructionType::IADD_C9:
-				registers[instr.dst_register] += static_cast<int32_t>(instr.imm32); // C++20 now guarantees 2's complement representation for signed integers.
+				dst = avx2::vadd<uint64_t>(dst, avx2::vset<uint64_t>(static_cast<int32_t>(instr.imm32)));
 				break;
 			case InstructionType::IXOR_C7: [[fallthrough]];
 			case InstructionType::IXOR_C8: [[fallthrough]];
 			case InstructionType::IXOR_C9:
-				registers[instr.dst_register] ^= static_cast<int32_t>(instr.imm32);
+				dst = avx2::vxor<uint64_t>(dst, avx2::vset<uint64_t>(static_cast<int32_t>(instr.imm32)));
 				break;
 			case InstructionType::IMULH_R:
-				registers[instr.dst_register] = intrinsics::umulh(registers[instr.dst_register], registers[instr.src_register.value()]);
+				dst = avx2::vmulhi64<uint64_t>(dst, src);
 				break;
 			case InstructionType::ISMULH_R:
-				registers[instr.dst_register] = intrinsics::smulh(registers[instr.dst_register], registers[instr.src_register.value()]);
+				dst = avx2::vsmulhi64<uint64_t>(dst, src);
 				break;
 			case InstructionType::IMUL_RCP:
-				registers[instr.dst_register] *= instr.reciprocal;
+				dst = avx2::vmul64<uint64_t>(dst, avx2::vset<uint64_t>(instr.reciprocal));
 				break;
 			default:
 				std::unreachable();

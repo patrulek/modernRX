@@ -22,7 +22,7 @@
     <Filter Include="modernRX">
       <UniqueIdentifier>{6b8b4345-5925-445f-9f9d-5de7ad4c9378}</UniqueIdentifier>
     </Filter>
-    <Filter Include="superscalar\interpreter">
+    <Filter Include="interpreter">
       <UniqueIdentifier>{b1d97ff8-31a4-48f2-ab6b-93380fd71307}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
@@ -52,7 +52,7 @@
       <Filter>utils</Filter>
     </ClInclude>
     <ClInclude Include="interpreter.hpp">
-      <Filter>superscalar\interpreter</Filter>
+      <Filter>interpreter</Filter>
     </ClInclude>
     <ClInclude Include="dataset.hpp">
       <Filter>dataset</Filter>
@@ -73,10 +73,10 @@
       <Filter>superscalar</Filter>
     </ClInclude>
     <ClInclude Include="bytecode.hpp">
-      <Filter>superscalar\interpreter</Filter>
+      <Filter>interpreter</Filter>
     </ClInclude>
     <ClInclude Include="scratchpad.hpp">
-      <Filter>superscalar\interpreter</Filter>
+      <Filter>interpreter</Filter>
     </ClInclude>
     <ClInclude Include="sse.hpp">
       <Filter>utils</Filter>
@@ -132,10 +132,10 @@
       <Filter>dataset</Filter>
     </ClCompile>
     <ClCompile Include="interpreter.cpp">
-      <Filter>superscalar\interpreter</Filter>
+      <Filter>interpreter</Filter>
     </ClCompile>
     <ClCompile Include="scratchpad.cpp">
-      <Filter>superscalar\interpreter</Filter>
+      <Filter>interpreter</Filter>
     </ClCompile>
     <ClCompile Include="hasher.cpp">
       <Filter>modernRX</Filter>
