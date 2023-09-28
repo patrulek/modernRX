@@ -10,6 +10,7 @@
 #include "blake2b.hpp"
 #include "dataset.hpp"
 #include "hasher.hpp"
+#include "jitcompiler.hpp"
 #include "superscalar.hpp"
 
 struct BenchmarkResult {
@@ -27,12 +28,12 @@ struct Benchmark {
 	BenchmarkResult result; // Benchmark result.
 };
 
-void runBenchmarks(std::vector<Benchmark> benchmarks) {
+void runBenchmarks(std::span<Benchmark> benchmarks) {
 	for (auto& bench : benchmarks) {
 		constexpr std::string_view fmt_header{ "{:40s}\n-----\n" };
         constexpr std::string_view fmt{ "Iterations\tElapsed time\tThroughput\n{:>10d}\t{:>11.3f}s\t{:>6.1f}{:s}\n" };
 		double total_microseconds{ 60'000'000.0 }; // Minimum number of microseconds to run benchmark for. Equal to 60sec.
-		double total_elapsed{ 0.0 };
+		double total_elapsed{ 0.0 }; // Total elapsed time in microseconds.
 
 		std::print(fmt_header, bench.name);
 
@@ -103,7 +104,7 @@ std::vector<std::byte> hash_long(1024, std::byte(0));
 std::vector<argon2d::Block> memory;
 std::vector<std::byte> aes_input;
 std::vector<std::byte> program_input;
-std::array<Program, 8> programs;
+std::array<SuperscalarProgram, 8> programs;
 
 blake2b::Random gen{ hash, 0 };
 Superscalar superscalar{ gen };
@@ -128,6 +129,7 @@ int main() {
 
 	for (auto &program : programs) {
 		program = superscalar.generate();
+		compile(program);
 	}
 
 	hasher.reset(span_cast<std::byte>(seed));

@@ -1,5 +1,34 @@
 ## Changelog
 
+### v0.3.0 - 28.09.2023:
+
+Superscalar program JIT compilation.
+All optimization decisions made in this version:
+* add JIT compilation of superscalar programs using AVX2 instructions
+* add cache item prefetching in dataset generation
+
+Bug fixes:
+* fix bug in reciprocal generation and calculation for Superscalar program
+
+Improvements:
+* rename superscalar program related structures with Superscalar prefix to not conflict with random program related structures
+* correct original randomx dataset benchmark result (it was calculated incorrectly and is slightly higher now)
+* documentation corrections
+
+Lessons learned:
+* x86_64 instruction encoding is pretty messed up
+
+### v0.1.2 - 28.09.2023:
+
+Changes in current version:
+
+* fix bug in reciprocal generation and calculation for Superscalar program
+* fix copy bug in hasher reset
+* correct original randomx dataset benchmark result (it was calculated incorrectly and is slightly higher now)
+* add few new testcases
+* rename superscalar program related structures with Superscalar prefix to not conflict with random program related structures
+* documentation corrections
+
 ### v0.2.3 - 11.09.2023:
 
 Superscalar program execution optimizations.
@@ -61,6 +90,9 @@ All optimization decisions made in this version:
   * single lane is always used, thus lane-loop and some instructions were removed, as they are fixed now
   * algorithm parameters are fixed, thus some structs and function arguments were removed
   * function is used with some fixed input and output sizes, and those assumptions were used as hints to compiler
+
+Bug fixes:
+* fix copy bug in hasher reset
 
 Lessons learned:
 * sometimes C-array may be faster than std::array (Argon2d example)

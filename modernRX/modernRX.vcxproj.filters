@@ -102,6 +102,15 @@
     <ClInclude Include="avx2.hpp">
       <Filter>utils</Filter>
     </ClInclude>
+    <ClInclude Include="jitcompiler.hpp">
+      <Filter>superscalar</Filter>
+    </ClInclude>
+    <ClInclude Include="assembler.hpp">
+      <Filter>utils</Filter>
+    </ClInclude>
+    <ClInclude Include="virtualmem.hpp">
+      <Filter>utils</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="blake2b.cpp">
@@ -139,6 +148,9 @@
     </ClCompile>
     <ClCompile Include="hasher.cpp">
       <Filter>modernRX</Filter>
+    </ClCompile>
+    <ClCompile Include="jitcompiler.cpp">
+      <Filter>superscalar</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

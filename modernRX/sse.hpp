@@ -1,10 +1,10 @@
 #pragma once
 
-
 /*
 * Wrapper over some SSE intrinsics required by RandomX algorithm.
 * Implements FloatEnvironment RAII class to set and reset float environment, which is required by RandomX algorithm.
 * Used, but not defined by RandomX algorithm.
+* Code may be a little bit messy and not fully documented as this will be further extended in unknown direction.
 */
 
 #include <array>

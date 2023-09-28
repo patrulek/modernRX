@@ -1,9 +1,15 @@
 #pragma once
 
+/*
+* Wrapper over some AVX2 intrinsics for speeding up some RandomX algorithm parts.
+* Used, but not defined by RandomX algorithm.
+* Code may be a little bit messy and not fully documented as this will be further extended in unknown direction.
+*/
+
 #include <array>
 #include <intrin.h>
-#include <type_traits>
 
+#include "assertume.hpp"
 #include "cast.hpp"
 
 namespace modernRX::intrinsics::avx2 {
@@ -44,14 +50,20 @@ namespace modernRX::intrinsics::avx2 {
         }
     }
 
+
     template<typename T>
-    [[nodiscard]] constexpr ymm<T> vshift(const ymm<T> x, const int shift) noexcept {
+    [[nodiscard]] constexpr ymm<T> vlshift(const ymm<T> x, const int shift) noexcept {
         if constexpr (std::is_same_v<T, uint64_t>) {
-            if (shift < 0) {
-                return _mm256_slli_epi64(x, -shift);
-            } else {
-                return _mm256_srli_epi64(x, shift);
-            }
+            return _mm256_slli_epi64(x, shift);
+        } else {
+            static_assert(!sizeof(T), "the only supported type for this operation is: uint64");
+        }
+    }
+
+    template<typename T>
+    [[nodiscard]] constexpr ymm<T> vrshift(const ymm<T> x, const int shift) noexcept {
+        if constexpr (std::is_same_v<T, uint64_t>) {
+            return _mm256_srli_epi64(x, shift);
         } else {
             static_assert(!sizeof(T), "the only supported type for this operation is: uint64");
         }
@@ -86,57 +98,6 @@ namespace modernRX::intrinsics::avx2 {
             auto high{ _mm256_add_epi64(a3, a5) };      // (x >> 32) * (y & 0xffffffff) + (x & 0xffffffff) * (y >> 32)
             high = _mm256_slli_epi64(high, 32);         // ((x >> 32) * (y & 0xffffffff) + (x & 0xffffffff) * (y >> 32)) << 32
             return _mm256_add_epi64(a1, high);          // (x & 0xffffffff) * (y & 0xffffffff) + ((x >> 32) * (y & 0xffffffff) + (x & 0xffffffff) * (y >> 32)) << 32
-        } else {
-            static_assert(!sizeof(T), "the only supported type for this operation is: uint64");
-        }
-    }
-
-    // https://stackoverflow.com/a/28827013
-    template<typename T>
-    [[nodiscard]] constexpr ymm<T> vmulhi64(const ymm<T> x, const ymm<T> y) noexcept {
-        if constexpr (std::is_same_v<T, uint64_t>) {
-            ymm<T> lomask = _mm256_set1_epi64x(0xffffffff);
-
-            ymm<T> xh = _mm256_shuffle_epi32(x, 0xB1);  // x0l, x0h, x1l, x1h
-            ymm<T> yh = _mm256_shuffle_epi32(y, 0xB1);  // y0l, y0h, y1l, y1h
-
-            ymm<T> w0 = _mm256_mul_epu32(x, y);         // x0l*y0l, x1l*y1l
-            ymm<T> w1 = _mm256_mul_epu32(x, yh);        // x0l*y0h, x1l*y1h
-            ymm<T> w2 = _mm256_mul_epu32(xh, y);        // x0h*y0l, x1h*y0l
-            ymm<T> w3 = _mm256_mul_epu32(xh, yh);       // x0h*y0h, x1h*y1h
-
-            ymm<T> w0l = _mm256_and_si256(w0, lomask);
-            ymm<T> w0h = _mm256_srli_epi64(w0, 32);
-
-            ymm<T> s1 = _mm256_add_epi64(w1, w0h);
-            ymm<T> s1l = _mm256_and_si256(s1, lomask);
-            ymm<T> s1h = _mm256_srli_epi64(s1, 32);
-
-            ymm<T> s2 = _mm256_add_epi64(w2, s1l);
-            ymm<T> s2l = _mm256_slli_epi64(s2, 32);        
-            ymm<T> s2h = _mm256_srli_epi64(s2, 32);
-
-            ymm<T> hi1 = _mm256_add_epi64(w3, s1h);
-            return _mm256_add_epi64(hi1, s2h);
-        } else {
-            static_assert(!sizeof(T), "the only supported type for this operation is: uint64");
-        }
-    }
-
-    // https://stackoverflow.com/a/28827013
-    template<typename T>
-    [[nodiscard]] constexpr ymm<T> vsmulhi64(const ymm<T> x, const ymm<T> y) noexcept {
-        if constexpr (std::is_same_v<T, uint64_t>) {
-            auto hi{ vmulhi64<T>(x, y) };
-
-            //hi -= ((x<0) ? y : 0)  + ((y<0) ? x : 0);
-            ymm<T> xs = _mm256_cmpgt_epi64(_mm256_setzero_si256(), x);
-            ymm<T> ys = _mm256_cmpgt_epi64(_mm256_setzero_si256(), y);
-            ymm<T> t1 = _mm256_and_si256(y, xs);
-            ymm<T> t2 = _mm256_and_si256(x, ys);
-
-            hi = _mm256_sub_epi64(hi, t1);
-            return _mm256_sub_epi64(hi, t2);
         } else {
             static_assert(!sizeof(T), "the only supported type for this operation is: uint64");
         }
@@ -293,7 +254,8 @@ namespace modernRX::intrinsics::avx2 {
     [[nodiscard]] constexpr ymm<T> vrorpi64(const ymm<T> x, const int shift) noexcept {
         if constexpr (std::is_same_v<T, uint64_t>) {
             // value >> shift | value << (64 - shift);
-            return vor<T>(vshift<T>(x, shift), vshift<T>(x, shift - 64));
+            ASSERTUME(shift > 0 && shift < 64);
+            return vor<T>(vrshift<T>(x, shift), vlshift<T>(x, shift));
         } else {
             static_assert(!sizeof(T), "the only supported type for this operation is: uint64");
         }
@@ -313,7 +275,7 @@ namespace modernRX::intrinsics::avx2 {
 
     // Loads integer values from aligned memory location.
     template<typename T>
-    [[nodiscard]] constexpr ymm<T> loadsi256(const void* addr) noexcept {
+    [[nodiscard]] constexpr ymm<T> vload256(const void* addr) noexcept {
         if constexpr (std::is_integral_v<T>) {
             return _mm256_load_si256(reinterpret_cast<const __m256i*>(addr));
         } else {
@@ -323,7 +285,7 @@ namespace modernRX::intrinsics::avx2 {
 
     // Stores integer in address.
     template<typename T>
-    [[nodiscard]] constexpr void storesi256(const ymm<T> x, void* addr) noexcept {
+    [[nodiscard]] constexpr void vstore256(const ymm<T> x, void* addr) noexcept {
         if constexpr (std::is_integral_v<T>) {
             _mm256_storeu_si256(reinterpret_cast<__m256i*>(addr), x);
             return;

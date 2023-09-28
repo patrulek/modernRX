@@ -92,10 +92,10 @@ namespace modernRX::blake2b {
 			};
 
 			// Initialize working vector.
-			auto v1{ avx2::loadsi256<uint64_t>(ctx.state.data()) }; // {h[0], h[1], h[2], h[3]}
-			auto v2{ avx2::loadsi256<uint64_t>(ctx.state.data() + 4) }; // {h[4], h[5], h[6], h[7]}
-			auto v3{ avx2::loadsi256<uint64_t>(IV.data()) }; // {IV[0], IV[1], IV[2], IV[3]}
-			auto v4{ avx2::loadsi256<uint64_t>(IV.data() + 4) }; // {IV[4] ^ ctx.count, IV[5], IV[6] ^ oneof(0xffffffff, 0), h[7]}
+			auto v1{ avx2::vload256<uint64_t>(ctx.state.data()) }; // {h[0], h[1], h[2], h[3]}
+			auto v2{ avx2::vload256<uint64_t>(ctx.state.data() + 4) }; // {h[4], h[5], h[6], h[7]}
+			auto v3{ avx2::vload256<uint64_t>(IV.data()) }; // {IV[0], IV[1], IV[2], IV[3]}
+			auto v4{ avx2::vload256<uint64_t>(IV.data() + 4) }; // {IV[4] ^ ctx.count, IV[5], IV[6] ^ oneof(0xffffffff, 0), h[7]}
 			v4 = avx2::vxor<uint64_t>(v4, avx2::vset<uint64_t>(0, (Last ? std::numeric_limits<uint64_t>::max() : 0ULL), 0, ctx.counter));
 
 			// Prepare rotation constants. Taken from: https://github.com/jedisct1/libsodium/blob/1.0.16/src/libsodium/crypto_generichash/blake2b/ref/blake2b-compress-avx2.h
@@ -119,8 +119,8 @@ namespace modernRX::blake2b {
 			ROUND(1, msg, v1, v2, v3, v4, rot24, rot16);
 
 			// Finalize compression
-			avx2::storesi256<uint64_t>(avx2::vxor<uint64_t>(avx2::loadsi256<uint64_t>(ctx.state.data()), avx2::vxor<uint64_t>(v1, v3)), ctx.state.data());
-			avx2::storesi256<uint64_t>(avx2::vxor<uint64_t>(avx2::loadsi256<uint64_t>(ctx.state.data() + 4), avx2::vxor<uint64_t>(v2, v4)), ctx.state.data() + 4);
+			avx2::vstore256<uint64_t>(avx2::vxor<uint64_t>(avx2::vload256<uint64_t>(ctx.state.data()), avx2::vxor<uint64_t>(v1, v3)), ctx.state.data());
+			avx2::vstore256<uint64_t>(avx2::vxor<uint64_t>(avx2::vload256<uint64_t>(ctx.state.data() + 4), avx2::vxor<uint64_t>(v2, v4)), ctx.state.data() + 4);
 		}
 	}
 };

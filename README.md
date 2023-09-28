@@ -18,7 +18,7 @@ Current state of this project does not provide sensible performance to use in mi
 * [x] (10.08.2023) Provide minimal implementation that yield correct RandomX hashes.
 * [x] (03.09.2023) Polish tests and documentation, add benchmarks.
 * [x] (08.09.2023) Optimize dataset generation with multithreading and hardware specific instructions.
-* [ ] Optimize dataset generation with JIT compiler for superscalar programs.
+* [x] (28.09.2023) Optimize dataset generation with JIT compiler for superscalar programs.
 * [ ] Optimize hash calculation with hardware specific instructions.
 * [ ] Optimize hash calculation with JIT compiler for random programs.
 * [ ] Optimize hash calculation with multithreading.
@@ -40,15 +40,15 @@ Sample output:
 ```console
 [ 0] Blake2b::hash                            ... Passed (<1ms)
 [ 1] Argon2d::Blake2b::hash                   ... Passed (<1ms)
-[ 2] Argon2d::fillMemory                      ... Passed (0.614s)
+[ 2] Argon2d::fillMemory                      ... Passed (0.589s)
 [ 3] AesGenerator1R::fill                     ... Passed (<1ms)
 [ 4] AesGenerator4R::fill                     ... Passed (<1ms)
 [ 5] AesHash1R                                ... Passed (<1ms)
 [ 6] Blake2brandom::get                       ... Passed (<1ms)
 [ 7] Reciprocal                               ... Passed (<1ms)
-[ 8] Superscalar::generate                    ... Passed (0.001s)
-[ 9] Dataset::generate                        ... Passed (22.705s)
-[10] Hasher::run                              ... Passed (22.924s)
+[ 8] Superscalar::generate                    ... Passed (<1ms)
+[ 9] Dataset::generate                        ... Passed (2.748s)
+[10] Hasher::run                              ... Passed (3.134s)
 ```
 
 ### Portability
@@ -94,18 +94,22 @@ Benchmarks compare modernRX implementation with fully optimized RandomX implemen
 
 |                                | Blake2b [H/s] | Blake2bLong [H/s] | Argon2d [MB/s] | Aes1R [MB/s] | Aes4R [MB/s] | AesHash1R [H/s] | Superscalar [Prog/s] | Dataset [MB/s] | Hash [H/s] | Efficiency [H/Watt/s] |
 | ------------------------------ | :-----------: | :---------------: | :------------: | :----------: | :----------: | :-------------: | :------------------: | :------------: | :--------: | :-------------------: |
-| RandomX (901f8ef7)             |        3.178M |           102.18K |          912.9 |  **48987.6** |  **12004.5** |       **23510** |                 3997 |     **~731.5** |   **4510** |            **~73.93** |
-| RandomX (901f8ef7)<sup>2</sup> |        3.178M |           102.18K |          912.9 |       2412.8 |        548.5 |            1153 |                 3997 |          ~28.8 |       19.9 |                 ~0.71 |
+| RandomX (901f8ef7)             |        3.178M |           102.18K |          912.9 |  **48987.6** |  **12004.5** |       **23510** |                 3997 |         ~812.2 |   **4510** |            **~73.93** |
+| RandomX (901f8ef7)<sup>3</sup> |        3.178M |           102.18K |          912.9 |       2412.8 |        548.5 |            1153 |                 3997 |	       ~812.2 |       19.9 |                 ~0.71 |
+| modernRX 0.3.0                 |	  **4.906M** |       **156.62K** |	   **1004.2** |       2913.6 |        724.6 |            1421 |                 9350 |      **932.6** |       26.9 |                 ~0.92 |
+| RandomX (901f8ef7)<sup>2</sup> |        3.178M |           102.18K |          912.9 |       2412.8 |        548.5 |            1153 |                 3997 |          ~28.9 |       19.9 |                 ~0.71 |
 | modernRX 0.2.3                 |		  4.872M |           154.30K |		    957.1 |       2789.8 |        732.6 |            1394 |                 9356 |          113.1 |       26.2 |                 ~0.87 |
 | modernRX 0.2.2                 |		  4.893M |           156.04K |		    988.0 |       2789.2 |        742.4 |            1415 |                 9419 |           38.7 |       25.8 |                 ~0.83 |
-| modernRX 0.2.1                 |    **4.903M** |       **156.11K** |          973.0 |       2868.4 |        734.8 |            1436 |             **9458** |           36.0 |       25.9 |                 ~0.89 |
-| modernRX 0.2.0                 |		  4.902M |           154.70K |      **990.3** |       2893.3 |        751.6 |            1419 |                 9409 |           19.2 |       25.8 |                 ~0.86 |
+| modernRX 0.2.1                 |        4.903M |           156.11K |          973.0 |       2868.4 |        734.8 |            1436 |             **9458** |           36.0 |       25.9 |                 ~0.89 |
+| modernRX 0.2.0                 |		  4.902M |           154.70K |          990.3 |       2893.3 |        751.6 |            1419 |                 9409 |           19.2 |       25.8 |                 ~0.86 |
 | RandomX (901f8ef7)<sup>1</sup> |        3.178M |           102.18K |          400.6 |       2412.8 |        548.5 |            1153 |                 3997 |           ~2.1 |       19.9 |                 ~0.71 |
-| modernRX 0.1.1 (reference)     |        2.134M |            69.48K |          407.2 |       2877.2 |        735.4 |            1434 |                 8223 |            1.7 |       26.4 |                 ~0.91 |
+| modernRX 0.1.2 (reference)     |        2.125M |            69.53K |          412.4 |       2906.7 |        758.9 |            1444 |                 8242 |            1.7 |       26.7 |                 ~0.92 |
 
 <sup>1)</sup> no avx argon2d, interpreted mode, software AES mode, small pages mode, no batch, single-threaded, full memory mode
 
 <sup>2)</sup> avx2 argon2d, interpreted mode, software AES mode, small pages mode, no batch, multi-threaded dataset, single-threaded hash, full memory mode
+
+<sup>3)</sup> avx2 argon2d, dataset JIT mode, hash calculation interpreted mode, software AES mode, small pages mode, no batch, multi-threaded dataset, single-threaded hash, full memory mode
 
 Original RandomX provides benchmark only for calculating final hashes. All other values were estimated (based on information benchmark provides) or some custom benchmarks were written on top of original RandomX implementation, thus values may not be 100% accurate.
 
@@ -160,7 +164,9 @@ Project follows [zero-based versioning](https://0ver.org/) with several specific
 
 ## Changelog
 
-* **v0.2.3 - 09.09.2023:** dataset generation optimizations (item batching and AVX2 support for superscalar program execution)
+* **v0.3.0 - 28.09.2023:** dataset generation optimizations (JIT compiler for superscalar program execution)
+* **v0.1.2 - 28.09.2023:** bugfixes, renaming, documentation updates
+* **v0.2.3 - 11.09.2023:** dataset generation optimizations (item batching and AVX2 support for superscalar program execution)
 * **v0.2.2 - 09.09.2023:** dataset generation simplification (add dataset padding)
 * **v0.2.1 - 09.09.2023:** dataset generation optimizations (item batching and caching reciprocals)
 * **v0.2.0 - 08.09.2023:** dataset generation optimizations (multithreading and AVX2 support for Blake2b and Argon2d)
@@ -177,11 +183,11 @@ $> gocloc /exclude-ext xml,json,txt .
 -------------------------------------------------------------------------------
 Language                     files          blank        comment           code
 -------------------------------------------------------------------------------
-C++                             14            483            307           2217
-C++ Header                      26            284            330           1670
-Markdown                         2             73              0            215
+C++                             15            492            314           2279
+C++ Header                      29            398            473           2214
+Markdown                         2             83              0            243
 -------------------------------------------------------------------------------
-TOTAL                           42            840            637           4102
+TOTAL                           46            973            787           4736
 -------------------------------------------------------------------------------
 ```
 

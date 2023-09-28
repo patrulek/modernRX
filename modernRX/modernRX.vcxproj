@@ -264,12 +264,14 @@
     <ClInclude Include="aliases.hpp" />
     <ClInclude Include="argon2d.hpp" />
     <ClInclude Include="argon2davx2.hpp" />
+    <ClInclude Include="assembler.hpp" />
     <ClInclude Include="assertume.hpp" />
     <ClInclude Include="avx2.hpp" />
     <ClInclude Include="blake2b.hpp" />
     <ClInclude Include="blake2bavx2.hpp" />
     <ClInclude Include="blake2brandom.hpp" />
     <ClInclude Include="bytecode.hpp" />
+    <ClInclude Include="jitcompiler.hpp" />
     <ClInclude Include="dataset.hpp" />
     <ClInclude Include="hasher.hpp" />
     <ClInclude Include="instructionset.hpp" />
@@ -282,6 +284,7 @@
     <ClInclude Include="sse.hpp" />
     <ClInclude Include="superscalar.hpp" />
     <ClInclude Include="cast.hpp" />
+    <ClInclude Include="virtualmem.hpp" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="aes.cpp" />
@@ -291,6 +294,7 @@
     <ClCompile Include="argon2d.cpp" />
     <ClCompile Include="blake2b.cpp" />
     <ClCompile Include="blake2brandom.cpp" />
+    <ClCompile Include="jitcompiler.cpp" />
     <ClCompile Include="dataset.cpp" />
     <ClCompile Include="hasher.cpp" />
     <ClCompile Include="interpreter.cpp" />

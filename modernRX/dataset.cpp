@@ -4,6 +4,7 @@
 #include "assertume.hpp"
 #include "avx2.hpp"
 #include "dataset.hpp"
+#include "intrinsics.hpp"
 #include "logger.hpp"
 #include "superscalar.hpp"
 
@@ -11,10 +12,10 @@ namespace modernRX {
     using namespace intrinsics;
 
     namespace {
-        [[nodiscard]] std::array<DatasetItem, 4> generate4Items(const argon2d::Memory& cache, const_span<Program, Rx_Cache_Accesses> programs, const uint64_t item_number) noexcept;
+        [[nodiscard]] std::array<DatasetItem, 4> generate4Items(const argon2d::Memory& cache, const_span<SuperscalarProgram, Rx_Cache_Accesses> programs, const uint64_t item_number) noexcept;
     }
 
-    std::vector<DatasetItem> generateDataset(const argon2d::Memory& cache, const_span<Program, Rx_Cache_Accesses> programs) {
+    std::vector<DatasetItem> generateDataset(const argon2d::Memory& cache, const_span<SuperscalarProgram, Rx_Cache_Accesses> programs) {
         // It can be assumed that cache size is static and equal to Rx_Argon2d_Memory_Blocks.
         ASSERTUME(cache.size() == Rx_Argon2d_Memory_Blocks);
 
@@ -69,7 +70,7 @@ namespace modernRX {
     namespace {
         // Calculates 4-batch DatasetItem (4x64-bytes of data) according to https://github.com/tevador/RandomX/blob/master/doc/specs.md#73-dataset-block-generation.
         // Enhanced by AVX2 intrinsics.
-        std::array<DatasetItem, 4> generate4Items(const argon2d::Memory& cache, const_span<Program, Rx_Cache_Accesses> programs, const uint64_t item_number) noexcept {
+        std::array<DatasetItem, 4> generate4Items(const argon2d::Memory& cache, const_span<SuperscalarProgram, Rx_Cache_Accesses> programs, const uint64_t item_number) noexcept {
             // It can be assumed that cache size is fixed and equal to Rx_Argon2d_Memory_Blocks.
             ASSERTUME(cache.size() == Rx_Argon2d_Memory_Blocks);
 
@@ -98,26 +99,24 @@ namespace modernRX {
             // 2. Initialize cache indexes.
             constexpr uint32_t cache_item_count{ argon2d::Memory_Size / sizeof(DatasetItem) };
             std::array<uint64_t, 4> cache_indexes{ item_number, item_number + 1, item_number + 2, item_number + 3 };
-            std::array<DatasetItem, 4> cache_items;
+            std::array<const DatasetItem*, 4> cache_items_ptrs;
 
             // 3. For all programs...
             for (const auto& prog : programs) {
-                // 4. Load cache items.
                 for (uint32_t i = 0; i < 4; ++i) {
+                    // 4. Prefetch cache items.
                     const auto cache_offset{ (cache_indexes[i] % cache_item_count) * sizeof(DatasetItem) };
                     const auto block_index{ cache_offset / argon2d::Block_Size };
                     const auto block_offset{ cache_offset % argon2d::Block_Size };
-
-                    std::memcpy(cache_items[i].data(), cache[block_index].data() + block_offset, sizeof(DatasetItem));
+                    cache_items_ptrs[i] = intrinsics::prefetch<PrefetchMode::NTA, const DatasetItem*>(cache[block_index].data() + block_offset);
                 }
 
                 // 5. Execute program for 4-batch of DatasetItem's viewed as registers.
                 executeSuperscalar(ymm_items, prog);
 
-
                 // 6. XOR dataset and cache items.
                 for (uint32_t i = 0; i < 4; ++i) {
-                    const DatasetItem& cache_item{ cache_items[i]};
+                    const DatasetItem& cache_item{ *cache_items_ptrs[i] };
 
                     // Fallback to scalar code for simplicity.
                     dt_items[0][i] ^= cache_item[0];

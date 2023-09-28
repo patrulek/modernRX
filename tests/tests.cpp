@@ -11,6 +11,7 @@
 #include "cast.hpp"
 #include "dataset.hpp"
 #include "hasher.hpp"
+#include "jitcompiler.hpp"
 #include "randomxparams.hpp"
 #include "reciprocal.hpp"
 #include "superscalar.hpp"
@@ -438,13 +439,13 @@ void testReciprocal() {
 void testSuperscalarGenerate() {
 	blake2b::Random gen{ key, 0 };
 	Superscalar superscalar{ gen };
-	Program ssProg{ superscalar.generate() };
+	SuperscalarProgram ssProg{ superscalar.generate() };
 
 	// First program.
-	testAssert(ssProg.instructions[0].type() == InstructionType::IMUL_R); // First.
-	testAssert(ssProg.instructions[215].type() == InstructionType::IADD_C7); // Some in the middle.
-	testAssert(ssProg.instructions[446].type() == InstructionType::ISMULH_R); // Last.
-	testAssert(ssProg.instructions[447].type() == InstructionType::INVALID); // Following last.
+	testAssert(ssProg.instructions[0].type() == SuperscalarInstructionType::IMUL_R); // First.
+	testAssert(ssProg.instructions[215].type() == SuperscalarInstructionType::IADD_C7); // Some in the middle.
+	testAssert(ssProg.instructions[446].type() == SuperscalarInstructionType::ISMULH_R); // Last.
+	testAssert(ssProg.instructions[447].type() == SuperscalarInstructionType::INVALID); // Following last.
 	testAssert(ssProg.address_register == 4);
 
 	// Iterate to last program.
@@ -452,10 +453,10 @@ void testSuperscalarGenerate() {
 		ssProg = superscalar.generate();
 	}
 
-	testAssert(ssProg.instructions[0].type() == InstructionType::IMUL_R); // First.
-	testAssert(ssProg.instructions[177].type() == InstructionType::ISMULH_R); // Some in the middle.
-	testAssert(ssProg.instructions[436].type() == InstructionType::IMUL_RCP); // Last.
-	testAssert(ssProg.instructions[437].type() == InstructionType::INVALID); // Following last.
+	testAssert(ssProg.instructions[0].type() == SuperscalarInstructionType::IMUL_R); // First.
+	testAssert(ssProg.instructions[177].type() == SuperscalarInstructionType::ISMULH_R); // Some in the middle.
+	testAssert(ssProg.instructions[436].type() == SuperscalarInstructionType::IMUL_RCP); // Last.
+	testAssert(ssProg.instructions[437].type() == SuperscalarInstructionType::INVALID); // Following last.
 	testAssert(ssProg.address_register == 0);
 }
 
@@ -465,9 +466,10 @@ void testDatasetGenerate() {
 	blake2b::Random blakeRNG{ key, 0 };
 
 	Superscalar superscalar{ blakeRNG };
-	std::array<Program, 8> ssPrograms;
+	std::array<SuperscalarProgram, 8> ssPrograms;
 	for (auto i = 0; i < Rx_Cache_Accesses; i++) {
 		ssPrograms[i] = superscalar.generate();
+		compile(ssPrograms[i]);
 	}
 
 	const auto dt{ generateDataset(cache, ssPrograms) };

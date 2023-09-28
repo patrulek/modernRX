@@ -23,7 +23,7 @@
 //	ret
 constexpr uint64_t reciprocal(const uint64_t divisor) noexcept {
 	// Divisor will never be 0 or a power of 2.
-	ASSERTUME(!std::has_single_bit(divisor));
+	ASSERTUME(divisor != 0 && !std::has_single_bit(divisor));
 
 	constexpr uint64_t p2exp63{ 1ULL << 63 };
 	uint64_t quotient{ p2exp63 / divisor };

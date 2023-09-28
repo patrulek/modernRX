@@ -17,5 +17,5 @@ namespace modernRX {
 
     // Fills read-only memory used by RandomX programs to calculate hashes according to https://github.com/tevador/RandomX/blob/master/doc/specs.md#7-dataset.
     // Needs cache as an argon2d filled memory buffer and 8 superscalar programs.
-    [[nodiscard]] std::vector<DatasetItem> generateDataset(const argon2d::Memory& cache, const_span<Program, Rx_Cache_Accesses> programs);
+    [[nodiscard]] std::vector<DatasetItem> generateDataset(const argon2d::Memory& cache, const_span<SuperscalarProgram, Rx_Cache_Accesses> programs);
 }

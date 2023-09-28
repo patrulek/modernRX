@@ -2,6 +2,7 @@
 
 #include "argon2d.hpp"
 #include "hasher.hpp"
+#include "jitcompiler.hpp"
 #include "randomxparams.hpp"
 #include "scratchpad.hpp"
 #include "superscalar.hpp"
@@ -28,9 +29,10 @@ namespace modernRX {
         blake2b::Random blakeRNG{ key, 0 };
         Superscalar superscalar{ blakeRNG };
 
-        std::array<Program, programs_count> programs;
+        std::array<SuperscalarProgram, programs_count> programs;
         for (auto& program : programs) {
             program = superscalar.generate();
+            compile(program);
         }
 
         dataset = generateDataset(cache, programs);
