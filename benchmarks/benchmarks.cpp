@@ -27,7 +27,7 @@ struct Benchmark {
 	BenchmarkResult result; // Benchmark result.
 };
 
-void runBenchmarks(std::vector<Benchmark> benchmarks) {
+void runBenchmarks(std::span<Benchmark> benchmarks) {
 	for (auto& bench : benchmarks) {
 		constexpr std::string_view fmt_header{ "{:40s}\n-----\n" };
         constexpr std::string_view fmt{ "Iterations\tElapsed time\tThroughput\n{:>10d}\t{:>11.3f}s\t{:>6.1f}{:s}\n" };
@@ -103,7 +103,7 @@ std::vector<std::byte> hash_long(1024, std::byte(0));
 std::vector<argon2d::Block> memory;
 std::vector<std::byte> aes_input;
 std::vector<std::byte> program_input;
-std::array<Program, 8> programs;
+std::array<SuperscalarProgram, 8> programs;
 
 blake2b::Random gen{ hash, 0 };
 Superscalar superscalar{ gen };
@@ -135,7 +135,7 @@ int main() {
 	std::vector<Benchmark> benchmarks{
 		{ "Blake2b::hash (64B input/output)", 1, "H/s", blake2bBenchmark },
 		{ "Argon2d::Blake2b::hash (64B input, 1 KB output)", 1, "H/s", blake2bLongBenchmark },
-		{ "Argon2d::fillMemory (256MB input/output)", 256 * 1024 * 1024, "B/s", argon2dFillMemoryBenchmark },
+		{ "Argon2d::fillMemory (256MB output)", 256 * 1024 * 1024, "B/s", argon2dFillMemoryBenchmark },
 		{ "Aes::fill1R (64B input, 2MB output)",  2 * 1024 * 1024, "B/s", aes1rFillBenchmark },
 		{ "Aes::fill4R (64B input, 2176B output)", 2176, "B/s", aes4rFillBenchmark },
 		{ "Aes::hash1R (2MB input, 64B output)", 1, "H/s", aes1rHashBenchmark },

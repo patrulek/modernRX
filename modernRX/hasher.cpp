@@ -1,6 +1,7 @@
-#include "hasher.hpp"
+#include <iterator>
 
 #include "argon2d.hpp"
+#include "hasher.hpp"
 #include "randomxparams.hpp"
 #include "scratchpad.hpp"
 #include "superscalar.hpp"
@@ -11,14 +12,14 @@ namespace modernRX {
     }
 
     void Hasher::reset(const_span<std::byte> key) {
-        static constexpr uint32_t programs_count{ Rx_Cache_Accesses }; // Number of superscalar programs should be equal to number of cache accesses.
+        constexpr uint32_t programs_count{ Rx_Cache_Accesses }; // Number of superscalar programs should be equal to number of cache accesses.
 
         if (!this->key.empty() && std::equal(key.begin(), key.end(), this->key.begin())) {
             return;
         }
 
         this->key.reserve(key.size());
-        std::copy(key.begin(), key.end(), this->key.begin());
+        std::copy(key.begin(), key.end(), std::back_inserter(this->key));
 
         std::vector<argon2d::Block> cache(Rx_Argon2d_Memory_Blocks);
         argon2d::fillMemory(cache, key, Rx_Argon2d_Salt);
@@ -26,7 +27,7 @@ namespace modernRX {
         blake2b::Random blakeRNG{ key, 0 };
         Superscalar superscalar{ blakeRNG };
 
-        std::array<Program, programs_count> programs;
+        std::array<SuperscalarProgram, programs_count> programs;
         for (auto& program : programs) {
             program = superscalar.generate();
         }

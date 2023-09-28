@@ -7,10 +7,10 @@
 
 namespace modernRX {
     namespace {
-        [[nodiscard]] DatasetItem generateItem(const_span<argon2d::Block> cache, const_span<Program, Rx_Cache_Accesses> programs, const uint64_t item_number) noexcept;
+        [[nodiscard]] DatasetItem generateItem(const_span<argon2d::Block> cache, const_span<SuperscalarProgram, Rx_Cache_Accesses> programs, const uint64_t item_number) noexcept;
     }
 
-    std::vector<DatasetItem> generateDataset(const_span<argon2d::Block> cache, const_span<Program, Rx_Cache_Accesses> programs) {
+    std::vector<DatasetItem> generateDataset(const_span<argon2d::Block> cache, const_span<SuperscalarProgram, Rx_Cache_Accesses> programs) {
         static constexpr uint32_t Dataset_Items_Count{ (Rx_Dataset_Base_Size + Rx_Dataset_Extra_Size) / sizeof(DatasetItem) };
 
         std::vector<DatasetItem> memory;
@@ -26,7 +26,7 @@ namespace modernRX {
     
     namespace {
         // Calculates single DatasetItem (64-bytes of data) according to https://github.com/tevador/RandomX/blob/master/doc/specs.md#73-dataset-block-generation.
-        DatasetItem generateItem(const_span<argon2d::Block> cache, const_span<Program, Rx_Cache_Accesses> programs, const uint64_t item_number) noexcept {
+        DatasetItem generateItem(const_span<argon2d::Block> cache, const_span<SuperscalarProgram, Rx_Cache_Accesses> programs, const uint64_t item_number) noexcept {
             // 1. Initialize DatasetItem.
             DatasetItem dt_item{
                 (item_number + 1) * 6364136223846793005ULL,

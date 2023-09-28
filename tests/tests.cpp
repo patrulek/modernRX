@@ -15,7 +15,6 @@
 #include "reciprocal.hpp"
 #include "superscalar.hpp"
 
-
 using namespace modernRX;
 
 static std::array<char, 13> test_key{ "test key 000" };
@@ -27,6 +26,13 @@ static int testNo{ 0 };
 static auto key{ span_cast<std::byte, test_key.size() - 1>(test_key) };
 static auto input{ span_cast<std::byte, test_input.size() - 1>(test_input) };
 static auto input2{ span_cast<std::byte, test_input2.size() - 1>(test_input2) };
+
+static std::array<std::byte, 76> block_template{ byte_array(
+	0x07, 0x07, 0xf7, 0xa4, 0xf0, 0xd6, 0x05, 0xb3, 0x03, 0x26, 0x08, 0x16, 0xba, 0x3f, 0x10, 0x90, 0x2e, 0x1a, 0x14,
+	0x5a, 0xc5, 0xfa, 0xd3, 0xaa, 0x3a, 0xf6, 0xea, 0x44, 0xc1, 0x18, 0x69, 0xdc, 0x4f, 0x85, 0x3f, 0x00, 0x2b, 0x2e,
+	0xea, 0x00, 0x00, 0x00, 0x00, 0x77, 0xb2, 0x06, 0xa0, 0x2c, 0xa5, 0xb1, 0xd4, 0xce, 0x6b, 0xbf, 0xdf, 0x0a, 0xca,
+	0xc3, 0x8b, 0xde, 0xd3, 0x4d, 0x2d, 0xcd, 0xee, 0xf9, 0x5c, 0xd2, 0x0c, 0xef, 0xc1, 0x2f, 0x61, 0xd5, 0x61, 0x09
+) };
 
 void testAssert(const bool condition, const std::source_location& location = std::source_location::current()) {
 	if (!condition) {
@@ -237,6 +243,16 @@ void testArgon2dFillMemory() {
 	testAssert(b1[0] == 0x191e0e1d23c02186);
 	testAssert(b2[29] == 0xf1b62fe6210bf8b1);
 	testAssert(b3[127] == 0x1f47f056d05cd99b);
+
+	argon2d::fillMemory(cache, block_template, Rx_Argon2d_Salt);
+
+	b1 = std::bit_cast<Argon2dBlock_64>(cache[0]);
+	b2 = std::bit_cast<Argon2dBlock_64>(cache[12253]);
+	b3 = std::bit_cast<Argon2dBlock_64>(cache[262143]);
+
+	testAssert(b1[0] == 0x910af08f94413cfd);
+	testAssert(b2[29] == 0x5d4d75503a52283d);
+	testAssert(b3[127] == 0x13a957f411409896);
 }
 
 void testAesGenerator1RFill() {
@@ -399,7 +415,7 @@ void testBlake2bRandom() {
 
 	testAssert(actual == expected);
 
-	// force reseed
+	// Force reseed.
 	for (auto i = 0; i < 15; i++) auto _ = gen.getUint32();
 
 	expected = 3927737455;
@@ -421,24 +437,24 @@ void testReciprocal() {
 void testSuperscalarGenerate() {
 	blake2b::Random gen{ key, 0 };
 	Superscalar superscalar{ gen };
-	Program ssProg{ superscalar.generate() };
+	SuperscalarProgram ssProg{ superscalar.generate() };
 
-	// first program
-	testAssert(ssProg.instructions[0].type() == InstructionType::IMUL_R); // first
-	testAssert(ssProg.instructions[215].type() == InstructionType::IADD_C7); // some in the middle
-	testAssert(ssProg.instructions[446].type() == InstructionType::ISMULH_R); // last
-	testAssert(ssProg.instructions[447].type() == InstructionType::INVALID); // follwing last
+	// First program.
+	testAssert(ssProg.instructions[0].type() == SuperscalarInstructionType::IMUL_R); // First.
+	testAssert(ssProg.instructions[215].type() == SuperscalarInstructionType::IADD_C7); // Some in the middle.
+	testAssert(ssProg.instructions[446].type() == SuperscalarInstructionType::ISMULH_R); // Last.
+	testAssert(ssProg.instructions[447].type() == SuperscalarInstructionType::INVALID); // Follwing last.
 	testAssert(ssProg.address_register == 4);
 
-	// iterate to last program
+	// Iterate to last program.
 	for (auto i = 1; i < Rx_Cache_Accesses; i++) {
 		ssProg = superscalar.generate();
 	}
 
-	testAssert(ssProg.instructions[0].type() == InstructionType::IMUL_R); // first
-	testAssert(ssProg.instructions[177].type() == InstructionType::ISMULH_R); // some in the middle
-	testAssert(ssProg.instructions[436].type() == InstructionType::IMUL_RCP); // last
-	testAssert(ssProg.instructions[437].type() == InstructionType::INVALID); // follwing last
+	testAssert(ssProg.instructions[0].type() == SuperscalarInstructionType::IMUL_R); // First.
+	testAssert(ssProg.instructions[177].type() == SuperscalarInstructionType::ISMULH_R); // Some in the middle.
+	testAssert(ssProg.instructions[436].type() == SuperscalarInstructionType::IMUL_RCP); // Last.
+	testAssert(ssProg.instructions[437].type() == SuperscalarInstructionType::INVALID); // Following last.
 	testAssert(ssProg.address_register == 0);
 }
 
@@ -448,14 +464,18 @@ void testDatasetGenerate() {
 	blake2b::Random blakeRNG{ key, 0 };
 
 	Superscalar superscalar{ blakeRNG };
-	std::array<Program, 8> ssPrograms;
+	std::array<SuperscalarProgram, 8> ssPrograms;
 	for (auto i = 0; i < Rx_Cache_Accesses; i++) {
 		ssPrograms[i] = superscalar.generate();
 	}
 
-	auto dt = generateDataset(cache, ssPrograms);
+	const auto dt{ generateDataset(cache, ssPrograms) };
 
 	testAssert(dt[0][0] == 0x680588a85ae222db);
+	testAssert(dt[2][1] == 0xbbe8d699a7c504dc);
+	testAssert(dt[3][7] == 0x7908e227a0effb29);
+	testAssert(dt[213][7] == 0x81bcac0872ee9d29);
+	testAssert(dt[2137213][7] == 0x1dac57c3f3a27a8);
 	testAssert(dt[10000000][0] == 0x7943a1f6186ffb72);
 	testAssert(dt[20000000][0] == 0x9035244d718095e1);
 	testAssert(dt[30000000][0] == 0x145a5091f7853099);

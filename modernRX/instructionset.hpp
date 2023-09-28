@@ -16,7 +16,7 @@ namespace modernRX {
 	};
 
 	// Defines all instruction types used in superscalar programs. Order must be preserved.
-	enum class InstructionType : uint8_t {
+	enum class SuperscalarInstructionType : uint8_t {
 																//uOPs (decode)   execution ports         latency       code size
 		ISUB_R = 0,												//1               p015                    1				3 (vsub)
 		IXOR_R = 1,												//1               p015                    1				3 (xor)
@@ -55,10 +55,10 @@ namespace modernRX {
 	};
 
 	// Holds common information about single instruction.
-	struct InstructionInfo {
+	struct SuperscalarInstructionInfo {
 		std::array<MacroOp, 4> ops; // Macro operations instruction consists of.
-		InstructionType type{ InstructionType::INVALID }; // Superscalar instruction type.
-		InstructionType group{ InstructionType::INVALID }; // Superscalar instruction group type.
+		SuperscalarInstructionType type{ SuperscalarInstructionType::INVALID }; // Superscalar instruction type.
+		SuperscalarInstructionType group{ SuperscalarInstructionType::INVALID }; // Superscalar instruction group type.
 
 		std::optional<uint8_t> src_op_index{ std::nullopt }; // Defines which macro op requires source register (nullopt if source not required).
 		uint8_t dst_op_index{ 0 }; // Defines which macro op requires destination register.
@@ -69,12 +69,12 @@ namespace modernRX {
 	};
 
 	// Holds superscalar instruction templates.
-	using InstructionSet = std::array<InstructionInfo, 15>;
+	using SuperscalarInstructionSet = std::array<SuperscalarInstructionInfo, 15>;
 
 	// Superscalar instruction set.
-	inline constexpr InstructionSet isa = []() consteval {
-		constexpr InstructionSet isa_{
-			InstructionInfo{
+	inline constexpr SuperscalarInstructionSet isa = []() consteval {
+		constexpr SuperscalarInstructionSet isa_{
+			SuperscalarInstructionInfo{
 				.ops = std::array<MacroOp, 4>{
 					MacroOp{
 						.ports{ ExecutionPort::P015, ExecutionPort::NONE },
@@ -86,15 +86,15 @@ namespace modernRX {
 					MacroOp{},
 					MacroOp{},
 				},
-				.type{ InstructionType::ISUB_R },
-				.group{ InstructionType::IADD_RS },
+				.type{ SuperscalarInstructionType::ISUB_R },
+				.group{ SuperscalarInstructionType::IADD_RS },
 				.src_op_index{ 0 },
 				.dst_op_index{ 0 },
 				.result_op_index{ 0 },
 				.src_register_as_src_value{ true },
 				.dst_register_as_src_register{ false },
 			},
-			InstructionInfo{
+			SuperscalarInstructionInfo{
 				.ops = std::array<MacroOp, 4>{
 					MacroOp{
 						.ports{ ExecutionPort::P015, ExecutionPort::NONE },
@@ -106,15 +106,15 @@ namespace modernRX {
 					MacroOp{},
 					MacroOp{},
 				},
-				.type{ InstructionType::IXOR_R },
-				.group{ InstructionType::IXOR_R },
+				.type{ SuperscalarInstructionType::IXOR_R },
+				.group{ SuperscalarInstructionType::IXOR_R },
 				.src_op_index{ 0 },
 				.dst_op_index{ 0 },
 				.result_op_index{ 0 },
 				.src_register_as_src_value{ true },
 				.dst_register_as_src_register{ false },
 			},
-			InstructionInfo{
+			SuperscalarInstructionInfo{
 				.ops = std::array<MacroOp, 4>{
 					MacroOp{
 						.ports{ ExecutionPort::P01, ExecutionPort::NONE },
@@ -126,15 +126,15 @@ namespace modernRX {
 					MacroOp{},
 					MacroOp{},
 				},
-				.type{ InstructionType::IADD_RS },
-				.group{ InstructionType::IADD_RS },
+				.type{ SuperscalarInstructionType::IADD_RS },
+				.group{ SuperscalarInstructionType::IADD_RS },
 				.src_op_index{ 0 },
 				.dst_op_index{ 0 },
 				.result_op_index{ 0 },
 				.src_register_as_src_value{ true },
 				.dst_register_as_src_register{ false }, // According to specification this should be true, but original implementation does not support that.
 			},
-			InstructionInfo{
+			SuperscalarInstructionInfo{
 				.ops = std::array<MacroOp, 4>{
 					MacroOp{
 						.ports{ ExecutionPort::P1, ExecutionPort::NONE },
@@ -146,15 +146,15 @@ namespace modernRX {
 					MacroOp{},
 					MacroOp{},
 				},
-				.type{ InstructionType::IMUL_R },
-				.group{ InstructionType::IMUL_R },
+				.type{ SuperscalarInstructionType::IMUL_R },
+				.group{ SuperscalarInstructionType::IMUL_R },
 				.src_op_index{ 0 },
 				.dst_op_index{ 0 },
 				.result_op_index{ 0 },
 				.src_register_as_src_value{ true },
 				.dst_register_as_src_register{ false },
 			},
-			InstructionInfo{
+			SuperscalarInstructionInfo{
 				.ops = std::array<MacroOp, 4>{
 					MacroOp{
 						.ports{ ExecutionPort::P05, ExecutionPort::NONE },
@@ -166,15 +166,15 @@ namespace modernRX {
 					MacroOp{},
 					MacroOp{},
 				},
-				.type{ InstructionType::IROR_C },
-				.group{ InstructionType::IROR_C },
+				.type{ SuperscalarInstructionType::IROR_C },
+				.group{ SuperscalarInstructionType::IROR_C },
 				.src_op_index{ std::nullopt },
 				.dst_op_index{ 0 },
 				.result_op_index{ 0 },
 				.src_register_as_src_value{ false },
 				.dst_register_as_src_register{ false },
 			},
-			InstructionInfo{
+			SuperscalarInstructionInfo{
 				.ops = std::array<MacroOp, 4>{
 					MacroOp{
 						.ports{ ExecutionPort::P015, ExecutionPort::NONE },
@@ -186,15 +186,15 @@ namespace modernRX {
 					MacroOp{},
 					MacroOp{},
 				},
-				.type{ InstructionType::IADD_C7 },
-				.group{ InstructionType::IADD_C7 },
+				.type{ SuperscalarInstructionType::IADD_C7 },
+				.group{ SuperscalarInstructionType::IADD_C7 },
 				.src_op_index{ std::nullopt },
 				.dst_op_index{ 0 },
 				.result_op_index{ 0 },
 				.src_register_as_src_value{ false },
 				.dst_register_as_src_register{ false },
 			},
-			InstructionInfo{
+			SuperscalarInstructionInfo{
 				.ops = std::array<MacroOp, 4>{
 					MacroOp{
 						.ports{ ExecutionPort::P015, ExecutionPort::NONE },
@@ -206,15 +206,15 @@ namespace modernRX {
 					MacroOp{},
 					MacroOp{},
 				},
-				.type{ InstructionType::IXOR_C7 },
-				.group{ InstructionType::IXOR_C7 },
+				.type{ SuperscalarInstructionType::IXOR_C7 },
+				.group{ SuperscalarInstructionType::IXOR_C7 },
 				.src_op_index{ std::nullopt },
 				.dst_op_index{ 0 },
 				.result_op_index{ 0 },
 				.src_register_as_src_value{ false },
 				.dst_register_as_src_register{ false },
 			},
-			InstructionInfo{
+			SuperscalarInstructionInfo{
 				.ops = std::array<MacroOp, 4>{
 					MacroOp{
 						.ports{ ExecutionPort::P015, ExecutionPort::NONE },
@@ -226,15 +226,15 @@ namespace modernRX {
 					MacroOp{},
 					MacroOp{},
 				},
-				.type{ InstructionType::IADD_C8 },
-				.group{ InstructionType::IADD_C7 },
+				.type{ SuperscalarInstructionType::IADD_C8 },
+				.group{ SuperscalarInstructionType::IADD_C7 },
 				.src_op_index{ std::nullopt },
 				.dst_op_index{ 0 },
 				.result_op_index{ 0 },
 				.src_register_as_src_value{ false },
 				.dst_register_as_src_register{ false },
 			},
-			InstructionInfo{
+			SuperscalarInstructionInfo{
 				.ops = std::array<MacroOp, 4>{
 					MacroOp{
 						.ports{ ExecutionPort::P015, ExecutionPort::NONE },
@@ -246,15 +246,15 @@ namespace modernRX {
 					MacroOp{},
 					MacroOp{},
 				},
-				.type{ InstructionType::IXOR_C8 },
-				.group{ InstructionType::IXOR_C7 },
+				.type{ SuperscalarInstructionType::IXOR_C8 },
+				.group{ SuperscalarInstructionType::IXOR_C7 },
 				.src_op_index{ std::nullopt },
 				.dst_op_index{ 0 },
 				.result_op_index{ 0 },
 				.src_register_as_src_value{ false },
 				.dst_register_as_src_register{ false },
 			},
-			InstructionInfo{
+			SuperscalarInstructionInfo{
 				.ops = std::array<MacroOp, 4>{
 					MacroOp{
 						.ports{ ExecutionPort::P015, ExecutionPort::NONE },
@@ -266,15 +266,15 @@ namespace modernRX {
 					MacroOp{},
 					MacroOp{},
 				},
-				.type{ InstructionType::IADD_C9 },
-				.group{ InstructionType::IADD_C7 },
+				.type{ SuperscalarInstructionType::IADD_C9 },
+				.group{ SuperscalarInstructionType::IADD_C7 },
 				.src_op_index{ std::nullopt },
 				.dst_op_index{ 0 },
 				.result_op_index{ 0 },
 				.src_register_as_src_value{ false },
 				.dst_register_as_src_register{ false },
 			},
-			InstructionInfo{
+			SuperscalarInstructionInfo{
 				.ops = std::array<MacroOp, 4>{
 					MacroOp{
 						.ports{ ExecutionPort::P015, ExecutionPort::NONE },
@@ -286,15 +286,15 @@ namespace modernRX {
 					MacroOp{},
 					MacroOp{},
 				},
-				.type{ InstructionType::IXOR_C9 },
-				.group{ InstructionType::IXOR_C7 },
+				.type{ SuperscalarInstructionType::IXOR_C9 },
+				.group{ SuperscalarInstructionType::IXOR_C7 },
 				.src_op_index{ std::nullopt },
 				.dst_op_index{ 0 },
 				.result_op_index{ 0 },
 				.src_register_as_src_value{ false },
 				.dst_register_as_src_register{ false },
 			},
-			InstructionInfo{
+			SuperscalarInstructionInfo{
 				.ops = std::array<MacroOp, 4>{
 					MacroOp{
 						.ports{ ExecutionPort::NONE, ExecutionPort::NONE },
@@ -316,15 +316,15 @@ namespace modernRX {
 					},
 					MacroOp{},
 				},
-				.type{ InstructionType::IMULH_R },
-				.group{ InstructionType::ISMULH_R },
+				.type{ SuperscalarInstructionType::IMULH_R },
+				.group{ SuperscalarInstructionType::ISMULH_R },
 				.src_op_index{ 1 },
 				.dst_op_index{ 0 },
 				.result_op_index{ 1 },
 				.src_register_as_src_value{ true },
 				.dst_register_as_src_register{ true },
 			},
-			InstructionInfo{
+			SuperscalarInstructionInfo{
 				.ops = std::array<MacroOp, 4>{
 					MacroOp{
 						.ports{ ExecutionPort::NONE, ExecutionPort::NONE },
@@ -346,15 +346,15 @@ namespace modernRX {
 					},
 					MacroOp{},
 				},
-				.type{ InstructionType::ISMULH_R },
-				.group{ InstructionType::ISMULH_R },
+				.type{ SuperscalarInstructionType::ISMULH_R },
+				.group{ SuperscalarInstructionType::ISMULH_R },
 				.src_op_index{ 1 },
 				.dst_op_index{ 0 },
 				.result_op_index{ 1 },
 				.src_register_as_src_value{ true },
 				.dst_register_as_src_register{ true },
 			},
-			InstructionInfo{
+			SuperscalarInstructionInfo{
 				.ops = std::array<MacroOp, 4>{
 					MacroOp{
 						.ports{ ExecutionPort::P015, ExecutionPort::NONE },
@@ -371,22 +371,22 @@ namespace modernRX {
 					MacroOp{},
 					MacroOp{},
 				},
-				.type{ InstructionType::IMUL_RCP },
-				.group{ InstructionType::IMUL_RCP },
+				.type{ SuperscalarInstructionType::IMUL_RCP },
+				.group{ SuperscalarInstructionType::IMUL_RCP },
 				.src_op_index{ std::nullopt },
 				.dst_op_index{ 1 },
 				.result_op_index{ 1 },
 				.src_register_as_src_value{ false },
 				.dst_register_as_src_register{ false },
 			},
-			InstructionInfo{
+			SuperscalarInstructionInfo{
 				.ops = std::array<MacroOp, 4>{
 					MacroOp{},
 					MacroOp{},
 					MacroOp{},
 					MacroOp{},
 				},
-				.type = InstructionType::INVALID,
+				.type = SuperscalarInstructionType::INVALID,
 				.src_op_index{ 0 },
 				.dst_op_index{ 0 },
 				.result_op_index{ 0 },
@@ -395,7 +395,7 @@ namespace modernRX {
 
 		// This is just to ensure that enum values points to proper instruction templates.
 		for (uint32_t i = 0; i < isa_.size(); ++i) {
-			if (isa_[i].type != static_cast<InstructionType>(i)) {
+			if (isa_[i].type != static_cast<SuperscalarInstructionType>(i)) {
 				throw "Array index must have equal value to underlying instruction type.";
 			}
 		}
@@ -404,14 +404,14 @@ namespace modernRX {
 	}();
 
 	// Returns true for all types that indicate multiplications.
-	constexpr bool isMultiplication(const InstructionType type) {
-		return type == InstructionType::IMUL_R || type == InstructionType::IMULH_R
-			|| type == InstructionType::ISMULH_R || type == InstructionType::IMUL_RCP;
+	constexpr bool isMultiplication(const SuperscalarInstructionType type) {
+		return type == SuperscalarInstructionType::IMUL_R || type == SuperscalarInstructionType::IMULH_R
+			|| type == SuperscalarInstructionType::ISMULH_R || type == SuperscalarInstructionType::IMUL_RCP;
 	}
 
 	// Finds maximum latency of all operations in the instruction set.
 	// Must be 4 for reference CPU (Ivy Bridge).
-	consteval uint8_t maxOpLatency(const InstructionSet& isa) {
+	consteval uint8_t maxOpLatency(const SuperscalarInstructionSet& isa) {
 		uint8_t max_latency{ 0 };
 
 		for (const auto& info : isa) {

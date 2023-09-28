@@ -1,5 +1,16 @@
 ## Changelog
 
+### 0.1.2 - 28.09.2023:
+
+Changes in current version:
+
+* fix bug in reciprocal generation and calculation for Superscalar program
+* fix copy bug in hasher reset
+* correct original randomx dataset benchmark result (it was calculated incorrectly and is slightly higher now)
+* add few new testcases
+* rename superscalar program related structures with `Superscalar` prefix to not conflict with random program related structures
+* documentation corrections
+
 ### 0.1.1 - 07.09.2023:
 
 Some cleanup and improvements:

@@ -29,7 +29,7 @@ namespace modernRX {
 		struct Register {
 			uint32_t availability_cycle{ 0 }; // Which cycle the register will be ready.
 			std::optional<uint32_t> last_src_value{ std::nullopt }; // The last operation source value (nullopt = constant, 0-7 = register).
-			InstructionType last_group{ InstructionType::INVALID }; // The last operation that was applied to the register.
+			SuperscalarInstructionType last_group{ SuperscalarInstructionType::INVALID }; // The last operation that was applied to the register.
 		};
 
 		// Holds information about all registers.
@@ -70,24 +70,24 @@ namespace modernRX {
 
 		void findAvailableRegisters(std::vector<reg_idx_t>& available_registers, const RegisterFile& registers, const uint32_t cycle) noexcept;
 		[[nodiscard]] bool needRegisterDisplacement(const_span<reg_idx_t> available_register) noexcept;
-		void updateAsicContext(AsicContext& asic_ctx, const Instruction& instr) noexcept;
+		void updateAsicContext(AsicContext& asic_ctx, const SuperscalarInstruction& instr) noexcept;
 	}
 
 	Superscalar::Superscalar(const blake2b::Random& blakeRNG) noexcept
 		: blakeRNG(blakeRNG) {}
 
-	Program Superscalar::generate() {
+	SuperscalarProgram Superscalar::generate() {
 		constexpr uint32_t Max_Throwaway_Count{ 256 }; // Number of max tries in case when instruction dont fit in decode buffer.
 
 		// Available registers holds indexes of registers ready at a given CPU cycle.
 		std::vector<reg_idx_t> available_registers;
 		available_registers.reserve(Register_Count);
 
-		Program prog{};
+		SuperscalarProgram prog{};
 		PortsSchedule ports{};
 		RegisterFile registers{};
 		AsicContext asic_ctx{};
-		Instruction instruction{};
+		SuperscalarInstruction instruction{};
 
 		for (ProgramContext ctx{}; !ctx.done(); ctx.advance()) {
 			// Each decode cycle decodes 16 bytes of x86 code.
@@ -157,7 +157,7 @@ namespace modernRX {
 
 						// If there are only 2 available registers for IADD_RS and one of them is r5, select it as the source because it cannot be the destination.
 						// Check rules in table 6.1.1: https://github.com/tevador/RandomX/blob/master/doc/specs.md#61-instructions
-						if (instruction.type() == InstructionType::IADD_RS && needRegisterDisplacement(available_registers)) {
+						if (instruction.type() == SuperscalarInstructionType::IADD_RS && needRegisterDisplacement(available_registers)) {
 							instruction.src_value = instruction.src_register = Register_Needs_Displacement;
 							break;
 						}
@@ -181,7 +181,7 @@ namespace modernRX {
 							}
 
 							// R5 cannot be used as destination for IADD_RS.
-							if (instruction.type() == InstructionType::IADD_RS && i == Register_Needs_Displacement) {
+							if (instruction.type() == SuperscalarInstructionType::IADD_RS && i == Register_Needs_Displacement) {
 								continue;
 							}
 
@@ -197,7 +197,7 @@ namespace modernRX {
 							}
 
 							// Cannot perform another multiplication on given register unless throwaway counter is greater than 0.
-							if (ctx.throwaway_count == 0 && instruction.group() == InstructionType::IMUL_R && registers[i].last_group == InstructionType::IMUL_R) {
+							if (ctx.throwaway_count == 0 && instruction.group() == SuperscalarInstructionType::IMUL_R && registers[i].last_group == SuperscalarInstructionType::IMUL_R) {
 								continue;
 							}
 
@@ -259,11 +259,11 @@ namespace modernRX {
 		return prog;
 	}
 
-	const DecodeBuffer& Superscalar::selectDecodeBuffer(const InstructionType type, const uint32_t decode_cycle, const uint32_t mul_count) {
+	const DecodeBuffer& Superscalar::selectDecodeBuffer(const SuperscalarInstructionType type, const uint32_t decode_cycle, const uint32_t mul_count) {
 		// If the current RandomX instruction is "IMULH", the next fetch configuration must be 3-3-10
 		// because the full 128-bit multiplication instruction is 3 bytes long and decodes to 2 uOPs on Intel CPUs.
 		// Intel CPUs can decode at most 4 uOPs per cycle, so this requires a 2-1-1 configuration for a total of 3 macro ops.
-		if (type == InstructionType::IMULH_R || type == InstructionType::ISMULH_R) {
+		if (type == SuperscalarInstructionType::IMULH_R || type == SuperscalarInstructionType::ISMULH_R) {
 			return Decode_Buffers[5];
 		}
 
@@ -274,7 +274,7 @@ namespace modernRX {
 		}
 
 		// If the current RandomX instruction is "IMUL_RCP", the next buffer must begin with a 4-byte slot for multiplication.
-		if (type == InstructionType::IMUL_RCP) {
+		if (type == SuperscalarInstructionType::IMUL_RCP) {
 			return blakeRNG.getUint8() % 2 ? Decode_Buffers[0] : Decode_Buffers[3];
 		}
 
@@ -282,12 +282,13 @@ namespace modernRX {
 		return Decode_Buffers[blakeRNG.getUint8() % 4];
 	}
 
-	InstructionType Superscalar::selectInstructionTypeForDecodeBuffer(const DecodeBuffer& decode_buffer, const uint32_t buffer_index) {
-		static constexpr std::array<InstructionType, 4> slot_3{ InstructionType::ISUB_R, InstructionType::IXOR_R, InstructionType::IMULH_R, InstructionType::ISMULH_R };
-		static constexpr std::array<InstructionType, 2> slot_4{ InstructionType::IROR_C, InstructionType::IADD_RS };
-		static constexpr std::array<InstructionType, 2> slot_7{ InstructionType::IXOR_C7, InstructionType::IADD_C7 };
-		static constexpr std::array<InstructionType, 2> slot_8{ InstructionType::IXOR_C8, InstructionType::IADD_C8 };
-		static constexpr std::array<InstructionType, 2> slot_9{ InstructionType::IXOR_C9, InstructionType::IADD_C9 };
+	SuperscalarInstructionType Superscalar::selectInstructionTypeForDecodeBuffer(const DecodeBuffer& decode_buffer, const uint32_t buffer_index) {
+		static constexpr std::array<SuperscalarInstructionType, 4> slot_3{ SuperscalarInstructionType::ISUB_R, SuperscalarInstructionType::IXOR_R, 
+																		   SuperscalarInstructionType::IMULH_R, SuperscalarInstructionType::ISMULH_R };
+		static constexpr std::array<SuperscalarInstructionType, 2> slot_4{ SuperscalarInstructionType::IROR_C, SuperscalarInstructionType::IADD_RS };
+		static constexpr std::array<SuperscalarInstructionType, 2> slot_7{ SuperscalarInstructionType::IXOR_C7, SuperscalarInstructionType::IADD_C7 };
+		static constexpr std::array<SuperscalarInstructionType, 2> slot_8{ SuperscalarInstructionType::IXOR_C8, SuperscalarInstructionType::IADD_C8 };
+		static constexpr std::array<SuperscalarInstructionType, 2> slot_9{ SuperscalarInstructionType::IXOR_C9, SuperscalarInstructionType::IADD_C9 };
 
 		// Not all decode buffer configurations contain 4 slots, but for simplicity it is implemented
 		// as an array of 4 elements, instead of vector with variable size, thus second condition is needed.
@@ -305,7 +306,7 @@ namespace modernRX {
 		case 4:
 			// If this is the 4-4-4-4 buffer, issue multiplications as the first 3 instructions.
 			if (decode_buffer == Decode_Buffers[4] && !is_last_index) {
-				return InstructionType::IMUL_R;
+				return SuperscalarInstructionType::IMUL_R;
 			}
 
 			return slot_4[blakeRNG.getUint8() % 2];
@@ -316,39 +317,39 @@ namespace modernRX {
 		case 9:
 			return slot_9[blakeRNG.getUint8() % 2];
 		case 10:
-			return InstructionType::IMUL_RCP;
+			return SuperscalarInstructionType::IMUL_RCP;
 		default:
 			std::unreachable();
 		}
 	}
 
-	Instruction Superscalar::initializeInstruction(const InstructionType type) {
-		Instruction instruction{
+	SuperscalarInstruction Superscalar::initializeInstruction(const SuperscalarInstructionType type) {
+		SuperscalarInstruction instruction{
 			.info{ &isa[static_cast<uint8_t>(type)] },
 		};
 
 		switch (type) {
-		case InstructionType::ISUB_R: [[fallthrough]];
-		case InstructionType::IXOR_R: [[fallthrough]];
-		case InstructionType::IMUL_R: [[fallthrough]];
-		case InstructionType::INVALID: // Do nothing for these instructions.
+		case SuperscalarInstructionType::ISUB_R: [[fallthrough]];
+		case SuperscalarInstructionType::IXOR_R: [[fallthrough]];
+		case SuperscalarInstructionType::IMUL_R: [[fallthrough]];
+		case SuperscalarInstructionType::INVALID: // Do nothing for these instructions.
 			break;
-		case InstructionType::IADD_RS:
+		case SuperscalarInstructionType::IADD_RS:
 			instruction.mod = blakeRNG.getUint8();
 			break;
-		case InstructionType::IROR_C:
+		case SuperscalarInstructionType::IROR_C:
 			do { instruction.imm32 = blakeRNG.getUint8() % 64; } while (instruction.imm32 == 0);
 			break;
-		case InstructionType::IADD_C7: [[fallthrough]];
-		case InstructionType::IADD_C8: [[fallthrough]];
-		case InstructionType::IADD_C9: [[fallthrough]];
-		case InstructionType::IXOR_C7: [[fallthrough]];
-		case InstructionType::IXOR_C8: [[fallthrough]];
-		case InstructionType::IXOR_C9:
+		case SuperscalarInstructionType::IADD_C7: [[fallthrough]];
+		case SuperscalarInstructionType::IADD_C8: [[fallthrough]];
+		case SuperscalarInstructionType::IADD_C9: [[fallthrough]];
+		case SuperscalarInstructionType::IXOR_C7: [[fallthrough]];
+		case SuperscalarInstructionType::IXOR_C8: [[fallthrough]];
+		case SuperscalarInstructionType::IXOR_C9:
 			instruction.imm32 = blakeRNG.getUint32();
 			break;
-		case InstructionType::IMULH_R: [[fallthrough]];
-		case InstructionType::ISMULH_R:
+		case SuperscalarInstructionType::IMULH_R: [[fallthrough]];
+		case SuperscalarInstructionType::ISMULH_R:
 			// For some reason it takes 4 bytes, instead of 1 from blake2b generator (which would be suitable for picking register idx).
 			// Additionally for other instructions src_value defines only if instruction use constant value or value from one of registers as a source
 			// and is used for choosing destination register, but not used during execution.
@@ -361,8 +362,8 @@ namespace modernRX {
 			// Anyway it has to stay this way.
 			instruction.src_value = blakeRNG.getUint32(); 
 			break;
-		case InstructionType::IMUL_RCP:
-			do { instruction.imm32 = blakeRNG.getUint32(); } while (std::has_single_bit(instruction.imm32));
+		case SuperscalarInstructionType::IMUL_RCP:
+			do { instruction.imm32 = blakeRNG.getUint32(); } while (instruction.imm32 == 0 || std::has_single_bit(instruction.imm32));
 			break;
 		default:
 			std::unreachable();
@@ -375,43 +376,43 @@ namespace modernRX {
 		return available_registers.size() == 1 ? available_registers[0] : available_registers[blakeRNG.getUint32() % available_registers.size()];
 	}
 
-	void executeSuperscalar(std::span<uint64_t, Register_Count> registers, const Program& program) noexcept {
+	void executeSuperscalar(std::span<uint64_t, Register_Count> registers, const SuperscalarProgram& program) noexcept {
 		for (uint32_t i = 0; i < program.size; ++i) {
 			const auto& instr = program.instructions[i];
 
 			switch (instr.type()) {
-			case InstructionType::ISUB_R:
+			case SuperscalarInstructionType::ISUB_R:
 				registers[instr.dst_register] -= registers[instr.src_register.value()];
 				break;
-			case InstructionType::IXOR_R:
+			case SuperscalarInstructionType::IXOR_R:
 				registers[instr.dst_register] ^= registers[instr.src_register.value()];
 				break;
-			case InstructionType::IADD_RS:
+			case SuperscalarInstructionType::IADD_RS:
 				registers[instr.dst_register] += registers[instr.src_register.value()] << instr.modShift();
 				break;
-			case InstructionType::IMUL_R:
+			case SuperscalarInstructionType::IMUL_R:
 				registers[instr.dst_register] *= registers[instr.src_register.value()];
 				break;
-			case InstructionType::IROR_C:
+			case SuperscalarInstructionType::IROR_C:
 				registers[instr.dst_register] = std::rotr(registers[instr.dst_register], instr.imm32);
 				break;
-			case InstructionType::IADD_C7: [[fallthrough]];
-			case InstructionType::IADD_C8: [[fallthrough]];
-			case InstructionType::IADD_C9:
+			case SuperscalarInstructionType::IADD_C7: [[fallthrough]];
+			case SuperscalarInstructionType::IADD_C8: [[fallthrough]];
+			case SuperscalarInstructionType::IADD_C9:
 				registers[instr.dst_register] += static_cast<int32_t>(instr.imm32); // C++20 now guarantees 2's complement representation for signed integers.
 				break;
-			case InstructionType::IXOR_C7: [[fallthrough]];
-			case InstructionType::IXOR_C8: [[fallthrough]];
-			case InstructionType::IXOR_C9:
+			case SuperscalarInstructionType::IXOR_C7: [[fallthrough]];
+			case SuperscalarInstructionType::IXOR_C8: [[fallthrough]];
+			case SuperscalarInstructionType::IXOR_C9:
 				registers[instr.dst_register] ^= static_cast<int32_t>(instr.imm32);
 				break;
-			case InstructionType::IMULH_R:
+			case SuperscalarInstructionType::IMULH_R:
 				registers[instr.dst_register] = intrinsics::umulh(registers[instr.dst_register], registers[instr.src_register.value()]);
 				break;
-			case InstructionType::ISMULH_R:
+			case SuperscalarInstructionType::ISMULH_R:
 				registers[instr.dst_register] = intrinsics::smulh(registers[instr.dst_register], registers[instr.src_register.value()]);
 				break;
-			case InstructionType::IMUL_RCP:
+			case SuperscalarInstructionType::IMUL_RCP:
 				registers[instr.dst_register] *= reciprocal(instr.imm32);
 				break;
 			default:
@@ -505,7 +506,7 @@ namespace modernRX {
 		}
 		
 		// Should be called immediately after last macro-op of given instruction was issued.
-		void updateAsicContext(AsicContext& asic_ctx, const Instruction& instr) noexcept {
+		void updateAsicContext(AsicContext& asic_ctx, const SuperscalarInstruction& instr) noexcept {
 			// Pick max latency between source and destination.
 			const auto src_register{ instr.src_register.has_value() ? instr.src_register.value() : instr.dst_register};
 			const uint32_t dst_latency{ asic_ctx.latencies[instr.dst_register] + 1 };

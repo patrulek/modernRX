@@ -20,7 +20,7 @@
 //	vdiv r8
 //	ret
 constexpr uint64_t reciprocal(const uint64_t divisor) {
-	if (std::has_single_bit(divisor)) {
+	if (divisor == 0 || std::has_single_bit(divisor)) {
 		throw "invalid reciprocal divisor (cant be 0 or power of two)";
 	}
 

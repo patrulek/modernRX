@@ -38,15 +38,15 @@ Sample output:
 ```console
 [ 0] Blake2b::hash                            ... Passed (<1ms)
 [ 1] Argon2d::Blake2b::hash                   ... Passed (<1ms)
-[ 2] Argon2d::fillMemory                      ... Passed (0.709s)
+[ 2] Argon2d::fillMemory                      ... Passed (1.389s)
 [ 3] AesGenerator1R::fill                     ... Passed (<1ms)
 [ 4] AesGenerator4R::fill                     ... Passed (<1ms)
 [ 5] AesHash1R                                ... Passed (<1ms)
 [ 6] Blake2brandom::get                       ... Passed (<1ms)
 [ 7] Reciprocal                               ... Passed (<1ms)
 [ 8] Superscalar::generate                    ... Passed (0.001s)
-[ 9] Dataset::generate                        ... Passed (1330.564s)
-[10] Hasher::run                              ... Passed (1339.843s)
+[ 9] Dataset::generate                        ... Passed (1314.973s)
+[10] Hasher::run                              ... Passed (1313.391s)
 ```
 
 ### Portability
@@ -92,9 +92,9 @@ Benchmarks compare modernRX implementation with fully optimized RandomX implemen
 
 |                                | Blake2b [H/s] | Blake2bLong [H/s] | Argon2d [MB/s] | Aes1R [MB/s] | Aes4R [MB/s] | AesHash1R [H/s] | Superscalar [Prog/s] | Dataset [MB/s] | Hash [H/s] | Efficiency [H/Watt/s] |
 | ------------------------------ | :-----------: | :---------------: | :------------: | :----------: | :----------: | :-------------: | :------------------: | :------------: | :--------: | :-------------------: |
-| RandomX (901f8ef7)             |        3.178M |           102.18K |          912.9 |      48987.6 |      12004.5 |           23510 |                 3997 |         ~731.5 |       4510 |                ~73.93 |
+| RandomX (901f8ef7)             |        3.178M |           102.18K |          912.9 |      48987.6 |      12004.5 |           23510 |                 3997 |         ~812.2 |       4510 |                ~73.93 |
 | RandomX (901f8ef7)<sup>1</sup> |        3.178M |           102.18K |          400.6 |       2412.8 |        548.5 |            1153 |                 3997 |           ~2.1 |       19.9 |                 ~0.71 |
-| modernRX 0.1.1 (reference)     |        2.134M |            69.48K |          407.2 |       2877.2 |        735.4 |            1434 |                 8223 |            1.7 |       26.4 |                 ~0.91 |
+| modernRX 0.1.2 (reference)     |        2.125M |            69.53K |          412.4 |       2906.7 |        758.9 |            1444 |                 8242 |            1.7 |       26.7 |                 ~0.92 |
 
  <sup>1)</sup> no avx argon2d, interpreted mode, software AES mode, small pages mode, no batch, single-threaded, full memory mode
 
@@ -151,6 +151,7 @@ Project follows [zero-based versioning](https://0ver.org/) with several specific
 
 ## Changelog
 
+* **v0.1.2 - 28.09.2023:** bugfixes, renaming, documentation updates
 * **v0.1.1 - 07.09.2023:** cleanup some code and projects properties
 * **v0.1.0 - 03.09.2023:** reference implementation
 * **v0.0.1 - 10.08.2023:** initial implementation
@@ -164,11 +165,11 @@ $> gocloc /exclude-ext xml,json,txt .
 -------------------------------------------------------------------------------
 Language                     files          blank        comment           code
 -------------------------------------------------------------------------------
-C++                             14            467            259           2220
-C++ Header                      23            220            274           1043
-Markdown                         2             53              0            155
+C++                             14            470            259           2239
+C++ Header                      23            219            275           1043
+Markdown                         2             56              0            164
 -------------------------------------------------------------------------------
-TOTAL                           39            740            533           3418
+TOTAL                           39            745            534           3446
 -------------------------------------------------------------------------------
 ```
 

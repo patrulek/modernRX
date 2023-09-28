@@ -40,8 +40,8 @@ namespace modernRX {
 	static_assert(Rx_Scratchpad_L3_Size >= Rx_Scratchpad_L2_Size, "L3 scratchpad size must be greater than or equal to L2 scratchpad size.");
 
 	// Dataset Parameters.
-	inline constexpr uint32_t Rx_Dataset_Base_Size{ 2'147'483'648 }; // In bytes.
-	inline constexpr uint32_t Rx_Dataset_Extra_Size{ 33'554'368 }; // In bytes.
+	inline constexpr uint32_t Rx_Dataset_Base_Size{ 2'147'483'648 }; // In bytes (2GB).
+	inline constexpr uint32_t Rx_Dataset_Extra_Size{ 33'554'368 }; // In bytes (32MB - 64B).
 	inline constexpr uint32_t Rx_Cache_Accesses{ 8 }; // Number of random cache accesses per Dataset item.
 
 	static_assert(Rx_Dataset_Base_Size - 64 <= std::numeric_limits<uint32_t>::max() - 64, "Dataset base size must be in range 64 - 4'294'967'296.");
