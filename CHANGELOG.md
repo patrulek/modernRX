@@ -1,5 +1,12 @@
 ## Changelog
 
+### v0.3.1 - 29.09.2023:
+
+JIT-compiler optimizations.
+All optimization decisions made in this version:
+* optimize IMULH/ISMULH by moving fixed 32-bit mask to register once at program initialzation
+* optimize ISMULH by removing unnecessary vpxor instruction
+
 ### v0.3.0 - 28.09.2023:
 
 Superscalar program JIT compilation.

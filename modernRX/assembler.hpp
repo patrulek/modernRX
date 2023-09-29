@@ -240,17 +240,16 @@ namespace modernRX::assembler {
 		// https://stackoverflow.com/a/28827013
 		// Multiply packed unsigned quadwords and store high result.
 		// This is emulated instruction (not available in AVX2).
+		// Requires an 0xffffffff mask in YMM7 register.
+		// Uses YMM1-YMM6 registers.
 		constexpr void vpmulhuq(const Register dst_reg, const Register src_reg1, const Register src_reg2) {
-			mov(registers::RAX, 0xffffffff);
-			vmovq(registers::XMM0, registers::RAX);
-			vpbroadcastq(registers::YMM0, registers::XMM0); // mask
 			vpshufd(registers::YMM1, src_reg1, 0xb1); // vpshufd dst
 			vpshufd(registers::YMM2, src_reg2, 0xb1); // vpshufd src
 			vpmuludq(registers::YMM3, src_reg1, src_reg2); // vpmuludq_w0
 			vpsrlq(registers::YMM3, registers::YMM3, 32); // vpsrlq_w0h
 			vpmuludq(registers::YMM4, src_reg1, registers::YMM2); // vpmuludq_w1
 			vpaddq(registers::YMM3, registers::YMM3, registers::YMM4); // vpaddq_s1)
-			vpand(registers::YMM4, registers::YMM3, registers::YMM0); // vpand_s1l
+			vpand(registers::YMM4, registers::YMM3, registers::YMM7); // vpand_s1l
 			vpsrlq(registers::YMM3, registers::YMM3, 32); // vpsrlq_s1h
 			vpmuludq(registers::YMM5, registers::YMM1, src_reg2); // vpmuludq_w2
 			vpaddq(registers::YMM4, registers::YMM4, registers::YMM5); // vpaddq_s2
@@ -265,30 +264,31 @@ namespace modernRX::assembler {
 		// https://stackoverflow.com/a/28827013
 		// Multiply packed quadwords and store high result.
 		// This is emulated instruction (not available in AVX2).
+		// Uses YMM0, YMM1, YMM5 and YMM6 registers.
 		constexpr void vpmulhq(const Register dst_reg, const Register src_reg) {
-			vpmulhuq(registers::YMM7, dst_reg, src_reg);
-			vpxor(registers::YMM0, registers::YMM0, registers::YMM0);
-			vpxor(registers::YMM1, registers::YMM1, registers::YMM1);
-			vpcmpgtq(registers::YMM0, registers::YMM0, dst_reg);
-			vpcmpgtq(registers::YMM1, registers::YMM1, src_reg);
+			vpmulhuq(registers::YMM6, dst_reg, src_reg);
+			vpxor(registers::YMM5, registers::YMM5, registers::YMM5);
+			vpcmpgtq(registers::YMM0, registers::YMM5, dst_reg);
+			vpcmpgtq(registers::YMM1, registers::YMM5, src_reg);
 			vpand(registers::YMM0, registers::YMM0, src_reg);
 			vpand(registers::YMM1, registers::YMM1, dst_reg);
-			vpsubq(registers::YMM7, registers::YMM7, registers::YMM0);
-			vpsubq(dst_reg, registers::YMM7, registers::YMM1);
+			vpsubq(registers::YMM6, registers::YMM6, registers::YMM0);
+			vpsubq(dst_reg, registers::YMM6, registers::YMM1);
 		}
 
 		// https://stackoverflow.com/a/54191950
 		// Multiply packed quadwords and store low result.
 		// This is emulated instruction (not available in AVX2).
+		// Uses YMM0-YMM3 registers.
 		constexpr void vpmullq(const Register dst_reg, const Register src_reg) {
 			vpmuludq(registers::YMM0, dst_reg, src_reg);
 			vpsrlq(registers::YMM1, dst_reg, 32);
+			vpmuludq(registers::YMM1, src_reg, registers::YMM1);
 			vpsrlq(registers::YMM2, src_reg, 32);
-			vpmuludq(registers::YMM3, src_reg, registers::YMM1);
-			vpmuludq(registers::YMM4, dst_reg, registers::YMM2);
-			vpaddq(registers::YMM5, registers::YMM4, registers::YMM3);
-			vpsllq(registers::YMM6, registers::YMM5, 32);
-			vpaddq(dst_reg, registers::YMM6, registers::YMM0);
+			vpmuludq(registers::YMM2, dst_reg, registers::YMM2);
+			vpaddq(registers::YMM3, registers::YMM2, registers::YMM1);
+			vpsllq(registers::YMM3, registers::YMM3, 32);
+			vpaddq(dst_reg, registers::YMM3, registers::YMM0);
 		}
 
 		

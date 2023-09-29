@@ -40,15 +40,15 @@ Sample output:
 ```console
 [ 0] Blake2b::hash                            ... Passed (<1ms)
 [ 1] Argon2d::Blake2b::hash                   ... Passed (<1ms)
-[ 2] Argon2d::fillMemory                      ... Passed (0.589s)
+[ 2] Argon2d::fillMemory                      ... Passed (0.585s)
 [ 3] AesGenerator1R::fill                     ... Passed (<1ms)
 [ 4] AesGenerator4R::fill                     ... Passed (<1ms)
 [ 5] AesHash1R                                ... Passed (<1ms)
 [ 6] Blake2brandom::get                       ... Passed (<1ms)
 [ 7] Reciprocal                               ... Passed (<1ms)
-[ 8] Superscalar::generate                    ... Passed (<1ms)
-[ 9] Dataset::generate                        ... Passed (2.748s)
-[10] Hasher::run                              ... Passed (3.134s)
+[ 8] Superscalar::generate                    ... Passed (0.001s)
+[ 9] Dataset::generate                        ... Passed (2.685s)
+[10] Hasher::run                              ... Passed (2.687s)
 ```
 
 ### Portability
@@ -96,7 +96,8 @@ Benchmarks compare modernRX implementation with fully optimized RandomX implemen
 | ------------------------------ | :-----------: | :---------------: | :------------: | :----------: | :----------: | :-------------: | :------------------: | :------------: | :--------: | :-------------------: |
 | RandomX (901f8ef7)             |        3.178M |           102.18K |          912.9 |  **48987.6** |  **12004.5** |       **23510** |                 3997 |         ~812.2 |   **4510** |            **~73.93** |
 | RandomX (901f8ef7)<sup>3</sup> |        3.178M |           102.18K |          912.9 |       2412.8 |        548.5 |            1153 |                 3997 |	       ~812.2 |       19.9 |                 ~0.71 |
-| modernRX 0.3.0                 |	  **4.906M** |       **156.62K** |	   **1004.2** |       2913.6 |        724.6 |            1421 |                 9350 |      **932.6** |       26.9 |                 ~0.92 |
+| modernRX 0.3.1                 |	      4.867M |           156.60K |	   **1005.3** |       2726.5 |        751.4 |            1419 |                 9355 |      **955.3** |       26.2 |                 ~0.90 |
+| modernRX 0.3.0                 |	  **4.906M** |       **156.62K** |	       1004.2 |       2913.6 |        724.6 |            1421 |                 9350 |          932.6 |       26.9 |                 ~0.92 |
 | RandomX (901f8ef7)<sup>2</sup> |        3.178M |           102.18K |          912.9 |       2412.8 |        548.5 |            1153 |                 3997 |          ~28.9 |       19.9 |                 ~0.71 |
 | modernRX 0.2.3                 |		  4.872M |           154.30K |		    957.1 |       2789.8 |        732.6 |            1394 |                 9356 |          113.1 |       26.2 |                 ~0.87 |
 | modernRX 0.2.2                 |		  4.893M |           156.04K |		    988.0 |       2789.2 |        742.4 |            1415 |                 9419 |           38.7 |       25.8 |                 ~0.83 |
@@ -164,6 +165,7 @@ Project follows [zero-based versioning](https://0ver.org/) with several specific
 
 ## Changelog
 
+* **v0.3.1 - 29.09.2023:** dataset generation optimizations (JIT compiler MULH optimization)
 * **v0.3.0 - 28.09.2023:** dataset generation optimizations (JIT compiler for superscalar program execution)
 * **v0.1.2 - 28.09.2023:** bugfixes, renaming, documentation updates
 * **v0.2.3 - 11.09.2023:** dataset generation optimizations (item batching and AVX2 support for superscalar program execution)
@@ -183,11 +185,11 @@ $> gocloc /exclude-ext xml,json,txt .
 -------------------------------------------------------------------------------
 Language                     files          blank        comment           code
 -------------------------------------------------------------------------------
-C++                             15            492            314           2279
-C++ Header                      29            398            473           2214
-Markdown                         2             83              0            243
+C++                             15            492            315           2282
+C++ Header                      29            398            478           2210
+Markdown                         2             85              0            250
 -------------------------------------------------------------------------------
-TOTAL                           46            973            787           4736
+TOTAL                           46            975            793           4742
 -------------------------------------------------------------------------------
 ```
 
