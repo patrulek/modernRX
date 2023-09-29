@@ -14,8 +14,10 @@ namespace modernRX {
 		assembler::Context asmb;
 
 		// 0. Prologue - push registers to stack.
-		// Set 32-bit mask const for mul instructions.
+		// Set 32-bit mask const for mul instructions in YMM7.
+		// Zero out YMM6
 		asmb.push(RAX, YMM0, YMM1, YMM2, YMM3, YMM4, YMM5, YMM6, YMM7, YMM8, YMM9, YMM10, YMM11, YMM12, YMM13, YMM14, YMM15);
+		asmb.vpxor(YMM6, YMM6, YMM6);
 		asmb.mov(RAX, 0xffffffff);
 		asmb.vmovq(XMM7, RAX);
 		asmb.vpbroadcastq(YMM7, XMM7); // mask
@@ -114,9 +116,9 @@ namespace modernRX {
 				break;
 			case SuperscalarInstructionType::IMUL_RCP:
 				asmb.mov(RAX, instr.reciprocal);
-				asmb.vmovq(XMM6, RAX);
-				asmb.vpbroadcastq(YMM6, XMM6);
-				asmb.vpmullq(dst, YMM6);
+				asmb.vmovq(XMM5, RAX);
+				asmb.vpbroadcastq(YMM5, XMM5);
+				asmb.vpmullq(dst, YMM5);
 				break;
 			default:
 				std::unreachable();

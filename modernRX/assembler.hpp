@@ -254,9 +254,9 @@ namespace modernRX::assembler {
 			vpmuludq(registers::YMM5, registers::YMM1, src_reg2); // vpmuludq_w2
 			vpaddq(registers::YMM4, registers::YMM4, registers::YMM5); // vpaddq_s2
 		    vpsrlq(registers::YMM4, registers::YMM4, 32); // vpsrlq_s2h
-			vpmuludq(registers::YMM6, registers::YMM1, registers::YMM2); // vpmuludq_w3
-			vpaddq(registers::YMM6, registers::YMM6, registers::YMM3); // vpaddq_hi
-			vpaddq(dst_reg, registers::YMM6, registers::YMM4); // vpaddq_ret)
+			vpmuludq(registers::YMM0, registers::YMM1, registers::YMM2); // vpmuludq_w3
+			vpaddq(registers::YMM0, registers::YMM0, registers::YMM3); // vpaddq_hi
+			vpaddq(dst_reg, registers::YMM0, registers::YMM4); // vpaddq_ret)
 		}
 
 
@@ -266,31 +266,30 @@ namespace modernRX::assembler {
 		// This is emulated instruction (not available in AVX2).
 		// Uses YMM0, YMM1, YMM5 and YMM6 registers.
 		constexpr void vpmulhq(const Register dst_reg, const Register src_reg) {
-			vpmulhuq(registers::YMM6, dst_reg, src_reg);
-			vpxor(registers::YMM5, registers::YMM5, registers::YMM5);
-			vpcmpgtq(registers::YMM0, registers::YMM5, dst_reg);
-			vpcmpgtq(registers::YMM1, registers::YMM5, src_reg);
+			vpmulhuq(registers::YMM5, dst_reg, src_reg);
+			vpcmpgtq(registers::YMM0, registers::YMM6, dst_reg);
+			vpcmpgtq(registers::YMM1, registers::YMM6, src_reg);
 			vpand(registers::YMM0, registers::YMM0, src_reg);
 			vpand(registers::YMM1, registers::YMM1, dst_reg);
-			vpsubq(registers::YMM6, registers::YMM6, registers::YMM0);
-			vpsubq(dst_reg, registers::YMM6, registers::YMM1);
+			vpsubq(registers::YMM5, registers::YMM5, registers::YMM0);
+			vpsubq(dst_reg, registers::YMM5, registers::YMM1);
 		}
 
-		// https://stackoverflow.com/a/54191950
+		// https://stackoverflow.com/a/37322570
 		// Multiply packed quadwords and store low result.
 		// This is emulated instruction (not available in AVX2).
+		// Requires YMM6 to be zeroed.
 		// Uses YMM0-YMM3 registers.
 		constexpr void vpmullq(const Register dst_reg, const Register src_reg) {
-			vpmuludq(registers::YMM0, dst_reg, src_reg);
-			vpsrlq(registers::YMM1, dst_reg, 32);
-			vpmuludq(registers::YMM1, src_reg, registers::YMM1);
-			vpsrlq(registers::YMM2, src_reg, 32);
-			vpmuludq(registers::YMM2, dst_reg, registers::YMM2);
-			vpaddq(registers::YMM3, registers::YMM2, registers::YMM1);
-			vpsllq(registers::YMM3, registers::YMM3, 32);
-			vpaddq(dst_reg, registers::YMM3, registers::YMM0);
+			vpshufd(registers::YMM0, src_reg, 0xb1);
+			// VEX.256.66.0F38.WIG 40 /r VPMULLD ymm1, ymm2, ymm3/m256
+			vex256 < PP::PP0x66, MM::MM0x0F38, Opcode{ 0x40, -1 } > (registers::YMM1, dst_reg, registers::YMM0);
+			// VEX.256.66.0F38.WIG 02 /r VPHADDD ymm1, ymm2, ymm3/m256
+			vex256 < PP::PP0x66, MM::MM0x0F38, Opcode{ 0x02, -1 } > (registers::YMM2, registers::YMM1, registers::YMM6);
+			vpshufd(registers::YMM2, registers::YMM2, 0x73);
+			vpmuludq(registers::YMM3, dst_reg, src_reg);
+			vpaddq(dst_reg, registers::YMM3, registers::YMM2);
 		}
-
 		
 		constexpr void vpbroadcastq(const Register ymm, const Register xmm) {
 			vex256< PP::PP0x66, MM::MM0x0F38, Opcode{ 0x59, -1 }>(ymm, xmm);

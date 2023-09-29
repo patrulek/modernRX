@@ -1,5 +1,12 @@
 ## Changelog
 
+### v0.3.2 - 29.09.2023:
+
+JIT-compiler optimizations.
+All optimization decisions made in this version:
+* optimize IMUL/IMUL_RCP by changing algorithm (less instructions)
+* optimize ISMULH by removing another vpxor instruction (it's done once at program initialization)
+
 ### v0.3.1 - 29.09.2023:
 
 JIT-compiler optimizations.
