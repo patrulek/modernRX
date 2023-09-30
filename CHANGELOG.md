@@ -1,5 +1,11 @@
 ## Changelog
 
+### v0.3.3 - 30.09.2023:
+
+Dataset items initialization optimizations.
+All optimization decisions made in this version:
+* replace multiplication with addition in dataset item initialization (less instructions; this may not have direct effect now, but it should be slightly better when whole dataset generation function will be written in assembly)
+
 ### v0.3.2 - 29.09.2023:
 
 JIT-compiler optimizations.

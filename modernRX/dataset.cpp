@@ -12,7 +12,7 @@ namespace modernRX {
     using namespace intrinsics;
 
     namespace {
-        [[nodiscard]] std::array<DatasetItem, 4> generate4Items(const argon2d::Memory& cache, const_span<SuperscalarProgram, Rx_Cache_Accesses> programs, const uint64_t item_number) noexcept;
+        [[nodiscard]] std::array<DatasetItem, 4> generate4Items(const argon2d::Memory& cache, const_span<SuperscalarProgram, Rx_Cache_Accesses> programs, const avx2::ymm<uint64_t> ymmitem0, const uint64_t item_number) noexcept;
     }
 
     std::vector<DatasetItem> generateDataset(const argon2d::Memory& cache, const_span<SuperscalarProgram, Rx_Cache_Accesses> programs) {
@@ -41,10 +41,17 @@ namespace modernRX {
             uint32_t start_item{ tid * size };
             const uint32_t end_item{ start_item + size };
 
+            const auto mul_consts{ avx2::vset<uint64_t>(6364136223846793005ULL) };
+            const auto add_consts{ avx2::vset<uint64_t>(7009800821677620404ULL) }; // 4 * mul_consts
+            const auto item_numbers{ avx2::vset<uint64_t>(start_item + 4, start_item + 3, start_item + 2, start_item + 1) };
+
+            auto ymmitem0{ avx2::vmul64<uint64_t>(item_numbers, mul_consts) };
+             
             // Generate DatasetItem's in batches of 4 items.
             for (size_t i = 0; i < submemory.size() / 4; ++i) {
-                const auto items{ generate4Items(cache, programs, start_item) };
+                const auto items{ generate4Items(cache, programs, ymmitem0, start_item) };
                 std::memcpy(submemory.data() + i * 4, items.data(), sizeof(DatasetItem) * 4);
+                ymmitem0 = avx2::vadd<uint64_t>(ymmitem0, add_consts);
                 start_item += 4;
             }
         };
@@ -70,7 +77,7 @@ namespace modernRX {
     namespace {
         // Calculates 4-batch DatasetItem (4x64-bytes of data) according to https://github.com/tevador/RandomX/blob/master/doc/specs.md#73-dataset-block-generation.
         // Enhanced by AVX2 intrinsics.
-        std::array<DatasetItem, 4> generate4Items(const argon2d::Memory& cache, const_span<SuperscalarProgram, Rx_Cache_Accesses> programs, const uint64_t item_number) noexcept {
+        std::array<DatasetItem, 4> generate4Items(const argon2d::Memory& cache, const_span<SuperscalarProgram, Rx_Cache_Accesses> programs, const avx2::ymm<uint64_t> ymmitem0, const uint64_t item_number) noexcept {
             // It can be assumed that cache size is fixed and equal to Rx_Argon2d_Memory_Blocks.
             ASSERTUME(cache.size() == Rx_Argon2d_Memory_Blocks);
 
@@ -84,22 +91,20 @@ namespace modernRX {
             // ymm_items is an avx2 view of dt_items.
             avx2::ymm<uint64_t>(&ymm_items)[8] { reinterpret_cast<avx2::ymm<uint64_t>(&)[8]>(dt_items) };
 
-            const auto mul_consts{ avx2::vset<uint64_t>(6364136223846793005ULL) };
-            const auto item_numbers{ avx2::vset<uint64_t>(item_number + 4, item_number + 3, item_number + 2, item_number + 1) };
-
-            ymm_items[0] = avx2::vmul64<uint64_t>(item_numbers, mul_consts);
-            ymm_items[1] = avx2::vxor<uint64_t>(ymm_items[0], avx2::vset<uint64_t>(9298411001130361340ULL));
-            ymm_items[2] = avx2::vxor<uint64_t>(ymm_items[0], avx2::vset<uint64_t>(12065312585734608966ULL));
-            ymm_items[3] = avx2::vxor<uint64_t>(ymm_items[0], avx2::vset<uint64_t>(9306329213124626780ULL));
-            ymm_items[4] = avx2::vxor<uint64_t>(ymm_items[0], avx2::vset<uint64_t>(5281919268842080866ULL));
-            ymm_items[5] = avx2::vxor<uint64_t>(ymm_items[0], avx2::vset<uint64_t>(10536153434571861004ULL));
-            ymm_items[6] = avx2::vxor<uint64_t>(ymm_items[0], avx2::vset<uint64_t>(3398623926847679864ULL));
-            ymm_items[7] = avx2::vxor<uint64_t>(ymm_items[0], avx2::vset<uint64_t>(9549104520008361294ULL));
+            ymm_items[0] = ymmitem0;
+            ymm_items[1] = avx2::vxor<uint64_t>(ymmitem0, avx2::vset<uint64_t>(9298411001130361340ULL));
+            ymm_items[2] = avx2::vxor<uint64_t>(ymmitem0, avx2::vset<uint64_t>(12065312585734608966ULL));
+            ymm_items[3] = avx2::vxor<uint64_t>(ymmitem0, avx2::vset<uint64_t>(9306329213124626780ULL));
+            ymm_items[4] = avx2::vxor<uint64_t>(ymmitem0, avx2::vset<uint64_t>(5281919268842080866ULL));
+            ymm_items[5] = avx2::vxor<uint64_t>(ymmitem0, avx2::vset<uint64_t>(10536153434571861004ULL));
+            ymm_items[6] = avx2::vxor<uint64_t>(ymmitem0, avx2::vset<uint64_t>(3398623926847679864ULL));
+            ymm_items[7] = avx2::vxor<uint64_t>(ymmitem0, avx2::vset<uint64_t>(9549104520008361294ULL));
 
             // 2. Initialize cache indexes.
             constexpr uint32_t cache_item_count{ argon2d::Memory_Size / sizeof(DatasetItem) };
             std::array<uint64_t, 4> cache_indexes{ item_number, item_number + 1, item_number + 2, item_number + 3 };
             std::array<const DatasetItem*, 4> cache_items_ptrs;
+
 
             // 3. For all programs...
             for (const auto& prog : programs) {
