@@ -13,9 +13,11 @@ namespace modernRX {
 
     // JIT-compile a superscalar program using AVX2 instructions.
     // Important to note: 
-    //   * prologue includes pushing rax and ymm0-ymm15 registers to stack to not mess up with the caller's state.
-    //   * epilogue includes popping rax and ymm0-ymm15 registers from stack to restore the caller's state.
+    //   * prologue includes pushing rax, rdx and ymm0-ymm15 registers to stack to not mess up with the caller's state.
+    //   * epilogue includes popping rax, rdx and ymm0-ymm15 registers from stack to restore the caller's state.
     //   * compilation does not apply to dataset item initialization and finalization; it compiles only superscalar program's instructions.
+    //   * expects dataset items to be passed in RCX register.
+    //   * register RDX is used as pointer to immediate values.
     //   * register YMM6 is zeroed out during whole program execution.
     //   * register YMM7 is used to hold 32-bit mask const for mul instructions.
     //   * registers YMM0-YMM5 and RAX are used for temporary values, registers YMM8-YMM15 are used to hold dataset items.

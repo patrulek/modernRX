@@ -16,9 +16,11 @@ namespace modernRX {
 		// 0. Prologue - push registers to stack.
 		// Set 32-bit mask const for mul instructions in YMM7.
 		// Zero out YMM6
-		asmb.push(RAX, YMM0, YMM1, YMM2, YMM3, YMM4, YMM5, YMM6, YMM7, YMM8, YMM9, YMM10, YMM11, YMM12, YMM13, YMM14, YMM15);
+		// Mov data pointer to RDX.
+		asmb.push(RAX, RDX, YMM0, YMM1, YMM2, YMM3, YMM4, YMM5, YMM6, YMM7, YMM8, YMM9, YMM10, YMM11, YMM12, YMM13, YMM14, YMM15);
 		asmb.vpxor(YMM6, YMM6, YMM6);
 		asmb.mov(RAX, 0xffffffff);
+		asmb.mov(RDX, reinterpret_cast<uintptr_t>(asmb.dataPtr()));
 		asmb.vmovq(XMM7, RAX);
 		asmb.vpbroadcastq(YMM7, XMM7); // mask
 
@@ -52,12 +54,12 @@ namespace modernRX {
 		asmb.vmovdqa(RCX[224], YMM15);
 
 		// 4. Epilogue - pop registers and return.
-		asmb.pop(YMM15, YMM14, YMM13, YMM12, YMM11, YMM10, YMM9, YMM8, YMM7, YMM6, YMM5, YMM4, YMM3, YMM2, YMM1, YMM0, RAX);
+		asmb.pop(YMM15, YMM14, YMM13, YMM12, YMM11, YMM10, YMM9, YMM8, YMM7, YMM6, YMM5, YMM4, YMM3, YMM2, YMM1, YMM0, RDX, RAX);
 		asmb.ret();
 
 		// Make the compile code executable and store a pointer to it in the program.
-		const auto code{ asmb.flush() };
-		program.jit_program = makeExecutable<JITSuperscalarProgram, uint8_t>(code);
+		// Give away ownership of the code and data to the program.
+		program.jit_program = makeExecutable<JITSuperscalarProgram, uint8_t>(asmb.flushCode(), asmb.flushData());
 	}
 
 	namespace {
@@ -73,17 +75,15 @@ namespace modernRX {
 			case SuperscalarInstructionType::IADD_C7: [[fallthrough]];
 			case SuperscalarInstructionType::IADD_C8: [[fallthrough]];
 			case SuperscalarInstructionType::IADD_C9:
-				asmb.movsxd(RAX, instr.imm32);
-				asmb.vmovq(XMM0, RAX);
-				asmb.vpbroadcastq(YMM0, XMM0);
+				asmb.storeImmediate<int64_t, Register::YMM(0).size()>(static_cast<int64_t>(static_cast<int32_t>(instr.imm32))); // Store 2's complement of immediate value.
+				asmb.vmovdqa(YMM0, RDX[asmb.dataSize() - Register::YMM(0).size()]);
 				asmb.vpaddq(dst, dst, YMM0);
 				break;
 			case SuperscalarInstructionType::IXOR_C7: [[fallthrough]];
 			case SuperscalarInstructionType::IXOR_C8: [[fallthrough]];
 			case SuperscalarInstructionType::IXOR_C9:
-				asmb.movsxd(RAX, instr.imm32);
-				asmb.vmovq(XMM0, RAX);
-				asmb.vpbroadcastq(YMM0, XMM0);
+				asmb.storeImmediate<int64_t, Register::YMM(0).size()>(static_cast<int64_t>(static_cast<int32_t>(instr.imm32))); // Store 2's complement of immediate value.
+				asmb.vmovdqa(YMM0, RDX[asmb.dataSize() - Register::YMM(0).size()]);
 				asmb.vpxor(dst, dst, YMM0);
 				break;
 			case SuperscalarInstructionType::IADD_RS:
@@ -115,9 +115,8 @@ namespace modernRX {
 				asmb.vpmulhuq(dst, dst, src);
 				break;
 			case SuperscalarInstructionType::IMUL_RCP:
-				asmb.mov(RAX, instr.reciprocal);
-				asmb.vmovq(XMM5, RAX);
-				asmb.vpbroadcastq(YMM5, XMM5);
+				asmb.storeImmediate<uint64_t, Register::YMM(0).size()>(instr.reciprocal);
+				asmb.vmovdqa(YMM5, RDX[asmb.dataSize() - Register::YMM(0).size()]);
 				asmb.vpmullq(dst, YMM5);
 				break;
 			default:

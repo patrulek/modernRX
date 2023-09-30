@@ -482,7 +482,7 @@ void testDatasetGenerate() {
 	testAssert(dt[10000000][0] == 0x7943a1f6186ffb72);
 	testAssert(dt[20000000][0] == 0x9035244d718095e1);
 	testAssert(dt[30000000][0] == 0x145a5091f7853099);
-	testAssert(dt[34078719][7] == 0x10844958c957dfc2);
+	testAssert(dt[34078719][7] == 0x10844958c957dfc2); // This is additional element that does not occur in dataset without padding.
 }
 
 void testHasher() {

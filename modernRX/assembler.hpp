@@ -102,6 +102,7 @@ namespace modernRX::assembler {
 		inline constexpr Register RBX{ RegisterType::GPR, 3 };
 		inline constexpr Register RSP{ RegisterType::GPR, 4 };
 		inline constexpr Register RBP{ RegisterType::GPR, 5 };
+		const Register& RIP{ RBP }; // RIP is an alias for RBP.
 		inline constexpr Register RSI{ RegisterType::GPR, 6 };
 		inline constexpr Register RDI{ RegisterType::GPR, 7 };
 		inline constexpr Register R08{ RegisterType::GPR, 8 };
@@ -225,6 +226,34 @@ namespace modernRX::assembler {
 	public: 
 		explicit Context() {
 			code.reserve(4096);
+			data.reserve(4096);
+		}
+
+		// Stores an immediate value in the data buffer.
+		template<typename Immediate, size_t Bytes>
+			requires (std::is_integral_v<Immediate>&& Bytes % sizeof(Immediate) == 0)
+		constexpr void storeImmediate(const Immediate imm) {
+			for (uint32_t i = 0; i < Bytes / sizeof(Immediate); ++i) {
+				if constexpr (sizeof(Immediate) >= 1) {
+					data.push_back((uint8_t)byte<0>(imm));
+				}
+
+				if constexpr (sizeof(Immediate) >= 2) {
+					data.push_back((uint8_t)byte<1>(imm));
+				}
+
+				if constexpr (sizeof(Immediate) >= 4) {
+					data.push_back((uint8_t)byte<2>(imm));
+					data.push_back((uint8_t)byte<3>(imm));
+				}
+
+				if constexpr (sizeof(Immediate) >= 8) {
+					data.push_back((uint8_t)byte<4>(imm));
+					data.push_back((uint8_t)byte<5>(imm));
+					data.push_back((uint8_t)byte<6>(imm));
+					data.push_back((uint8_t)byte<7>(imm));
+				}
+			}
 		}
 
 		template<typename Operand>
@@ -560,14 +589,39 @@ namespace modernRX::assembler {
 		}
 
 		// Flushes generated code that results in giving away ownership of the buffer.
-		[[nodiscard]] std::vector<uint8_t> flush() {
+		[[nodiscard]] std::vector<uint8_t> flushCode() {
 			return std::move(code);
 		}
+
+		// Flushes generated data that results in giving away ownership of the buffer.
+		[[nodiscard]] std::vector<uint8_t> flushData() {
+			return std::move(data);
+		}
+
+		[[nodiscard]] constexpr const uint8_t* dataPtr() noexcept {
+			return data.data();
+		}
+
+		[[nodiscard]] constexpr const int32_t dataSize() noexcept {
+			return static_cast<int32_t>(data.size());
+		}
+
 	private:
 		std::vector<uint8_t> code;
+		std::vector<uint8_t> data;
 
 		// Generates bytes for indirect addressing mode. 
 		constexpr void addr(const reg_idx_t dst, const reg_idx_t src, const int32_t offset) {
+			// RIP relative addressing (displacement only).
+			if (src == registers::RBP.idx) {
+				code.push_back(modregrm<uint8_t>(0, registers::RBP.idx, MOD::MOD00)); // Indirect or SIB mode if RSP used.
+				code.push_back((uint8_t)byte<0>(offset));
+				code.push_back((uint8_t)byte<1>(offset));
+				code.push_back((uint8_t)byte<2>(offset));
+				code.push_back((uint8_t)byte<3>(offset));
+				return;
+			}
+
 			if (offset == 0) {
 				code.push_back(modregrm<uint8_t>(dst % 8, src, MOD::MOD00)); // Indirect or SIB mode if RSP used.
 			} else if (offset < std::numeric_limits<int8_t>::max()) {

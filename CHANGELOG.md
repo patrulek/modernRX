@@ -1,5 +1,14 @@
 ## Changelog
 
+### v0.3.4 - 30.09.2023:
+
+JIT-compiler optimizations.
+All optimization decisions made in this version:
+* move away immediate values to data "section" (less instructions - single vmovdqa instead of mov, vmovq and vpbroadcastq)
+
+Improvements:
+* documentation corrections in tests
+
 ### v0.3.3 - 30.09.2023:
 
 Dataset items initialization optimizations.
