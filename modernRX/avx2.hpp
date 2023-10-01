@@ -273,6 +273,17 @@ namespace modernRX::intrinsics::avx2 {
         }
     }
 
+    template<typename T, int imm8>
+    [[nodiscard]] constexpr ymm<T> vpermute2x128(const ymm<T> x, const ymm<T> y) noexcept {
+        static_assert(imm8 >= 0 && imm8 <= 255, "imm8 must be in range 0-255");
+
+        if constexpr (std::is_same_v<T, uint64_t>) {
+            return _mm256_permute2x128_si256(x, y, imm8);
+        } else {
+            static_assert(!sizeof(T), "the only supported type for this operation is: uint64");
+        }
+    }
+
     // Loads integer values from aligned memory location.
     template<typename T>
     [[nodiscard]] constexpr ymm<T> vload256(const void* addr) noexcept {

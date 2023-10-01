@@ -1,5 +1,13 @@
 ## Changelog
 
+### v0.3.5 - 02.10.2023:
+
+Dataset items generation simplification:
+* replace some scalar code with vectorized version for consistency and simplicity
+
+This change may have negative impact on performance for now, but it's hard to estimate real impact after making whole function hand-written assembly.
+It should be easier to hand-write assembly with this change, but in case of replaced scalar code being faster, it will be reverted.
+
 ### v0.3.4 - 30.09.2023:
 
 JIT-compiler optimizations.
