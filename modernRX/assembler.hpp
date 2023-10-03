@@ -261,8 +261,8 @@ namespace modernRX::assembler {
 			vex256<PP::PP0x66, MM::MM0x0F, Opcode{ 0xf4, -1 }>(dst_reg, src_reg1, src_reg2);
 		}
 		
-		template<typename Operand>
-		constexpr void vpshufd(const Register dst_reg, const Register src_reg, const Operand control) {
+		template<typename Operand, typename Control>
+		constexpr void vpshufd(const Register dst_reg, const Operand src_reg, const Control control) {
 			vex256<PP::PP0x66, MM::MM0x0F, Opcode{ 0x70, -1 }>(dst_reg, src_reg, control);
 		}
 
@@ -309,7 +309,8 @@ namespace modernRX::assembler {
 		// This is emulated instruction (not available in AVX2).
 		// Requires YMM6 to be zeroed.
 		// Uses YMM0-YMM3 registers.
-		constexpr void vpmullq(const Register dst_reg, const Register src_reg) {
+		template<typename Operand>
+		constexpr void vpmullq(const Register dst_reg, const Operand src_reg) {
 			vpshufd(registers::YMM0, src_reg, 0xb1);
 			// VEX.256.66.0F38.WIG 40 /r VPMULLD ymm1, ymm2, ymm3/m256
 			vex256 < PP::PP0x66, MM::MM0x0F38, Opcode{ 0x40, -1 } > (registers::YMM1, dst_reg, registers::YMM0);
@@ -744,6 +745,30 @@ namespace modernRX::assembler {
 			code.push_back(modregrm<uint8_t>(dst.lowIdx(), src2.lowIdx()));
 		}
 
+		// Generates instruction with VEX256 prefix and Register/Register/Register as operands (eg. vpxor).
+		template<PP pp, MM mm, Opcode opcode, uint8_t w = 0>
+		constexpr void vex256(const Register dst, const Register src1, const Memory src2) {
+			if constexpr (mm == MM::MM0x0F) {
+				if (src2.isLow() && dst.isLow()) {
+					// INSTR ymmD, ymmS1, ymmS2: {vex.2B: 0xc5} {vex.0b1'sss!'1'66} {opcode.code /opcode.mod} {modrm: 0b11'ddd'ss@}
+					code.push_back(vex1<uint8_t>(false));
+					code.push_back(vex2<uint8_t>(src1.idx, pp, 1));
+				} else {
+					// INSTR ymmD, ymmS1, ymmS2: {vex.3B: 0xc4} {vex.0bR0B'00001} {vex.0bW'sss!'1'66} {opcode.code /opcode.mod} {modrm: 0b11'ddd'ss@}
+					code.push_back(vex1<uint8_t>(true));
+					code.push_back(vex2<uint8_t>(MM::MM0x0F, dst.isLow(), 0, src2.isLow()));
+					code.push_back(vex3<uint8_t>(src1.idx, pp, w));
+				}
+			} else {
+				code.push_back(vex1<uint8_t>(true));
+				code.push_back(vex2<uint8_t>(mm, dst.isLow(), 0, src2.isLow()));
+				code.push_back(vex3<uint8_t>(src1.idx, pp, w));
+			}
+
+			code.push_back(opcode.code);
+			addr(dst.idx, src2.reg, src2.offset);
+		}
+
 		// Generates instruction with VEX256 prefix and Register/Register/Imm as operands (eg. vpsllq).
 		template<PP pp, MM mm, Opcode opcode, uint8_t w = 0> 
 		constexpr void vex256(const Register dst, const Register src1, const int imm32) {
@@ -769,6 +794,34 @@ namespace modernRX::assembler {
 
 			code.push_back(opcode.code);
 			code.push_back(modregrm<uint8_t>(reg, src1.lowIdx()));
+			code.push_back((uint8_t)byte<0>(imm32));
+		}
+
+		// Generates instruction with VEX256 prefix and Register/Register/Imm as operands (eg. vpsllq).
+		template<PP pp, MM mm, Opcode opcode, uint8_t w = 0>
+		constexpr void vex256(const Register dst, const Memory src1, const int imm32) {
+			const reg_idx_t vvvv{ opcode.mod > -1 ? dst.idx : uint8_t(0) };
+			const reg_idx_t reg{ opcode.mod > -1 ? (uint8_t)opcode.mod : dst.lowIdx() };
+
+			if constexpr (mm == MM::MM0x0F) {
+				if (src1.isLow()) {
+					// INSTR ymmD, ymmS1, imm8: {vex.2B: 0xc5} {vex.0b1'dddd'1'66} {opcode.code /opcode.mod} {modrm: 0b11'mod'ss!}
+					code.push_back(vex1<uint8_t>(false));
+					code.push_back(vex2<uint8_t>(vvvv, pp, 1));
+				} else {
+					// INSTR ymmD, ymmS1, imm8: {vex.3B: 0xc4} {vex.0b000'00001} {vex.0bW'dddd'1'66} {opcode.code /opcode.mod} {modrm: 0b11'mod'ss!}
+					code.push_back(vex1<uint8_t>(true));
+					code.push_back(vex2<uint8_t>(MM::MM0x0F, dst.isLow(), 0, src1.isLow()));
+					code.push_back(vex3<uint8_t>(vvvv, pp, w));
+				}
+			} else {
+				code.push_back(vex1<uint8_t>(true));
+				code.push_back(vex2<uint8_t>(mm, dst.isLow(), 0, src1.isLow()));
+				code.push_back(vex3<uint8_t>(vvvv, pp, w));
+			}
+
+			code.push_back(opcode.code);
+			addr(reg, src1.reg, src1.offset);
 			code.push_back((uint8_t)byte<0>(imm32));
 		}
 	};

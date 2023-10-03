@@ -76,15 +76,13 @@ namespace modernRX {
 			case SuperscalarInstructionType::IADD_C8: [[fallthrough]];
 			case SuperscalarInstructionType::IADD_C9:
 				asmb.storeImmediate<int64_t, Register::YMM(0).size()>(static_cast<int64_t>(static_cast<int32_t>(instr.imm32))); // Store 2's complement of immediate value.
-				asmb.vmovdqa(YMM0, RDX[asmb.dataSize() - Register::YMM(0).size()]);
-				asmb.vpaddq(dst, dst, YMM0);
+				asmb.vpaddq(dst, dst, RDX[asmb.dataSize() - Register::YMM(0).size()]);
 				break;
 			case SuperscalarInstructionType::IXOR_C7: [[fallthrough]];
 			case SuperscalarInstructionType::IXOR_C8: [[fallthrough]];
 			case SuperscalarInstructionType::IXOR_C9:
 				asmb.storeImmediate<int64_t, Register::YMM(0).size()>(static_cast<int64_t>(static_cast<int32_t>(instr.imm32))); // Store 2's complement of immediate value.
-				asmb.vmovdqa(YMM0, RDX[asmb.dataSize() - Register::YMM(0).size()]);
-				asmb.vpxor(dst, dst, YMM0);
+				asmb.vpxor(dst, dst, RDX[asmb.dataSize() - Register::YMM(0).size()]);
 				break;
 			case SuperscalarInstructionType::IADD_RS:
 				if (instr.modShift() > 0) {
@@ -116,8 +114,7 @@ namespace modernRX {
 				break;
 			case SuperscalarInstructionType::IMUL_RCP:
 				asmb.storeImmediate<uint64_t, Register::YMM(0).size()>(instr.reciprocal);
-				asmb.vmovdqa(YMM5, RDX[asmb.dataSize() - Register::YMM(0).size()]);
-				asmb.vpmullq(dst, YMM5);
+				asmb.vpmullq(dst, RDX[asmb.dataSize() - Register::YMM(0).size()]);
 				break;
 			default:
 				std::unreachable();

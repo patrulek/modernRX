@@ -1,5 +1,11 @@
 ## Changelog
 
+### v0.3.6 - 03.10.2023:
+
+JIT-compiler optimizations.
+All optimization decisions made in this version:
+* remove generation of some load (vmovdqa) instructions and use memory operand directly (less instructions)
+
 ### v0.3.5 - 02.10.2023:
 
 Dataset items generation simplification:
