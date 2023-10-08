@@ -271,6 +271,7 @@
     <ClInclude Include="blake2bavx2.hpp" />
     <ClInclude Include="blake2brandom.hpp" />
     <ClInclude Include="bytecode.hpp" />
+    <ClInclude Include="heaparray.hpp" />
     <ClInclude Include="jitcompiler.hpp" />
     <ClInclude Include="dataset.hpp" />
     <ClInclude Include="hasher.hpp" />

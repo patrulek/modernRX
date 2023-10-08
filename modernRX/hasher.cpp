@@ -23,8 +23,8 @@ namespace modernRX {
         this->key.reserve(key.size());
         std::copy(key.begin(), key.end(), std::back_inserter(this->key));
 
-        std::vector<argon2d::Block> cache(Rx_Argon2d_Memory_Blocks);
-        argon2d::fillMemory(cache, key);
+        HeapArray<argon2d::Block, 4096> cache(Rx_Argon2d_Memory_Blocks);
+        argon2d::fillMemory(cache.buffer(), key);
 
         blake2b::Random blakeRNG{ key, 0 };
         Superscalar superscalar{ blakeRNG };
@@ -35,14 +35,14 @@ namespace modernRX {
             compile(program);
         }
 
-        dataset = generateDataset(cache, programs);
+        dataset = generateDataset(cache.view(), programs);
     }
 
     std::array<std::byte, 32> Hasher::run(const_span<std::byte> input) {
         std::array<std::byte, 64> seed{};
         blake2b::hash(seed, input);
 
-        Interpreter interpreter{ seed, dataset };
+        Interpreter interpreter{ seed, dataset.view() };
         return interpreter.execute();
     }
 }

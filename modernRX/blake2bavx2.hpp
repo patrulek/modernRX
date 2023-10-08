@@ -18,7 +18,8 @@ namespace modernRX::blake2b {
 #define ROUND(round, msg, v1, v2, v3, v4, rot24, rot16) do {						\
 /*G1V1*/																			\
 		v1 = intrinsics::avx2::vadd<uint64_t>(v1, v2); 								\
-		v1 = intrinsics::avx2::vadd<uint64_t>(v1, msgPermutation<0, round>(msg));	\
+		v1 = intrinsics::avx2::vadd<uint64_t>(v1, m);								\
+		m = msgPermutation<1, round>(msg);											\
 		v4 = intrinsics::avx2::vxor<uint64_t>(v4, v1);								\
 		v4 = intrinsics::avx2::vshuffleepi32<uint64_t, 0b10'11'00'01>(v4);			\
 		v3 = intrinsics::avx2::vadd<uint64_t>(v3, v4);								\
@@ -26,19 +27,21 @@ namespace modernRX::blake2b {
 		v2 = intrinsics::avx2::vshuffleepi8<uint64_t>(v2, rot24);					\
 /*G2V1*/																			\
 		v1 = intrinsics::avx2::vadd<uint64_t>(v1, v2);								\
-		v1 = intrinsics::avx2::vadd<uint64_t>(v1, msgPermutation<1, round>(msg));	\
+		v1 = intrinsics::avx2::vadd<uint64_t>(v1, m);								\
+		m = msgPermutation<2, round>(msg);											\
 		v4 = intrinsics::avx2::vxor<uint64_t>(v4, v1);								\
 		v4 = intrinsics::avx2::vshuffleepi8<uint64_t>(v4, rot16);					\
 		v3 = intrinsics::avx2::vadd<uint64_t>(v3, v4);								\
 		v2 = intrinsics::avx2::vxor<uint64_t>(v2, v3);								\
 		v2 = intrinsics::avx2::vrorpi64<uint64_t, 63>(v2);							\
 /*DIAG_V1*/																			\
+		v2 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b00'11'10'01>(v2);			\
 		v4 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b10'01'00'11>(v4);			\
 		v3 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b01'00'11'10>(v3);			\
-		v2 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b00'11'10'01>(v2);			\
 /*G1V1*/																			\
 		v1 = intrinsics::avx2::vadd<uint64_t>(v1, v2);								\
-		v1 = intrinsics::avx2::vadd<uint64_t>(v1, msgPermutation<2, round>(msg));	\
+		v1 = intrinsics::avx2::vadd<uint64_t>(v1, m);								\
+		m = msgPermutation<3, round>(msg);											\
 		v4 = intrinsics::avx2::vxor<uint64_t>(v1, v4);								\
 		v4 = intrinsics::avx2::vshuffleepi32<uint64_t, 0b10'11'00'01>(v4);			\
 		v3 = intrinsics::avx2::vadd<uint64_t>(v3, v4);								\
@@ -46,16 +49,17 @@ namespace modernRX::blake2b {
 		v2 = intrinsics::avx2::vshuffleepi8<uint64_t>(v2, rot24);					\
 /*G2V1*/																			\
 		v1 = intrinsics::avx2::vadd<uint64_t>(v1, v2);								\
-		v1 = intrinsics::avx2::vadd<uint64_t>(v1, msgPermutation<3, round>(msg));	\
+		v1 = intrinsics::avx2::vadd<uint64_t>(v1, m);								\
+		m = msgPermutation<0, (round + 1) % 10>(msg);								\
 		v4 = intrinsics::avx2::vxor<uint64_t>(v4, v1);								\
 		v4 = intrinsics::avx2::vshuffleepi8<uint64_t>(v4, rot16);					\
 		v3 = intrinsics::avx2::vadd<uint64_t>(v3, v4);								\
 		v2 = intrinsics::avx2::vxor<uint64_t>(v2, v3);								\
 		v2 = intrinsics::avx2::vrorpi64<uint64_t, 63>(v2);							\
 /*UNDIAG_V1*/																		\
+		v2 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b10'01'00'11>(v2);			\
 		v4 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b00'11'10'01>(v4);			\
 		v3 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b01'00'11'10>(v3);			\
-		v2 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b10'01'00'11>(v2);			\
 } while(0);
 
 

@@ -16,14 +16,14 @@ namespace modernRX::argon2d {
 		[[nodiscard]] consteval uint32_t blocksPerLane() noexcept;
 		[[nodiscard]] consteval uint32_t blocksPerSlice() noexcept;
 		[[nodiscard]] std::array<std::byte, Initial_Hash_Size> initialize(const_span<std::byte> password) noexcept;
-		void makeFirstPass(Memory& memory, const_span<std::byte, 64> hash) noexcept;
-		void makeSecondPass(Memory& memory) noexcept;
+		void makeFirstPass(std::span<Block>, const_span<std::byte, 64> hash) noexcept;
+		void makeSecondPass(std::span<Block>) noexcept;
 
 		template<bool XorBlocks>
 		void mixBlocks(Block& cur_block, const Block& prev_block, const Block& ref_block) noexcept;
 	}
 
-	void fillMemory(Memory& memory, const_span<std::byte> password) noexcept {
+	void fillMemory(std::span<Block> memory, const_span<std::byte> password) noexcept {
 		// Some assumptions were made to optimize this function:
 		//   - This function is only called with memory that size is Rx_Argon2d_Memory_Blocks.
 		//   - This function is only called with password that size is equal to block template.
@@ -154,7 +154,7 @@ namespace modernRX::argon2d {
 		* Beginning of (or ending, depending on PoV) slice is a synchronization point in which threads must synchronize their
 		* states to be able to reference blocks in other lanes from previous (already processed) slices.
 		*/
-		void makeFirstPass(Memory& memory, const_span<std::byte, Initial_Hash_Size> hash) noexcept {
+		void makeFirstPass(std::span<Block> memory, const_span<std::byte, Initial_Hash_Size> hash) noexcept {
 			// Below assertion is very limiting and removing this will not simply make function work with other values.
 			static_assert(Rx_Argon2d_Parallelism == 1, "This simplification requires parallelism to be 1.");
 			ASSERTUME(memory.size() == Rx_Argon2d_Memory_Blocks);
@@ -219,7 +219,7 @@ namespace modernRX::argon2d {
 		*
 		* For more details check https://github.com/P-H-C/phc-winner-argon2/blob/master/argon2-specs.pdf section 3.2 and 3.3.
 		*/
-		void makeSecondPass(Memory& memory) noexcept {
+		void makeSecondPass(std::span<Block> memory) noexcept {
 			// Below assertion is very limiting and removing this will not simply make function work with other values.
 			static_assert(Rx_Argon2d_Parallelism == 1, "This simplification requires parallelism to be 1.");
 			ASSERTUME(memory.size() == Rx_Argon2d_Memory_Blocks);

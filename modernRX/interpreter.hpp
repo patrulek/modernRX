@@ -25,7 +25,7 @@ namespace modernRX {
     public:
         // Creates interpreter instance.
         // Seed is overtaken by interpreter and shouldnt be used after creation.
-        [[nodiscard]] explicit Interpreter(std::span<std::byte, 64> seed, const std::vector<DatasetItem>& dataset);
+        [[nodiscard]] explicit Interpreter(std::span<std::byte, 64> seed, const_span<DatasetItem> dataset);
         
         // Executes chained RandomX programs based on seed provided at creation.
         // Returns result as a 32-bytes hash of final RegisterFile.
@@ -49,7 +49,7 @@ namespace modernRX {
         // Performs steps 5-12 defined by: https://github.com/tevador/RandomX/blob/master/doc/specs.md#462-loop-execution
         void finalizeRegisters(ProgramContext& ctx);
 
-        const std::vector<DatasetItem>& dataset;
+        const_span<DatasetItem> dataset;
         std::array<std::byte, 64> seed;
         Scratchpad scratchpad;
     };

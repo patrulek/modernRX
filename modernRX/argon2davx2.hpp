@@ -17,7 +17,6 @@ namespace modernRX::argon2d {
 // Exception from rule to not use macros.
 // Inlining is crucial for performance and i had hard time to make it work just with functions.
 #define G21(ymm1, ymm2, ymm3, ymm4, ymm5, ymm6, ymm7, ymm8, ymm_rot24, ymm_rot16) do {			\
-																								\
 	ml = intrinsics::avx2::vmul<uint64_t>(ymm1, ymm3);											\
 	ymm1 = intrinsics::avx2::vadd<uint64_t>(ymm1, ymm3);										\
     ymm1 = intrinsics::avx2::vadd<uint64_t>(ymm1, intrinsics::avx2::vadd<uint64_t>(ml, ml));	\
@@ -85,25 +84,25 @@ namespace modernRX::argon2d {
 	G21(ymm1, ymm2, ymm3, ymm4, ymm5, ymm6, ymm7, ymm8, ymm_rot24, ymm_rot16);					\
 	G22(ymm1, ymm2, ymm3, ymm4, ymm5, ymm6, ymm7, ymm8, ymm_rot24, ymm_rot16);					\
 /*DIAG_V1*/																						\
+	ymm3 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b00'11'10'01>(ymm3);						\
 	ymm7 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b10'01'00'11>(ymm7);						\
 	ymm5 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b01'00'11'10>(ymm5);						\
-	ymm3 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b00'11'10'01>(ymm3);						\
 																								\
+	ymm4 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b00'11'10'01>(ymm4);						\
 	ymm8 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b10'01'00'11>(ymm8);						\
 	ymm6 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b01'00'11'10>(ymm6);						\
-	ymm4 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b00'11'10'01>(ymm4);						\
 																								\
 	G21(ymm1, ymm2, ymm3, ymm4, ymm5, ymm6, ymm7, ymm8, ymm_rot24, ymm_rot16);					\
 	G22(ymm1, ymm2, ymm3, ymm4, ymm5, ymm6, ymm7, ymm8, ymm_rot24, ymm_rot16);					\
 																								\
 /*UNDIAG_V1*/																					\
+	ymm3 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b10'01'00'11>(ymm3);						\
 	ymm7 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b00'11'10'01>(ymm7);						\
 	ymm5 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b01'00'11'10>(ymm5);						\
-	ymm3 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b10'01'00'11>(ymm3);						\
 																								\
+	ymm4 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b10'01'00'11>(ymm4);						\
 	ymm8 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b00'11'10'01>(ymm8);						\
 	ymm6 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b01'00'11'10>(ymm6);						\
-	ymm4 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b10'01'00'11>(ymm4);						\
 } while(0);
 
 // Exception from rule to not use macros.

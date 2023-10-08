@@ -110,7 +110,7 @@ namespace modernRX {
         return std::make_pair(ProgramContext{ program }, program);
     }
 
-    Interpreter::Interpreter(std::span<std::byte, 64> seed, const std::vector<DatasetItem>& dataset)
+    Interpreter::Interpreter(std::span<std::byte, 64> seed, const_span<DatasetItem> dataset)
         : dataset(dataset), scratchpad(seed) {
         std::memcpy(this->seed.data(), seed.data(), seed.size());
     }
@@ -268,7 +268,7 @@ namespace modernRX {
         case IMUL_RCP:
         {
             const uint64_t divisor{ instr.imm32 };
-            if (!std::has_single_bit(divisor)) {
+            if (divisor != 0 && !std::has_single_bit(divisor)) {
                 r_src_value = reciprocal(divisor);
                 ctx.rf.r[dst_register] *= r_src_value;
             }

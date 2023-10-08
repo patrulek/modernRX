@@ -5,6 +5,7 @@
 */
 
 #include "dataset.hpp"
+#include "heaparray.hpp"
 #include "interpreter.hpp"
 
 namespace modernRX {
@@ -23,6 +24,6 @@ namespace modernRX {
         void reset(const_span<std::byte> key);
     private:
         std::vector<std::byte> key; // Latest key used for Dataset generation.
-        std::vector<DatasetItem> dataset; // Dataset used for program execution.
+        HeapArray<DatasetItem, 4096> dataset; // Dataset used for program execution.
     };
 }

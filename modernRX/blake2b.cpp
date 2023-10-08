@@ -91,6 +91,9 @@ namespace modernRX::blake2b {
 				avx2::vbcasti128<uint64_t>(ctx.block.data() + 112)
 			};
 
+			// Used in ROUND macro.
+			auto m = msgPermutation<0, 0>(msg);
+
 			// Initialize working vector.
 			auto v1{ avx2::vload256<uint64_t>(ctx.state.data()) }; // {h[0], h[1], h[2], h[3]}
 			auto v2{ avx2::vload256<uint64_t>(ctx.state.data() + 4) }; // {h[4], h[5], h[6], h[7]}

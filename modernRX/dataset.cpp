@@ -15,10 +15,10 @@ namespace modernRX {
         constexpr uint32_t cache_item_count{ argon2d::Memory_Size / sizeof(DatasetItem) };
         static_assert(std::has_single_bit(cache_item_count)); // This is guaranteed by algorithm specification, but let's keep it here just in case.
 
-        [[nodiscard]] std::array<DatasetItem, 4> generate4Items(const argon2d::Memory& cache, const_span<SuperscalarProgram, Rx_Cache_Accesses> programs, const avx2::ymm<uint64_t> ymmitem0, avx2::ymm<uint64_t> cache_indexes) noexcept;
+        [[nodiscard]] std::array<DatasetItem, 4> generate4Items(const_span<argon2d::Block> cache, const_span<SuperscalarProgram, Rx_Cache_Accesses> programs, const avx2::ymm<uint64_t> ymmitem0, avx2::ymm<uint64_t> cache_indexes) noexcept;
     }
 
-    std::vector<DatasetItem> generateDataset(const argon2d::Memory& cache, const_span<SuperscalarProgram, Rx_Cache_Accesses> programs) {
+    HeapArray<DatasetItem, 4096> generateDataset(const_span<argon2d::Block> cache, const_span<SuperscalarProgram, Rx_Cache_Accesses> programs) {
         // It can be assumed that cache size is static and equal to Rx_Argon2d_Memory_Blocks.
         ASSERTUME(cache.size() == Rx_Argon2d_Memory_Blocks);
 
@@ -31,7 +31,7 @@ namespace modernRX {
         const uint32_t dataset_alignment{ thread_count * 4 * sizeof(DatasetItem) };
         const uint32_t dataset_padding_size{ dataset_alignment - ((Rx_Dataset_Base_Size + Rx_Dataset_Extra_Size) % dataset_alignment) };
         const uint32_t Dataset_Items_Count{ (Rx_Dataset_Base_Size + Rx_Dataset_Extra_Size + dataset_padding_size) / sizeof(DatasetItem) };
-        std::vector<DatasetItem> memory(Dataset_Items_Count);
+        HeapArray<DatasetItem, 4096> memory(Dataset_Items_Count);
 
         const uint32_t items_per_thread{ Dataset_Items_Count / thread_count }; // Number of items per additional thread.
 
@@ -68,11 +68,11 @@ namespace modernRX {
         std::vector<std::thread> threads(thread_count);
 
         for (uint32_t tid = 1; tid < thread_count; ++tid) {
-            threads[tid] = std::thread{ task, tid, std::span<DatasetItem>{ memory.begin() + tid * items_per_thread, items_per_thread } };
+            threads[tid] = std::thread{ task, tid, memory.buffer(tid * items_per_thread, items_per_thread) };
         }
 
         // Execute task on main thread.
-        task(0, std::span<DatasetItem>{ memory.begin(), items_per_thread });
+        task(0, memory.buffer(0, items_per_thread));
 
         // Wait for threads to finish.
         for (uint64_t tid = 1; tid < thread_count; ++tid) {
@@ -85,7 +85,7 @@ namespace modernRX {
     namespace {
         // Calculates 4-batch DatasetItem (4x64-bytes of data) according to https://github.com/tevador/RandomX/blob/master/doc/specs.md#73-dataset-block-generation.
         // Enhanced by AVX2 intrinsics.
-        std::array<DatasetItem, 4> generate4Items(const argon2d::Memory& cache, const_span<SuperscalarProgram, Rx_Cache_Accesses> programs, const avx2::ymm<uint64_t> ymmitem0, avx2::ymm<uint64_t> cache_indexes) noexcept {
+        std::array<DatasetItem, 4> generate4Items(const_span<argon2d::Block> cache, const_span<SuperscalarProgram, Rx_Cache_Accesses> programs, const avx2::ymm<uint64_t> ymmitem0, avx2::ymm<uint64_t> cache_indexes) noexcept {
             // It can be assumed that cache size is fixed and equal to Rx_Argon2d_Memory_Blocks.
             ASSERTUME(cache.size() == Rx_Argon2d_Memory_Blocks);
 

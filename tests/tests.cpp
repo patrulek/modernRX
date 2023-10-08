@@ -234,8 +234,8 @@ void testArgon2dBlake2bHash() {
 }
 
 void testArgon2dFillMemory() {
-	std::vector<argon2d::Block> cache(Rx_Argon2d_Memory_Blocks);
-	argon2d::fillMemory(cache, key);
+	HeapArray<argon2d::Block, 4096> cache(Rx_Argon2d_Memory_Blocks);
+	argon2d::fillMemory(cache.buffer(), key);
 
 	using Argon2dBlock_64 = std::array<uint64_t, 128>;
 	auto b1 = std::bit_cast<Argon2dBlock_64>(cache[0]);
@@ -246,7 +246,7 @@ void testArgon2dFillMemory() {
 	testAssert(b2[29] == 0xf1b62fe6210bf8b1);
 	testAssert(b3[127] == 0x1f47f056d05cd99b);
 
-	argon2d::fillMemory(cache, block_template);
+	argon2d::fillMemory(cache.buffer(), block_template);
 
 	b1 = std::bit_cast<Argon2dBlock_64>(cache[0]);
 	b2 = std::bit_cast<Argon2dBlock_64>(cache[12253]);
@@ -461,8 +461,8 @@ void testSuperscalarGenerate() {
 }
 
 void testDatasetGenerate() {
-	std::vector<argon2d::Block> cache(Rx_Argon2d_Memory_Blocks);
-	argon2d::fillMemory(cache, key);
+	HeapArray<argon2d::Block, 4096> cache(Rx_Argon2d_Memory_Blocks);
+	argon2d::fillMemory(cache.buffer(), key);
 	blake2b::Random blakeRNG{ key, 0 };
 
 	Superscalar superscalar{ blakeRNG };
@@ -472,7 +472,7 @@ void testDatasetGenerate() {
 		compile(ssPrograms[i]);
 	}
 
-	const auto dt{ generateDataset(cache, ssPrograms) };
+	const auto dt{ generateDataset(cache.view(), ssPrograms)};
 
 	testAssert(dt[0][0] == 0x680588a85ae222db);
 	testAssert(dt[2][1] == 0xbbe8d699a7c504dc);

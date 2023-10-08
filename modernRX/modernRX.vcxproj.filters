@@ -111,6 +111,9 @@
     <ClInclude Include="virtualmem.hpp">
       <Filter>utils</Filter>
     </ClInclude>
+    <ClInclude Include="heaparray.hpp">
+      <Filter>utils</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="blake2b.cpp">

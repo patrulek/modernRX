@@ -101,7 +101,7 @@ constexpr auto digest_size{ 64 };
 std::array<std::byte, 64> data;
 std::array<std::byte, digest_size> hash;
 std::vector<std::byte> hash_long(1024, std::byte(0));
-std::vector<argon2d::Block> memory;
+HeapArray<argon2d::Block, 4096> memory(Rx_Argon2d_Memory_Blocks);
 std::vector<std::byte> aes_input;
 std::vector<std::byte> program_input;
 std::array<SuperscalarProgram, 8> programs;
@@ -123,7 +123,6 @@ std::array<std::byte, 76> block_template{ byte_array(
 int main() {
 	std::println("Initializing benchmarks...");
 
-	memory.resize(Rx_Argon2d_Memory_Blocks);
 	aes_input.resize(2 * 1024 * 1024);
 	program_input.resize(2176);
 
@@ -163,7 +162,7 @@ void blake2bLongBenchmark() {
 }
 
 void argon2dFillMemoryBenchmark() {
-	argon2d::fillMemory(memory, block_template);
+	argon2d::fillMemory(memory.buffer(), block_template);
 }
 
 void aes1rHashBenchmark() {
@@ -183,7 +182,7 @@ void superscalarGenerateBenchmark() {
 }
 
 void datasetGenerateBenchmark() {
-	auto _ { generateDataset(memory, programs) };
+	auto _ { generateDataset(memory.view(), programs)};
 }
 
 void hasherBenchmark() {

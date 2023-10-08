@@ -30,12 +30,11 @@ namespace modernRX::argon2d {
 	inline constexpr uint32_t Memory_Size{ Rx_Argon2d_Memory_Blocks * Block_Size }; // Memory size in bytes. This value is fixed for all possible argon2d::Memory objects.
 
 	using Block = std::array<std::byte, Block_Size> alignas(64);
-	using Memory = std::vector<Block>;
 
 	// Performs Argon2d algorithm to fill given memory blocks according to given input data and params.
 	//
 	// Memory is the output parameter and its size is always equal to Rx_Argon2d_Memory_Blocks.
 	//
 	// Password is an input parameter of any size.
-	void fillMemory(Memory& memory, const_span<std::byte> password) noexcept;
+	void fillMemory(std::span<Block>, const_span<std::byte> password) noexcept;
 }

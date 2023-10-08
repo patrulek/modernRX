@@ -1,5 +1,15 @@
 ## Changelog
 
+### v0.3.7 - 08.10.2023:
+
+Dataset generation optimizations.
+All optimization decisions made in this version:
+* add heaparray container for fixed-sized std::vector replacement
+* optimize blake2b/argon2d instruction order
+
+Bug fixes:
+* fix interpreter bug with reciprocals
+
 ### v0.3.6 - 03.10.2023:
 
 JIT-compiler optimizations.
