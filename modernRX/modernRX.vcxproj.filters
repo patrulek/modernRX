@@ -102,9 +102,6 @@
     <ClInclude Include="avx2.hpp">
       <Filter>utils</Filter>
     </ClInclude>
-    <ClInclude Include="jitcompiler.hpp">
-      <Filter>superscalar</Filter>
-    </ClInclude>
     <ClInclude Include="assembler.hpp">
       <Filter>utils</Filter>
     </ClInclude>
@@ -113,6 +110,9 @@
     </ClInclude>
     <ClInclude Include="heaparray.hpp">
       <Filter>utils</Filter>
+    </ClInclude>
+    <ClInclude Include="jitcompiler.hpp">
+      <Filter>dataset</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -153,7 +153,7 @@
       <Filter>modernRX</Filter>
     </ClCompile>
     <ClCompile Include="jitcompiler.cpp">
-      <Filter>superscalar</Filter>
+      <Filter>dataset</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

@@ -7,13 +7,10 @@
 * Uses Blake2bRandom as a source of random numbers.
 */
 
-#include <vector>
-
 #include "avx2.hpp"
 #include "blake2brandom.hpp"
 #include "instructionset.hpp"
 #include "randomxparams.hpp"
-#include "virtualmem.hpp"
 
 namespace modernRX {
 	inline constexpr uint32_t Register_Count{ 8 }; // Number of registers used in CPU simulation.
@@ -21,9 +18,6 @@ namespace modernRX {
 
 	// Alias for register index type.
 	using reg_idx_t = uint8_t;
-
-	// JIT program type.
-	using JITSuperscalarProgram = void(*)(std::span<intrinsics::avx2::ymm<uint64_t>, Register_Count>);
 
 	// Holds state for a single superscalar instruction.
 	struct SuperscalarInstruction {
@@ -108,7 +102,6 @@ namespace modernRX {
 		std::array<SuperscalarInstruction, Rx_Superscalar_Max_Program_Size> instructions{}; // Superscalar instructions.
 		uint32_t size{ 0 }; // Number of instructions in buffer.
 		reg_idx_t address_register{ 0 }; // Address register used for dataset generation.
-		jit_function_ptr<JITSuperscalarProgram> jit_program{ nullptr }; // Pointer to JIT compiled program.
 	};
 
 	// Defines superscalar program generator.
@@ -144,12 +137,4 @@ namespace modernRX {
 
 		blake2b::Random blakeRNG;
 	};
-
-	// Executes JIT-compiled program with batch of 4 DatasetItem's viewed as registers.
-	// Layout of registers is as follows:
-	// A0 B0 C0 D0
-	// A1 B1 C1 D1
-	// ...
-	// A7 B7 C7 D7
-	void executeSuperscalar(std::span<intrinsics::avx2::ymm<uint64_t>, Register_Count> registers, const SuperscalarProgram& program) noexcept;
 }

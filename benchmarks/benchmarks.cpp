@@ -10,7 +10,6 @@
 #include "blake2b.hpp"
 #include "dataset.hpp"
 #include "hasher.hpp"
-#include "jitcompiler.hpp"
 #include "superscalar.hpp"
 
 struct BenchmarkResult {
@@ -128,7 +127,6 @@ int main() {
 
 	for (auto &program : programs) {
 		program = superscalar.generate();
-		compile(program);
 	}
 
 	hasher.reset(span_cast<std::byte>(seed));

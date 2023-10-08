@@ -5,41 +5,45 @@
 * Compiler uses AVX2 instructions. 
 */
 
+#include <span>
 #include <vector>
 
+#include "randomxparams.hpp"
+#include "virtualmem.hpp"
 
 namespace modernRX {
     struct SuperscalarProgram;
 
-    // JIT-compile a superscalar program using AVX2 instructions.
+    // DatasetItem defines single cache and dataset item used during generation. Must be 64-bytes size.
+    using DatasetItem = std::array<uint64_t, 8> alignas(64);
+    static_assert(sizeof(DatasetItem) == 64);
+
+    // RCX - submemory span, RDX - cache_ptr, R8 - cache_item_mask, R9 - start_item
+    using JITDatasetItemProgram = void(*)(std::span<DatasetItem> submemory, const uint64_t cache_ptr, const uint64_t cache_item_mask, const uint64_t start_item);
+
+    // JIT-compile superscalar programs into a 4-batch DatasetItem generation function.
     // Important to note: 
-    //   * prologue includes pushing rax, rdx and ymm0-ymm15 registers to stack to not mess up with the caller's state.
-    //   * epilogue includes popping rax, rdx and ymm0-ymm15 registers from stack to restore the caller's state.
-    //   * compilation does not apply to dataset item initialization and finalization; it compiles only superscalar program's instructions.
-    //   * expects dataset items to be passed in RCX register.
-    //   * register RDX is used as pointer to immediate values.
-    //   * register YMM6 is zeroed out during whole program execution.
-    //   * register YMM7 is used to hold 32-bit mask const for mul instructions.
-    //   * registers YMM0-YMM5 and RAX are used for temporary values, registers YMM8-YMM15 are used to hold dataset items.
+    //   * prologue includes pushing all used registers to stack to not mess up with the caller's state.
+    //   * epilogue includes popping allused registers from stack to restore the caller's state.
+    //   * compilation does apply to dataset item initialization and finalization; it JIT-compiles superscalar programs into whole function.
+    //   * expects such arguments passed to function: RCX - submemory span, RDX - cache_ptr, R8 - cache_item_mask, R9 - start_item
     // Whole program will look like this:
-    // JitProgram(registers):                               // registers is a vector of 4 dataset items (passed as vector of 8x32 byte values) that a single call to the program will process;
-    //                                                      // contiguous 32-byte value stores the same 8-byte register for each of the 4 items
-    //                                                      // address of registers is passed in rcx register
-    //   push rax                                           // push gpr registers
-    //   sub rsp, 0x200                                     // allocate 512 bytes for 16 ymm registers
-    //   vmovdqu ymmword ptr [rsp + offset], ymm0-ymm15     // push ymm registers
-    //   vmovdqa ymm8-ymm15, ymmword ptr [rcx + offset]     // load 32-byte values from memory to ymm registers
-    //   program's 1st instruction                          // compiled 1st instruction
-    //   program's 2nd instruction                          // compiled 2st instruction
-    //   ...                                                // compile all other instructions
-    //   program's last instruction                         // compiled last instruction
-    //   vmovdqa ymmword ptr [rcx + offset], ymm8-ymm15     // store 32-byte values from ymm registers to memory
-    //   vmovdqu ymm0-ymm15, ymmword ptr [rsp + offset]     // pop ymm registers
-    //   add rsp, 0x200                                     // restore stack pointer
-    //   pop rax                                            // pop gpr registers
-    //   ret                                                // return
+    // JitProgram(submemory, cache_ptr, cache_item_mask, start_item):  
+    //   push gpr and ymm registers
+    //   store immediate values in data section
+    //   set register values
+    //   start loop over whole submemory:
+    //     initialize 4-batch of dataset items
+    //     JIT-compile 1st program  (prefetch cache items -> execute all program instructions -> tranpose dataset items to xor with cache_items -> transpose back)
+    //     JIT-compile 2nd program
+    //     ...
+    //     JIT-compile last program ( ... -> ... -> ... -> instead of transposing back, store dataset items to submemory)
+    //     decrease loop counter
+    //   pop gpr and ymm registers
+    //   return
     // 
 	// Makes the compiled code executable and stores a pointer to it in the program.
     // May throw.
-    void compile(SuperscalarProgram& program);
+
+    jit_function_ptr<JITDatasetItemProgram> compile(const_span<SuperscalarProgram, Rx_Cache_Accesses> programs);
 }

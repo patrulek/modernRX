@@ -1,13 +1,9 @@
-#include <utility>
+#include <vector>
 
-#include "avx2.hpp"
-#include "intrinsics.hpp"
 #include "reciprocal.hpp"
 #include "superscalar.hpp"
 
 namespace modernRX {
-	using namespace intrinsics;
-
 	namespace {
 		constexpr reg_idx_t Register_Needs_Displacement{ 5 }; // This register cannot be destination for IADD_RS.
 		constexpr uint32_t Rx_Superscalar_Op_Max_Latency{ maxOpLatency(isa) }; // Maximum latency of all instructions (in cycles of reference CPU).
@@ -377,10 +373,6 @@ namespace modernRX {
 
 	uint8_t Superscalar::selectRegister(const_span<reg_idx_t> available_registers) noexcept {
 		return available_registers.size() == 1 ? available_registers[0] : available_registers[blakeRNG.getUint32() % available_registers.size()];
-	}
-
-	void executeSuperscalar(std::span<avx2::ymm<uint64_t>, Register_Count> registers, const SuperscalarProgram& program) noexcept {
-		std::invoke(*program.jit_program, registers);
 	}
 
 	namespace {

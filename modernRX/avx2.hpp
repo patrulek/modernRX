@@ -88,52 +88,6 @@ namespace modernRX::intrinsics::avx2 {
     }
 
     template<typename T>
-    [[nodiscard]] constexpr ymm<T> vmul64(const ymm<T> x, const ymm<T> y) noexcept {
-        if constexpr (std::is_same_v<T, uint64_t>) {
-            const auto a1{ _mm256_mul_epu32(x, y) };    // (x & 0xffffffff) * (y & 0xffffffff)
-            const auto a2{ _mm256_srli_epi64(x, 32) };  // (x >> 32)
-            const auto a3{ _mm256_mul_epu32(a2, y) };   // (x >> 32) * (y & 0xffffffff)
-            const auto a4{ _mm256_srli_epi64(y, 32) };  // (y >> 32)
-            const auto a5{ _mm256_mul_epu32(x, a4) };   // (x & 0xffffffff) * (y >> 32)
-            auto high{ _mm256_add_epi64(a3, a5) };      // (x >> 32) * (y & 0xffffffff) + (x & 0xffffffff) * (y >> 32)
-            high = _mm256_slli_epi64(high, 32);         // ((x >> 32) * (y & 0xffffffff) + (x & 0xffffffff) * (y >> 32)) << 32
-            return _mm256_add_epi64(a1, high);          // (x & 0xffffffff) * (y & 0xffffffff) + ((x >> 32) * (y & 0xffffffff) + (x & 0xffffffff) * (y >> 32)) << 32
-        } else {
-            static_assert(!sizeof(T), "the only supported type for this operation is: uint64");
-        }
-    }
-
-    constexpr void vtranspose8x4pi64(ymm<uint64_t>(&mx)[8]) noexcept {
-        for (int i = 0; i < 8; i += 2) {
-            auto tmp1 = mx[i];
-            mx[i] = _mm256_permute2x128_si256(mx[i + 1], mx[i], 0x02);
-            mx[i + 1] = _mm256_permute2x128_si256(mx[i + 1], tmp1, 0x13);
-        }
-
-        for (int i = 0; i < 8; i+=4) {
-            auto tmp1 = mx[i];
-            mx[i] = _mm256_unpacklo_epi64(mx[i], mx[i+2]);
-            mx[i] = _mm256_permute4x64_epi64(mx[i], 0b11'01'10'00);
-            mx[i+2] = _mm256_unpackhi_epi64(tmp1, mx[i+2]);
-            mx[i+2] = _mm256_permute4x64_epi64(mx[i+2], 0b11'01'10'00);
-
-            tmp1 = mx[i + 1];
-            mx[i+1] = _mm256_unpacklo_epi64(mx[i+1], mx[i+3]);
-            mx[i+1] = _mm256_permute4x64_epi64(mx[i+1], 0b11'01'10'00);
-            mx[i+3] = _mm256_unpackhi_epi64(tmp1, mx[i+3]);
-            mx[i+3] = _mm256_permute4x64_epi64(mx[i+3], 0b11'01'10'00);
-        }
-
-        auto tmp1 = mx[1];
-        mx[1] = mx[4];
-        mx[4] = tmp1;
-
-        tmp1 = mx[3];
-        mx[3] = mx[6];
-        mx[6] = tmp1;
-    }
-
-    template<typename T>
     [[nodiscard]] constexpr ymm<T> vxor(const ymm<T> x, const ymm<T> y) noexcept {
         if constexpr (std::is_same_v<T, uint64_t>) {
             return _mm256_xor_si256(x, y);

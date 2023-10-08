@@ -32,7 +32,6 @@ namespace modernRX {
         std::array<SuperscalarProgram, programs_count> programs;
         for (auto& program : programs) {
             program = superscalar.generate();
-            compile(program);
         }
 
         dataset = generateDataset(cache.view(), programs);

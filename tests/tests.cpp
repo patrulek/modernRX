@@ -11,7 +11,6 @@
 #include "cast.hpp"
 #include "dataset.hpp"
 #include "hasher.hpp"
-#include "jitcompiler.hpp"
 #include "randomxparams.hpp"
 #include "reciprocal.hpp"
 #include "superscalar.hpp"
@@ -469,12 +468,18 @@ void testDatasetGenerate() {
 	std::array<SuperscalarProgram, 8> ssPrograms;
 	for (auto i = 0; i < Rx_Cache_Accesses; i++) {
 		ssPrograms[i] = superscalar.generate();
-		compile(ssPrograms[i]);
 	}
 
 	const auto dt{ generateDataset(cache.view(), ssPrograms)};
 
 	testAssert(dt[0][0] == 0x680588a85ae222db);
+	testAssert(dt[0][1] == 0x91c9c13d90ff16f4);
+	testAssert(dt[0][2] == 0x2c0c58361479b4a8);
+	testAssert(dt[0][3] == 0x26f7a38c6ced78b7);
+	testAssert(dt[0][4] == 0xdb4d552b31374355);
+	testAssert(dt[0][5] == 0xff7dd9fe87d212d1);
+	testAssert(dt[0][6] == 0x36980e8ed41f6eb9);
+	testAssert(dt[0][7] == 0x7ff858e02ad8f271);
 	testAssert(dt[2][1] == 0xbbe8d699a7c504dc);
 	testAssert(dt[3][7] == 0x7908e227a0effb29);
 	testAssert(dt[213][7] == 0x81bcac0872ee9d29);

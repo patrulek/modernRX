@@ -29,12 +29,14 @@ public:
     HeapArray(const HeapArray&) = delete;
     constexpr HeapArray& operator=(const HeapArray&) = delete;
     [[nodiscard]] HeapArray(HeapArray&& other) noexcept {
+        this->~HeapArray();
         data_ = other.data_;
         size_ = other.size_;
         other.data_ = nullptr;
         other.size_ = 0;
     }
     constexpr HeapArray& operator=(HeapArray&& other) noexcept {
+        this->~HeapArray();
         data_ = other.data_;
         size_ = other.size_;
         other.data_ = nullptr;

@@ -1,5 +1,16 @@
 ## Changelog
 
+### v0.3.8 - 08.10.2023:
+
+JIT-compiler optimizations.
+All optimization decisions made in this version:
+* compile all superscalar programs as single function
+* code around superscalar programs (dataset item generation function) was optimized with hand-written assembly to align better with superscalar programs
+
+Lessons learned:
+* writing hand-written assembly is hard and time-consuming
+* debugging and profiling JIT-compiled code is even harder
+
 ### v0.3.7 - 08.10.2023:
 
 Dataset generation optimizations.
