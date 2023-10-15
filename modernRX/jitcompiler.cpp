@@ -18,15 +18,15 @@ namespace modernRX {
 		// I. Prolog
 		// 1) Push registers to stack.
 		asmb.push(RAX, RBX, RCX, RDX, RSI, RDI, R10, R13, R14, R15, YMM0, YMM1, YMM2, YMM3, YMM4, YMM5, YMM6, YMM7, YMM8, YMM9, YMM10, YMM11, YMM12, YMM13, YMM14, YMM15);
-		// 2) Declare local variable (cache_indexes).
-		asmb.sub(RSP, 0x20); // 1x ymm registers
+		// 2) Declare local variable (cache_indexes, vpmulhuq mask, cache_item_mask).
+		asmb.sub(RSP, 0x60); // 3x ymm registers
 		// 3) Move data ptr to RBX.
 		asmb.mov(RBX, reinterpret_cast<uintptr_t>(asmb.dataPtr()));
 		// 4) Prepare const values.
 		auto v4q_item_numbers_add = asmb.storeVector4q<uint64_t, RBX>(1, 2, 3, 4); // item_number adder - RBX[0]
 		auto v4q_mul_consts = asmb.storeImmediate<uint64_t, Register::YMM(0).size(), RBX>(6364136223846793005ULL); // mul_consts - RBX[32]
 		auto v4q_cache_indexes_add = asmb.storeVector4q<uint64_t, RBX>(0, 1, 2, 3); // cache_indexes adder - RBX[64]
-		auto v4q_mul_mask = asmb.storeImmediate<uint64_t, Register::YMM(0).size(), RBX>(0xffffffff); // mul mask - RBX[128]
+		auto v4q_mul_mask = asmb.storeImmediate<uint64_t, Register::YMM(0).size(), RBX>(0xffffffff00000000); // vpmullq mask - RBX[128]
 		auto v4q_add_consts = asmb.storeImmediate<uint64_t, Register::YMM(0).size(), RBX>(7009800821677620404ULL); // add_consts - RBX[160]
 		auto v4q_item_numbers_step = asmb.storeImmediate<uint64_t, Register::YMM(0).size(), RBX>(4); // item_number adder - RBX[192]
 
@@ -41,18 +41,27 @@ namespace modernRX {
 		asmb.vpbroadcastq(YMM6, XMM6);
 		auto& cache_ptr_reg = YMM6;
 
-
+		// Put cache_item_mask on stack.
+		asmb.vmovq(XMM3, R08);
+		asmb.vpbroadcastq(YMM3, XMM3);
+		asmb.vmovdqu(RSP[64], YMM3);
+		auto& cache_item_mask = RSP[64];
+		// Put vpmulhuq multiplication mask on stack.
+		asmb.mov(RAX, 0x00000000ffffffff);
+		asmb.vmovq(XMM5, RAX);
+		asmb.vpbroadcastq(YMM5, XMM5);
+		asmb.vmovdqu(RSP[32], YMM5);
 		// 8) Set initial ymmitem0 in YMM7. ymmitem0 = (v4q(start_item) + v4q_item_numbers_add) * v4q_mul_consts
 		//    YMM7 will never be used for anything else.
-		asmb.vmovq(XMM3, R09);
-		asmb.vpbroadcastq(YMM3, XMM3);
-		asmb.vpaddq(YMM2, YMM3, v4q_item_numbers_add);
-		asmb.vpxor(YMM5, YMM5, YMM5);
+		asmb.vmovq(XMM5, R09);
+		asmb.vpbroadcastq(YMM5, XMM5);
+		asmb.vpaddq(YMM2, YMM5, v4q_item_numbers_add);
+		asmb.vmovdqa(YMM4, v4q_mul_mask);
 		asmb.vpmullq(YMM7, YMM2, v4q_mul_consts);
 		auto& ymmitem0 = YMM7;
 		// 9) Initialize cache indexes. cache_indexes = v4q(start_item) + v4q_cache_indexes_add
 		//    This is the only local variable that will be used.
-		asmb.vpaddq(YMM2, YMM3, v4q_cache_indexes_add);
+		asmb.vpaddq(YMM2, YMM5, v4q_cache_indexes_add);
 		asmb.vmovdqu(RSP[0], YMM2);
 		auto& cache_indexes_stack = RSP[0];
 		auto& cache_indexes_reg = YMM2;
@@ -86,9 +95,10 @@ namespace modernRX {
 		// 12) Execute all programs.
 		for (uint32_t i = 0; i < 8; ++i) {
 			const auto& program = programs[i];
-			// Set cache item mask.
-			asmb.vmovq(XMM3, R08);
-			asmb.vpbroadcastq(YMM3, XMM3);
+
+			// 16) Prepare registers for program execution.
+			asmb.vmovdqa(YMM4, v4q_mul_mask); // Set vpmullq mask in YMM4.
+			asmb.vpxor(YMM5, YMM5, YMM5); // vpxor_ret
 
 			// 13) Set cache item indexes.
 			if (i == 0) {
@@ -115,9 +125,6 @@ namespace modernRX {
 			asmb.vpextrq(R15, XMM1, 1);
 			asmb.prefetchnta(R15[0]);
 
-			// 16) Prepare registers for program execution.
-			asmb.vpxor(YMM5, YMM5, YMM5); // Zero out YMM5.
-			asmb.vmovdqa(YMM4, v4q_mul_mask); // Set mul mask in YMM4.
 
 			// 17) Execute every single instruction of program.
 			for (const SuperscalarInstruction& instr : program.instructions) {
@@ -195,6 +202,9 @@ namespace modernRX {
 				asmb.vperm2i128(YMM13, YMM0, YMM1, 0x20);  // A5 B5 C5 D5
 				asmb.vperm2i128(YMM15, YMM0, YMM1, 0x31);  // A7 B7 C7 D7
 			}
+
+			// Set cache item mask.
+			asmb.vmovdqu(YMM3, cache_item_mask);
 		}
 
 		// III. End of loop.
@@ -212,8 +222,8 @@ namespace modernRX {
 		asmb.jne("loop");
 
 		// IV. Epilogue
-		// 26) Destroy local variable (cache_indexes).
-		asmb.add(RSP, 0x20);
+		// 26) Destroy local variable (cache_indexes, vpmulhuq mask, cache_item_mask).
+		asmb.add(RSP, 0x60);
 		// 27) Pop registers from stack.
 		asmb.pop(YMM15, YMM14, YMM13, YMM12, YMM11, YMM10, YMM9, YMM8, YMM7, YMM6, YMM5, YMM4, YMM3, YMM2, YMM1, YMM0, R15, R14, R13, R10, RDI, RSI, RDX, RCX, RBX, RAX);
 		// 28) Return.

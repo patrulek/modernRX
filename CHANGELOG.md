@@ -1,5 +1,16 @@
 ## Changelog
 
+### v0.3.9 - 16.10.2023:
+
+JIT-compiler optimizations.
+All optimization decisions made in this version:
+* optimize IMUL_R/IMUL_RCP by changing algorithm (more instructions, but less latency)
+* reorder some instructions
+
+Lessons learned:
+* profiling showed that after replacing microcoded VPHADDD instruction with simpler ones, fetch-to-retire latency decreased and IPC increased, slightly improving overall performance
+* microcoded instructions may stall frontend which could be the case here
+
 ### v0.3.8 - 08.10.2023:
 
 JIT-compiler optimizations.
