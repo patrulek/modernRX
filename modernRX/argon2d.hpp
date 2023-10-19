@@ -29,7 +29,7 @@ namespace modernRX::argon2d {
 	inline constexpr uint32_t Block_Size{ 1024 }; // Memory block size in bytes.
 	inline constexpr uint32_t Memory_Size{ Rx_Argon2d_Memory_Blocks * Block_Size }; // Memory size in bytes. This value is fixed for all possible argon2d::Memory objects.
 
-	using Block = std::array<std::byte, Block_Size> alignas(64);
+	using Block = std::array<std::byte, Block_Size>;
 
 	// Performs Argon2d algorithm to fill given memory blocks according to given input data and params.
 	//

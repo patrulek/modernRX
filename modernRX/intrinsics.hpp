@@ -33,4 +33,11 @@ namespace modernRX::intrinsics {
 			return reinterpret_cast<Ret>(ptr);
 		}
     }
+
+	template<PrefetchMode Mode = PrefetchMode::NTA, size_t CacheLines = 1>
+	inline void prefetch(const void* ptr) {
+		for (size_t i = 0; i < CacheLines; ++i) {
+            _mm_prefetch(reinterpret_cast<const char*>(ptr) + i * 64, static_cast<int>(Mode));
+        }
+	}
 }

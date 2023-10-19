@@ -1,5 +1,16 @@
 ## Changelog
 
+### v0.3.10 - 20.10.2023:
+
+Argon2d optimizations.
+All optimization decisions made in this version:
+* add prefetching of referenced blocks in Argon2d
+* reorder some instructions in Argon2d
+
+Improvements:
+* simplify Argon2d functions for (already existed) single lane assumption
+* update Argon2d documentation
+
 ### v0.3.9 - 16.10.2023:
 
 JIT-compiler optimizations.

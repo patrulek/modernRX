@@ -7,11 +7,19 @@
 #include "avx2.hpp"
 #include "blake2b.hpp"
 #include "cast.hpp"
+#include "intrinsics.hpp"
 
 namespace modernRX::argon2d {
 	namespace {
 		constexpr uint32_t Initial_Hash_Size{ 64 }; 
 		constexpr uint32_t Sync_Points{ 4 }; // Number of equally long lane slices. End of slice can be treated as synchronization point.
+
+		// Holds information about block indexes used in mixing function.
+		struct BlockContext {
+			uint64_t cur_idx;
+			uint64_t prev_idx;
+			uint64_t ref_idx;
+		};
 
 		[[nodiscard]] consteval uint32_t blocksPerLane() noexcept;
 		[[nodiscard]] consteval uint32_t blocksPerSlice() noexcept;
@@ -20,7 +28,10 @@ namespace modernRX::argon2d {
 		void makeSecondPass(std::span<Block>) noexcept;
 
 		template<bool XorBlocks>
-		void mixBlocks(Block& cur_block, const Block& prev_block, const Block& ref_block) noexcept;
+		void mixBlocks(std::span<Block> memory, BlockContext& ctx) noexcept;
+
+		template<bool XorBlocks>
+		void calcRefIndex(std::span<Block> memory, BlockContext& ctx, const uint32_t tmp_value) noexcept;
 	}
 
 	void fillMemory(std::span<Block> memory, const_span<std::byte> password) noexcept {
@@ -126,33 +137,29 @@ namespace modernRX::argon2d {
 		}
 
 		/*
-		* Performs first iteration of filling memory in three steps:
+		* Performs first iteration of filling memory in two steps:
 		* 1. Initializes first three blocks of every memory lane, because they are special cases:
 		*	block[0] = Blake2HashLong(hash .. 0 .. lane_index)
 		*	block[1] = Blake2HashLong(hash .. 1 .. lane_index)
 		*	block[2] = Mix(block[0], block[1])
-		* 2. Initializes the other blocks of the first slice of every lane.
+		* 2. Initializes all other blocks in a lane.
 		*	block[n] = Mix(block[n-1], block[rand()%(n-1)])
 		* 
 		*   where `rand() % (n-1)` is defined by https://github.com/P-H-C/phc-winner-argon2/blob/master/argon2-specs.pdf section 3.3.
 		*   In general in this step, the referenced random block may be one of the blocks already computed in this step or step 1.
-		* 3. Initializes blocks in the next three slices of every lane.
-		*	General rule for getting random blocks in this step stays the same, except that referenced blocks
-		*   may belong to other lanes, than the currently processing lane, however if referenced block is taken
-		*   from another lane it cannot be block from current slice.
 		*
 		* Memory is arranged like this (every slice has equal number of blocks):
 		*
 		*         || slice[0]                  || slice[1]                  || slice[2]                  || slice[3]                   |
+		*         || ------------------------- || ------------------------- || ------------------------- || -------------------------- |
 		*         || block[0] | block[1] | ... || .... | .... | .... | .... || .... | .... | .... | .... || ... | ... | ... | block[n] |
 		* ========||==========|==========|=====||======|======|======|======||======|======|======|======||=====|=====|=====|==========|
 		* lane[0] || aaaaaaaa | bbbbbbbb | ... || .... | .... | .... | .... || .... | .... | .... | .... || ... | ... | ... | cccccccc |
-		* lane[1] || xxxxxxxx | yyyyyyyy | ... || .... | .... | .... | .... || .... | .... | .... | .... || ... | ... | ... | zzzzzzzz |
-		* ....... || ........ | ........ | ... || .... | .... | .... | .... || .... | .... | .... | .... || ... | ... | ... | ........ |
-		* lane[p] || ........ | ........ | ... || .... | .... | .... | .... || .... | .... | .... | .... || ... | ... | ... | ........ |
 		* 
 		* Beginning of (or ending, depending on PoV) slice is a synchronization point in which threads must synchronize their
 		* states to be able to reference blocks in other lanes from previous (already processed) slices.
+		*
+		* Function was simplified with assumption that parallelism is always 1, thus no synchronization is needed because there is always only one thread.
 		*/
 		void makeFirstPass(std::span<Block> memory, const_span<std::byte, Initial_Hash_Size> hash) noexcept {
 			// Below assertion is very limiting and removing this will not simply make function work with other values.
@@ -161,7 +168,7 @@ namespace modernRX::argon2d {
 
 			using namespace modernRX::blake2b;
 
-			// Calculate first three blocks for first slice.
+			// Calculate first three blocks in a lane.
 			std::array<std::byte, Initial_Hash_Size + 2 * sizeof(uint32_t)> input{};
 			std::memcpy(input.data(), hash.data(), Initial_Hash_Size);
 
@@ -173,49 +180,22 @@ namespace modernRX::argon2d {
 			blake2b::hash(std::span<std::byte>{ memory[1] }, input);
 
 			// Third block is always mix of first two.
-			mixBlocks<false>(memory[2], memory[0], memory[1]);
-
-			// Calculate next blocks in slice.
-			for (uint64_t prev_idx = 2, idx = 3; idx < blocksPerSlice(); ++prev_idx, ++idx) {
-				const auto ref_length{ prev_idx }; // For slice 0 and iteration 0 it will always be up to previous block.
-				const auto J1{ bytes_cast<uint64_t>(memory[prev_idx]) & 0x00000000ffffffff };
-				const auto x{ (J1 * J1) >> 32 };
-				const auto y{ (ref_length * x) >> 32 };
-				const auto z{ ref_length - 1 - y };
-				const auto ref_index{ z };
-
-				mixBlocks<false>(memory[idx], memory[prev_idx], memory[ref_index]);
-			}
-
-			// Calculate all blocks in other slices.
-			for (uint32_t slice = 1; slice < Sync_Points; ++slice) {
-				const auto slice_start_idx{ slice * blocksPerSlice() };
-
-				for (uint32_t idx = 0; idx < blocksPerSlice(); ++idx) {
-					const auto cur_idx{ slice_start_idx + idx };
-					const auto prev_idx{ cur_idx - 1 };
-					const auto J1{ bytes_cast<uint64_t>(memory[prev_idx]) & 0x00000000ffffffff };
-					
-					// ref_lane is always 0, because of single lane only, thus we can pick all previous blocks.
-					const auto ref_length{ prev_idx };
-					const auto x{ (J1 * J1) >> 32 };
-					const auto y{ (ref_length * x) >> 32 };
-					const auto z{ ref_length - 1 - y };
-					const auto ref_index{ z }; // we pick z' block from a ref_lane
-
-					mixBlocks<false>(memory[cur_idx], memory[prev_idx], memory[ref_index]);
-				}
+			// Calculate next blocks in a lane.
+			for (BlockContext ctx{ 2, 1, 0 }; ctx.cur_idx < blocksPerLane(); ) {
+				mixBlocks<false>(memory, ctx);
 			}
 		}
 
 		/*
 		* Performs all, except first, iterations of filling memory in two steps:
-		* 1. For every lane calculate first block.
-		* 2. Calculate all other blocks.
+		* 1. Calculate first block in lane.
+		* 2. Calculate all other blocks in lane.
 		*
 		* The main difference between this and first iteration is that referenced block will be the one of
 		* the block from previous iteration or the block from current iteration. It all depends if referenced block
 		* lies in rolling window of size equal to three full slices.
+		* 
+		* This function was simplified with assumption that parallelism is always 1.
 		*
 		* For more details check https://github.com/P-H-C/phc-winner-argon2/blob/master/argon2-specs.pdf section 3.2 and 3.3.
 		*/
@@ -224,49 +204,64 @@ namespace modernRX::argon2d {
 			static_assert(Rx_Argon2d_Parallelism == 1, "This simplification requires parallelism to be 1.");
 			ASSERTUME(memory.size() == Rx_Argon2d_Memory_Blocks);
 
+			constexpr auto prev_idx{ blocksPerLane() - 1 };
+			constexpr auto ref_length{ blocksPerLane() - blocksPerSlice() - 1 };
+			constexpr auto shift_index{ blocksPerSlice() };
+
 			for (uint32_t round = 1; round < Rx_Argon2d_Iterations; ++round) {
 				// Calculate first block.
-				const auto prev_idx{ blocksPerLane() - 1 };
 				const auto J1{ bytes_cast<uint64_t>(memory[prev_idx]) & 0x00000000ffffffff };
-				
-				// ref_lane is always 0, because of single lane only.
-				// We can pick up to (sync_points - 1) 3 * blocks_per_slice blocks.
-				const auto ref_length{ blocksPerLane() - blocksPerSlice() - 1 };
 				const auto x{ (J1 * J1) >> 32 };
 				const auto y{ (ref_length * x) >> 32 };
 				const auto z{ ref_length - 1 - y };
-				const auto shift_index{ blocksPerSlice() };
 				const auto ref_index{ shift_index + z }; // No need to modulo by blocks_per_lane because it will always be less than blocks_per_lane.
 
-				mixBlocks<true>(memory[0], memory[prev_idx], memory[ref_index]);
+				BlockContext ctx{ 0, prev_idx, ref_index };
+				mixBlocks<true>(memory, ctx);
 
-				// Calculate all next blocks for each slice.
-				for (uint32_t slice = 0; slice < Sync_Points; ++slice) {
-					const auto slice_start_idx{ blocksPerSlice() * slice };
-
-					// idx = (slice == 0) because for slice 0, we already calculated first block.
-					for (uint32_t idx = (slice == 0); idx < blocksPerSlice(); ++idx) {
-						const auto cur_idx{ slice_start_idx + idx };
-						const auto prev_idx{ cur_idx - 1 };
-						const auto J1{ bytes_cast<uint64_t>(memory[prev_idx]) & 0x00000000ffffffff };
-						// ref_lane is always 0, because of single lane only.
-						// We can pick up to (sync_points - 1) * blocks_per_slice blocks.
-						const auto ref_length{ blocksPerLane() - blocksPerSlice() + idx - 1 }; 
-						const auto x{ (J1 * J1) >> 32 };
-						const auto y{ (ref_length * x) >> 32 };
-						const auto z{ ref_length - 1 - y };
-						auto shift_index{ blocksPerSlice() * ((slice + 1) % Sync_Points) }; // Start at beginning of (slice - 3; roll over if overflows).
-						shift_index = (shift_index + z) % blocksPerLane(); // This may overflow blocks_per_lane so have to be rolled over (% blocks_per_lane).
-						const auto ref_index{ shift_index };
-
-						mixBlocks<true>(memory[cur_idx], memory[prev_idx], memory[ref_index]);
-					}
+				// Calculate all next blocks in a lane.
+				for (; ctx.cur_idx < blocksPerLane(); ) {
+					mixBlocks<true>(memory, ctx);
 				}
 			}
 		}
 
-		template void mixBlocks<true>(Block& cur_block, const Block& prev_block, const Block& ref_block) noexcept;
-		template void mixBlocks<false>(Block& cur_block, const Block& prev_block, const Block& ref_block) noexcept;
+		// Calculates reference index needed for mixing function and updates BlockContext for next iteration.
+		// This function is called inside ROUND_V2WithPrefetch macro to prefetch referenced block as soon as possible and reduce stalls because of cache misses.
+		template<bool XorBlocks>
+		void calcRefIndex(std::span<Block> memory, BlockContext& ctx, const uint32_t tmp_value) noexcept {
+			static_assert(Rx_Argon2d_Parallelism == 1, "This simplification requires parallelism to be 1.");
+
+			++ctx.cur_idx;
+			auto J1{ static_cast<uint64_t>(bytes_cast<uint32_t>(memory[ctx.prev_idx]) ^ bytes_cast<uint32_t>(memory[ctx.ref_idx]) ^ tmp_value) };
+			
+			if constexpr (XorBlocks) {
+				// Map current block index in lane to current slice and index within current slice.
+				const auto slice_idx{ ctx.cur_idx % blocksPerSlice() };
+				const auto slice{ ctx.cur_idx / blocksPerSlice() };
+				
+				const auto ref_length{ blocksPerLane() - blocksPerSlice() + slice_idx - 1 }; // Up to (sync_points - 1) * blocks_per_slice plus number of blocks processed in current slice - 1 can be picked up.
+				const auto shift_index{ blocksPerSlice() * ((slice + 1) % Sync_Points) }; // Start at beginning of (slice - 3; roll over if overflows).
+
+				// Calculate reference index.
+				J1 ^= bytes_cast<uint32_t>(memory[ctx.cur_idx - 1]);
+				const auto x{ (J1 * J1) >> 32 };
+				const auto y{ (ref_length * x) >> 32 };
+				const auto z{ ref_length - 1 - y };
+
+				ctx.ref_idx = (shift_index + z) % blocksPerLane(); // This may overflow blocksPerLane() so have to be rolled over (% blocksPerLane()).
+			} else {
+				const auto ref_length{ ctx.prev_idx + 1 }; // For single lane and first iteration it will always be up to previous block.
+
+				// Calculate reference index.
+				const auto x{ (J1 * J1) >> 32 };
+				const auto y{ (ref_length * x) >> 32 };
+
+				ctx.ref_idx = ref_length - 1 - y;
+			}
+
+			ctx.prev_idx = (ctx.prev_idx + 1) % blocksPerLane();
+		}
 
 
 		// Calculates current block based on previous and referenced random block.
@@ -274,25 +269,21 @@ namespace modernRX::argon2d {
 		// The mixing function refers to https://github.com/P-H-C/phc-winner-argon2/blob/master/argon2-specs.pdf section 3.4.
 		// Enhanced by AVX2 intrinsics.
 		template<bool XorBlocks>
-		void mixBlocks(Block& cur_block, const Block& prev_block, const Block& ref_block) noexcept {
+		void mixBlocks(std::span<Block> memory, BlockContext& ctx) noexcept {
 			using namespace intrinsics;
 
 			constexpr uint32_t YMM_Per_Block{ Block_Size / sizeof(avx2::ymm<uint64_t>) };
 
 			// For some reason its faster to use C-array than std::array (at least for tmp_block_ymm).
-			avx2::ymm<uint64_t> tmp_block_ymm[YMM_Per_Block];
-			avx2::ymm<uint64_t> (&cur_block_ymm)[YMM_Per_Block]{ reinterpret_cast<avx2::ymm<uint64_t>(&)[YMM_Per_Block]>(cur_block) };
-			const avx2::ymm<uint64_t> (&prev_block_ymm)[YMM_Per_Block] { reinterpret_cast<const avx2::ymm<uint64_t>(&)[YMM_Per_Block]>(prev_block) };
-			const avx2::ymm<uint64_t> (&ref_block_ymm)[YMM_Per_Block] { reinterpret_cast<const avx2::ymm<uint64_t>(&)[YMM_Per_Block]>(ref_block) };
+			// It's already reported as a compiler bug: https://developercommunity.visualstudio.com/t/Performance-degradation-when-using-std::/10460894.
+			alignas(64) avx2::ymm<uint64_t> tmp_block_ymm[YMM_Per_Block];
+			avx2::ymm<uint64_t> (&cur_block_ymm)[YMM_Per_Block]{ reinterpret_cast<avx2::ymm<uint64_t>(&)[YMM_Per_Block]>(memory[ctx.cur_idx]) };
+			const avx2::ymm<uint64_t> (&prev_block_ymm)[YMM_Per_Block] { reinterpret_cast<const avx2::ymm<uint64_t>(&)[YMM_Per_Block]>(memory[ctx.prev_idx]) };
+			const avx2::ymm<uint64_t> (&ref_block_ymm)[YMM_Per_Block] { reinterpret_cast<const avx2::ymm<uint64_t>(&)[YMM_Per_Block]>(memory[ctx.ref_idx]) };
 
+			// Initialize new block with previous and referenced ones.
 			for (uint32_t i = 0; i < YMM_Per_Block; ++i) {
 				tmp_block_ymm[i] = avx2::vxor<uint64_t>(prev_block_ymm[i], ref_block_ymm[i]);
-
-				if constexpr (XorBlocks) {
-					cur_block_ymm[i] = avx2::vxor<uint64_t>(avx2::vxor<uint64_t>(prev_block_ymm[i], ref_block_ymm[i]), cur_block_ymm[i]);
-				} else {
-					cur_block_ymm[i] = avx2::vxor<uint64_t>(prev_block_ymm[i], ref_block_ymm[i]);
-				}
 			}
 
 			// Prepare rotation constant. Taken from: https://github.com/jedisct1/libsodium/blob/1.0.16/src/libsodium/crypto_generichash/blake2b/ref/blake2b-compress-avx2.h
@@ -300,28 +291,36 @@ namespace modernRX::argon2d {
 			const auto avx_rot16{ avx2::vsetrepi8<uint64_t>(2, 3, 4, 5, 6, 7, 0, 1, 10, 11, 12, 13, 14, 15, 8, 9, 2, 3, 4, 5, 6, 7, 0, 1, 10, 11, 12, 13, 14, 15, 8, 9) };
 
 			// Used in macros.
-			avx2::ymm<uint64_t> ml;
+			avx2::ymm<uint64_t> ml, ml2;
 
 			// Both rounding loops are crucial for performance, otherwise function would expand too much and compiler would not be willing to inline it.
-			 
-			// Apply blake2b "rowwise", ie. elements (0,1,...,15), then (16,17,...,31) ... finally (112,113,...,127).
-			// Each two adjacent elements are viewed as "16-byte registers" mentioned in the paper.
+
+			// Apply blake2b "rowwise", ie. elements (0,1,...,31), then (32,33,...,63) ... finally (96,97,...,127).
 			for (uint32_t i = 0; i < 4; ++i) {
-				ROUND_V1(tmp_block_ymm[8 * i], tmp_block_ymm[8 * i + 4], tmp_block_ymm[8 * i + 1], tmp_block_ymm[8 * i + 5], 
-						 tmp_block_ymm[8 * i + 2], tmp_block_ymm[8 * i + 6], tmp_block_ymm[8 * i + 3], tmp_block_ymm[8 * i + 7], avx_rot24, avx_rot16);
+				ROUND_V1(tmp_block_ymm[8 * i], tmp_block_ymm[8 * i + 4], tmp_block_ymm[8 * i + 1], tmp_block_ymm[8 * i + 5],
+					tmp_block_ymm[8 * i + 2], tmp_block_ymm[8 * i + 6], tmp_block_ymm[8 * i + 3], tmp_block_ymm[8 * i + 7], avx_rot24, avx_rot16);
 			}
 
+			// Apply first iteration of blake2b "columnwise".
+			// This macro version calls calcRefIndex to calculate reference index early for prefetching to reduce stalls.
+			ROUND_V2WithPrefetch(tmp_block_ymm[0], tmp_block_ymm[4], tmp_block_ymm[8], tmp_block_ymm[12],
+				tmp_block_ymm[16], tmp_block_ymm[20], tmp_block_ymm[24], tmp_block_ymm[28], avx_rot24, avx_rot16);
 
-			// Apply blake2b "columnwise", ie. elements (0,1,16,17,...,112,113), then (2,3,18,19,...,114,115) ... finally (14,15,30,31,...,126,127).
-			
-			for (uint32_t i = 0; i < 4; ++i) {
+
+			// Apply all other blake2b "columnwise" rounds, ie. elements (0,1,2,3,16,17,18,19,...,112,113,114,115), then (4,5,6,7,20,21,22,23,...,116,117,118,119) 
+			// ... finally (12,13,14,15,28,29,30,31,...,124,125,126,127).
+			for (uint32_t i = 1; i < 4; ++i) {
 				ROUND_V2(tmp_block_ymm[i], tmp_block_ymm[4 + i], tmp_block_ymm[8 + i], tmp_block_ymm[12 + i],
-						 tmp_block_ymm[16 + i],tmp_block_ymm[20 + i], tmp_block_ymm[24 + i], tmp_block_ymm[28 + i], avx_rot24, avx_rot16);
+					tmp_block_ymm[16 + i], tmp_block_ymm[20 + i], tmp_block_ymm[24 + i], tmp_block_ymm[28 + i], avx_rot24, avx_rot16);
 			}
-			 
 
+			// Finalize new block.
 			for (uint32_t i = 0; i < YMM_Per_Block; ++i) {
-				cur_block_ymm[i] = avx2::vxor<uint64_t>(cur_block_ymm[i], tmp_block_ymm[i]);
+				if constexpr (XorBlocks) {
+					cur_block_ymm[i] = avx2::vxor<uint64_t>(avx2::vxor<uint64_t>(avx2::vxor<uint64_t>(prev_block_ymm[i], tmp_block_ymm[i]), cur_block_ymm[i]), ref_block_ymm[i]);
+				} else {
+					cur_block_ymm[i] = avx2::vxor<uint64_t>(avx2::vxor<uint64_t>(prev_block_ymm[i], tmp_block_ymm[i]), ref_block_ymm[i]);
+				}
 			}
 		}
 	}
