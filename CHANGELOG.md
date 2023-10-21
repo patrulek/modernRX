@@ -1,5 +1,20 @@
 ## Changelog
 
+### v0.3.11 - 22.10.2023:
+
+Dataset generation and JIT-compiler general improvements.
+All optimization decisions made in this version:
+* split dataset generation tasks into smaller jobs (this should improve performance a bit when other workloads are present on single core)
+* replace all data addressing that used 32-bit displacement with 8-bit displacement (lesser total code size)
+
+Improvements:
+* make JIT-compiler compliant with x64 Windows calling convention
+* add stack alignment to JIT-compiler
+* add small instruction improvements to JIT-compiler
+* make JIT compilation code more generic
+* add JIT program data section alignment
+* make JIT-compiler data section size configurable (data pointers are lazy evaluated before compilation instead of a priori)
+
 ### v0.3.10 - 20.10.2023:
 
 Argon2d optimizations.

@@ -114,6 +114,9 @@
     <ClInclude Include="jitcompiler.hpp">
       <Filter>dataset</Filter>
     </ClInclude>
+    <ClInclude Include="alignedallocator.hpp">
+      <Filter>utils</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="blake2b.cpp">

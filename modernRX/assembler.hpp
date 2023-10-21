@@ -12,8 +12,10 @@
 #include <unordered_map>
 #include <vector>
 
+#include "alignedallocator.hpp"
 
 namespace modernRX::assembler {
+	using data_vector = std::vector<uint8_t, AlignedAllocator<uint8_t, 4096>>;
 	using reg_idx_t = uint8_t;
 
 	enum class RegisterType : uint8_t {
@@ -71,6 +73,10 @@ namespace modernRX::assembler {
 			return Register{ RegisterType::YMM, idx };
 		}
 
+		[[nodiscard]] static constexpr Register XMM(const reg_idx_t idx) noexcept {
+			return Register{ RegisterType::XMM, idx };
+		}
+
 		[[nodiscard]] constexpr bool isLow() const noexcept {
 			return idx < 8;
 		}
@@ -115,7 +121,6 @@ namespace modernRX::assembler {
 		inline constexpr Register RBX{ RegisterType::GPR, 3 };
 		inline constexpr Register RSP{ RegisterType::GPR, 4 };
 		inline constexpr Register RBP{ RegisterType::GPR, 5 };
-		const Register& RIP{ RBP }; // RIP is an alias for RBP.
 		inline constexpr Register RSI{ RegisterType::GPR, 6 };
 		inline constexpr Register RDI{ RegisterType::GPR, 7 };
 		inline constexpr Register R08{ RegisterType::GPR, 8 };
@@ -235,18 +240,45 @@ namespace modernRX::assembler {
 		return *(reinterpret_cast<const std::byte*>(&v) + Byte);
 	}
 
+	
+
 	class Context {
 	public:
-		explicit Context() {
-			// TODO: just in case
-			code.reserve(32 * 4096);
-			data.reserve(32 * 4096);
+		explicit Context(const size_t code_size, const size_t data_size) {
+			code.reserve(code_size);
+			data.reserve(data_size);
+		}
+
+		// Broadcasts 4x immediate 64-bit or value from GPR register into registers::RSP[offset] memory.
+		// Stack must be aligned to 32 bytes at least.
+		template<typename Operand>
+		requires (std::is_integral_v<Operand> || std::is_same_v<Operand, Register>)
+		constexpr Memory put4qVectorOnStack(const Operand value, const int32_t offset) {
+			if constexpr (std::is_integral_v<Operand>) {
+				mov(registers::RAX, value);
+				vmovq(registers::XMM0, registers::RAX);
+			} else {
+                vmovq(registers::XMM0, value);
+			}
+			vpbroadcastq(registers::YMM0, registers::XMM0);
+			vmovdqa(registers::RSP[offset], registers::YMM0);
+            return registers::RSP[offset];
+        }
+
+		// Puts placeholder in the code buffer that will be filled with data pointer before flush.
+		// Data pointer cannot be stored immediately because it may change because of reallocation (if data buffer is not big enough).
+		// Dst is a register that will be used to mov data pointer.
+		// Offset is an offset from the beginning of the data buffer.
+		constexpr void movDataPtr(const Register dst, const size_t offset = 0) {
+			mov(dst, 0xffffffffffffffff); // put pointer placeholder
+			data_ptr_pos.push_back(std::make_pair(code.size() - sizeof(int64_t), offset)); // save code position
 		}
 
 		// Stores an immediate value in the data buffer.
+		// If any value is returned, it must be consumed by user.
 		template<typename Immediate, size_t Bytes, Register reg = registers::DUMMY, typename Ret = std::conditional_t<reg != registers::DUMMY, Memory, void>>
-			requires (std::is_integral_v<Immediate>&& Bytes % sizeof(Immediate) == 0)
-		constexpr Ret storeImmediate(const Immediate imm) {
+		requires (std::is_integral_v<Immediate>&& Bytes % sizeof(Immediate) == 0)
+		[[nodiscard]] constexpr Ret storeImmediate(const Immediate imm) {
 			for (uint32_t i = 0; i < Bytes / sizeof(Immediate); ++i) {
 				if constexpr (sizeof(Immediate) >= 1) {
 					data.push_back((uint8_t)byte<0>(imm));
@@ -275,9 +307,10 @@ namespace modernRX::assembler {
 		}
 
 		// Stores an 4 quadwords in the data buffer.
+		// If any value is returned, it must be consumed by user.
 		template<typename Immediate, Register reg = registers::DUMMY, typename Ret = std::conditional_t<reg != registers::DUMMY, Memory, void>>
-			requires (std::is_integral_v<Immediate> && sizeof(Immediate) == 8)
-		constexpr Ret storeVector4q(const Immediate imm1, const Immediate imm2, const Immediate imm3, const Immediate imm4) {
+		requires (std::is_integral_v<Immediate> && sizeof(Immediate) == 8)
+		[[nodiscard]] constexpr Ret storeVector4q(const Immediate imm1, const Immediate imm2, const Immediate imm3, const Immediate imm4) {
 			data.push_back((uint8_t)byte<0>(imm1));
 			data.push_back((uint8_t)byte<1>(imm1));
 			data.push_back((uint8_t)byte<2>(imm1));
@@ -357,10 +390,17 @@ namespace modernRX::assembler {
 			vex256 < PP::PP0x66, MM::MM0x0F3A, Opcode{ 0x46, -1 } > (dst_reg, src_reg1, src_reg2, control);
 		}
 
+		constexpr void vzeroupper() {
+			encode(vex1<uint8_t>(false));
+			encode(vex2<uint8_t>(0, PP::PP0x00, 0, 0));
+			encode(0x77);
+			schedule();
+		}
+
 		// https://stackoverflow.com/a/28827013
 		// Multiply packed unsigned quadwords and store high result.
 		// This is emulated instruction (not available in AVX2).
-		// Requires an 0x00000000ffffffff mask in RSP[32] register.
+		// Requires an 0x00000000ffffffff mask in RSP[64] register.
 		// Uses YMM0-YMM3 registers.
 		constexpr void vpmulhuq(const Register dst_reg, const Register src_reg1, const Register src_reg2) {
 			vpshufd(registers::YMM1, src_reg1, 0xb1); // vpshufd dst
@@ -370,7 +410,7 @@ namespace modernRX::assembler {
 			vpmuludq(registers::YMM2, src_reg1, registers::YMM2); // vpmuludq_w1
 			vpsrlq(registers::YMM3, registers::YMM3, 32); // vpsrlq_w0h
 			vpaddq(registers::YMM3, registers::YMM3, registers::YMM2); // vpaddq_s1
-			vpand(registers::YMM2, registers::YMM3, registers::RSP[32]); // vpand_s1l
+			vpand(registers::YMM2, registers::YMM3, registers::RSP[64]); // vpand_s1l
 			vpmuludq(registers::YMM1, src_reg2, registers::YMM1); // vpmuludq_w2
 			vpsrlq(registers::YMM3, registers::YMM3, 32); // vpsrlq_s1h
 			vpaddq(registers::YMM0, registers::YMM0, registers::YMM3); // vpaddq_hi
@@ -396,6 +436,37 @@ namespace modernRX::assembler {
 			vpsubq(dst_reg, registers::YMM2, registers::YMM1);
 		}
 
+		// Aligns stack to 64-byte boundary.
+		constexpr void alignStack() {
+			// uses 'and' and 'neg' instruction
+			mov(registers::RAX, registers::RSP);
+			mov(registers::RBX, registers::RSP);
+			and_(registers::RAX, -64);
+			sub(registers::RBX, registers::RAX);
+			sub(registers::RSP, registers::RBX);
+			push(registers::RBX);
+			sub(registers::RSP, 56);
+		}
+
+		constexpr void and_(const Register dst_reg, const int32_t imm) {
+			encode(rex<uint8_t>(1, 0, 0, dst_reg.isHigh()));
+			encode(0x81);
+			encode(modregrm<uint8_t>(4, dst_reg.lowIdx()));
+			encode((uint8_t)byte<0>(imm));
+			encode((uint8_t)byte<1>(imm));
+			encode((uint8_t)byte<2>(imm));
+			encode((uint8_t)byte<3>(imm));
+			schedule();
+		}
+
+		// Restores stack pointer. alignStack must be called before.
+		// Must be called after destruction of all local variables and before popping registers.
+		constexpr void unalignStack() {
+			add(registers::RSP, 56);
+			pop(registers::RAX);
+			add(registers::RSP, registers::RAX);
+		}
+
 		// https://stackoverflow.com/a/37322570
 		// Multiply packed quadwords and store low result.
 		// This is emulated instruction (not available in AVX2).
@@ -405,7 +476,11 @@ namespace modernRX::assembler {
 		constexpr void vpmullq(const Register dst_reg, const Register src_reg1, const Operand src_reg2) {
 			vpshufd(registers::YMM0, src_reg1, 0xb1);
 			// VEX.256.66.0F38.WIG 40 /r VPMULLD ymm1, ymm2, ymm3/m256
-			vex256 < PP::PP0x66, MM::MM0x0F38, Opcode{ 0x40, -1 } > (registers::YMM0, registers::YMM0, src_reg2);
+			if constexpr (std::is_same_v<Operand, Register>) {
+				vex256 < PP::PP0x66, MM::MM0x0F38, Opcode{ 0x40, -1 } > (registers::YMM0, src_reg2, registers::YMM0);
+			} else {
+				vex256 < PP::PP0x66, MM::MM0x0F38, Opcode{ 0x40, -1 } > (registers::YMM0, registers::YMM0, src_reg2);
+			}
 			vpsllq(registers::YMM1, registers::YMM0, 32);
 			// VEX.256.66.0F.WIG FE /r VPADDD ymm1, ymm2, ymm3/m256
 			vex256 < PP::PP0x66, MM::MM0x0F, Opcode{ 0xfe, -1 } > (registers::YMM1, registers::YMM1, registers::YMM0);
@@ -414,9 +489,20 @@ namespace modernRX::assembler {
 			vpaddq(dst_reg, registers::YMM2, registers::YMM1);
 		}
 
+		// Broadcasts 64-bit value from XMM register into YMM register.
+		// In a case when src is a GPR register, it is first moved to XMM register.
 		template<typename Operand>
 		constexpr void vpbroadcastq(const Register ymm, const Operand src) {
-			vex256 < PP::PP0x66, MM::MM0x0F38, Opcode{ 0x59, -1 } > (ymm, src);
+			if constexpr (std::is_same_v<Operand, Register>) {
+				if (src.type == RegisterType::GPR) {
+					vmovq(Register::XMM(ymm.idx), src);
+					vex256 < PP::PP0x66, MM::MM0x0F38, Opcode{ 0x59, -1 } > (ymm, Register::XMM(ymm.idx));
+				} else {
+					vex256 < PP::PP0x66, MM::MM0x0F38, Opcode{ 0x59, -1 } > (ymm, src);
+				}
+			} else {
+                vex256 < PP::PP0x66, MM::MM0x0F38, Opcode{ 0x59, -1 } > (ymm, src);
+            }		
 		}
 
 		// Moves 64-bit value from GPR to XMM register.
@@ -440,12 +526,12 @@ namespace modernRX::assembler {
 
 		// Extracts 128-bit value from YMM register to XMM register.
 		template<typename Control>
-		constexpr void vextractf128(const Register dst, const Register src, const Control control) {
+		constexpr void vextracti128(const Register dst, const Register src, const Control control) {
 			// VEX.256.66.0F3A.W0 19 / r ib VEXTRACTF128 xmm1 / m128, ymm2, imm8
 			if (dst.type == RegisterType::XMM) {
-				vex256 < PP::PP0x66, MM::MM0x0F3A, Opcode{ 0x19, -1 } > (src, dst, control);
+				vex256 < PP::PP0x66, MM::MM0x0F3A, Opcode{ 0x39, -1 } > (src, dst, control);
 			} else {
-				vex256 < PP::PP0x66, MM::MM0x0F3A, Opcode{ 0x19, -1 } > (dst, src, control);
+				vex256 < PP::PP0x66, MM::MM0x0F3A, Opcode{ 0x39, -1 } > (dst, src, control);
 			}
 		}
 
@@ -461,6 +547,7 @@ namespace modernRX::assembler {
 			encode((uint8_t)byte<0>(control));
 			schedule();
 		}
+
 		// Moves 64-bit value from Memory to gpr register.
 		constexpr void mov(const Register gpr, const Memory m64) {
 			encode(rex<uint8_t>(1, gpr.isHigh(), 0, m64.isHigh()));
@@ -489,7 +576,9 @@ namespace modernRX::assembler {
 		constexpr void mov(const Register gpr, const uint64_t imm64) {
 			// mov gpr, imm32/64: [rex.w] {opcode: 0xb8+ rd io} {imm64}
 			if (imm64 > std::numeric_limits<uint32_t>::max()) {
-				code.push_back(rex<uint8_t>(1, gpr.isHigh()));
+				code.push_back(rex<uint8_t>(1, 0, 0, gpr.isHigh()));
+			} else {
+				code.push_back(rex<uint8_t>(0, 0, 0, gpr.isHigh()));
 			}
 
 			code.push_back(0xb8 + gpr.lowIdx());
@@ -528,6 +617,12 @@ namespace modernRX::assembler {
 			schedule();
 		}
 
+
+		constexpr void vmovntdq(const Memory dst, const Register src) {
+			// VEX.256.66.0F.WIG E7 /r VMOVNTDQ m256, ymm1
+			vex256 < PP::PP0x66, MM::MM0x0F, Opcode{ 0xe7, -1 } > (src, dst);
+		}
+
 		// align to 32 bytes and store label
 		void label(const std::string name) {
 			if (code.size() % 32 != 0) {
@@ -543,7 +638,7 @@ namespace modernRX::assembler {
 		}
 
 
-		// Dst and Src must be either Register or Memory, but not both.
+		// Both Dst and Src cannot be of Memory type.
 		template<typename Dst, typename Src>
 		requires (
 			(std::is_same_v<Dst, Register> || std::is_same_v<Dst, Memory>) && 
@@ -553,13 +648,21 @@ namespace modernRX::assembler {
 		constexpr void vmovdqa(const Dst dst, const Src src) {
 			// vmovqdu ymmX, ymmword ptr [gpr + offset]: {vex.2B: 0xc5} {vex.0bR'0000'1'66} {opcode: #L:0x6f|#S:0x7f /r} {modrm: 0b00'ymm'gpr} [sib: rsp] [disp8/32]
 			if constexpr (std::is_same_v<Dst, Register>) {
-				vex256 < PP::PP0x66, MM::MM0x0F, Opcode{ 0x6f, -1 } > (dst, src);
+				if (dst.type == RegisterType::YMM) {
+					vex256 < PP::PP0x66, MM::MM0x0F, Opcode{ 0x6f, -1 } > (dst, src);
+				} else {
+					vex128<PP::PP0x66, MM::MM0x0F, Opcode{ 0x6f, -1 } > (dst, src);
+				}
 			} else {
-				vex256 < PP::PP0x66, MM::MM0x0F, Opcode{ 0x7f, -1 } > (src, dst);
+				if (src.type == RegisterType::YMM) {
+					vex256 < PP::PP0x66, MM::MM0x0F, Opcode{ 0x7f, -1 } > (src, dst);
+				} else {
+					vex128<PP::PP0x66, MM::MM0x0F, Opcode{ 0x7f, -1 } > (src, dst);
+				}
 			}
 		}
 
-		// Dst and Src must be either Register or Memory, but not both.
+		// Both Dst and Src cannot be of Memory type.
 		template<typename Dst, typename Src>
 		requires (
 			(std::is_same_v<Dst, Register> || std::is_same_v<Dst, Memory>) &&
@@ -569,50 +672,70 @@ namespace modernRX::assembler {
 		constexpr void vmovdqu(const Dst dst, const Src src) {
 			// vmovqdu ymmX, ymmword ptr [gpr + offset]: {vex.2B: 0xc5} {vex.0bR'0000'1'66} {opcode: #L:0x6f|#S:0x7f /r} {modrm: 0b00'ymm'gpr} [sib: rsp] [disp8/32]
 			if constexpr (std::is_same_v<Dst, Register>) {
-				vex256< PP::PP0xF3, MM::MM0x0F, Opcode{ 0x6f, -1 }>(dst, src);
+				if (dst.type == RegisterType::YMM) {
+					vex256 < PP::PP0xF3, MM::MM0x0F, Opcode{ 0x6f, -1 } > (dst, src);
+				} else {
+					vex128 < PP::PP0xF3, MM::MM0x0F, Opcode{ 0x6f, -1 } > (dst, src);
+				}
 			} else {
-				vex256< PP::PP0xF3, MM::MM0x0F, Opcode{ 0x7f, -1 }>(src, dst);
+				if (src.type == RegisterType::YMM) {
+					vex256 < PP::PP0xF3, MM::MM0x0F, Opcode{ 0x7f, -1 } > (src, dst);
+				} else {
+					vex128 < PP::PP0xF3, MM::MM0x0F, Opcode{ 0x7f, -1 } > (src, dst);
+				}
 			}
 		}
 
 		template<typename Operand>
-		constexpr void vpsrlq(const Register dst_reg, const Register src_reg, const Operand shift) noexcept {
+		constexpr void vpsrlq(const Register dst_reg, const Register src_reg, const Operand shift) {
 			vex256 < PP::PP0x66, MM::MM0x0F, Opcode{ 0x73, 2 } > (dst_reg, src_reg, shift);
 		}
 
 		template<typename Operand>
-		constexpr void vpsllq(const Register dst_reg, const Register src_reg, const Operand shift) noexcept {
+		constexpr void vpsllq(const Register dst_reg, const Register src_reg, const Operand shift) {
 			vex256< PP::PP0x66, MM::MM0x0F, Opcode{ 0x73, 6 }>(dst_reg, src_reg, shift);
 		}
 
 
 		template<typename Operand>
-		constexpr void vpsubq(const Register dst_reg, const Register src_reg1, const Operand src_reg2) noexcept {
+		constexpr void vpsubq(const Register dst_reg, const Register src_reg1, const Operand src_reg2) {
 			vex256 < PP::PP0x66, MM::MM0x0F, Opcode{ 0xfb, -1 } > (dst_reg, src_reg1, src_reg2);
 		}
 
 		template<typename Operand>
-		constexpr void vpcmpgtq(const Register dst_reg, const Register src_reg1, const Operand src_reg2) noexcept {
+		constexpr void vpcmpgtq(const Register dst_reg, const Register src_reg1, const Operand src_reg2) {
 			vex256< PP::PP0x66, MM::MM0x0F38, Opcode{ 0x37, -1 }>(dst_reg, src_reg1, src_reg2);
 		}
 
 		template<typename Operand>
-		constexpr void vpaddq(const Register dst_reg, const Register src_reg1, const Operand src_reg2) noexcept {
+		constexpr void vpaddq(const Register dst_reg, const Register src_reg1, const Operand src_reg2) {
 			vex256< PP::PP0x66, MM::MM0x0F, Opcode{ 0xd4, -1 }>(dst_reg, src_reg1, src_reg2);
 		}
 
 		template<typename Operand>
-		constexpr void vpxor(const Register dst_reg, const Register src_reg1, const Operand src_reg2) noexcept {
+		constexpr void vpxor(const Register dst_reg, const Register src_reg1, const Operand src_reg2) {
 			vex256< PP::PP0x66, MM::MM0x0F, Opcode{ 0xef, -1 }>(dst_reg, src_reg1, src_reg2);
 		}
 
+		// Convenient function for zeroing YMM register.
+		constexpr void vzeroreg(const Register dst_reg) {
+			vpxor(dst_reg, dst_reg, dst_reg);
+		}
+
+		// Convenient function for broadcasting 4 one's (quadwords equal 1) to YMM register.
+		constexpr void vonereg(const Register dst_reg) {
+			// VEX.256.66.0F38.WIG 29 / r VPCMPEQQ ymm1, ymm2, ymm3 / m256
+			vex256< PP::PP0x66, MM::MM0x0F38, Opcode{ 0x29, -1 }>(dst_reg, dst_reg, dst_reg);
+			vpsrlq(dst_reg, dst_reg, 63);
+		}
+
 		template<typename Operand>
-		constexpr void vpand(const Register dst_reg, const Register src_reg1, const Operand src_reg2) noexcept {
+		constexpr void vpand(const Register dst_reg, const Register src_reg1, const Operand src_reg2) {
 			vex256< PP::PP0x66, MM::MM0x0F, Opcode{ 0xdb, -1 }>(dst_reg, src_reg1, src_reg2);
 		}
 
 		template<typename Operand>
-		constexpr void vpor(const Register dst_reg, const Register src_reg1, const Operand src_reg2) noexcept {
+		constexpr void vpor(const Register dst_reg, const Register src_reg1, const Operand src_reg2) {
 			vex256 < PP::PP0x66, MM::MM0x0F, Opcode{ 0xeb, -1 } > (dst_reg, src_reg1, src_reg2);
 		}
 
@@ -634,6 +757,20 @@ namespace modernRX::assembler {
 			schedule();
 		}
 
+		constexpr void sub(const Register dst, const Register src) {
+			encode(rex<uint8_t>(1, dst.isHigh(), 0, src.isHigh()));
+			encode(0x2b);
+			encode(modregrm<uint8_t>(dst.lowIdx(), src.lowIdx()));
+			schedule();
+		}
+
+		constexpr void add(const Register dst, const Register src) {
+			encode(rex<uint8_t>(1, dst.isHigh(), 0, src.isHigh()));
+			encode(0x03);
+			encode(modregrm<uint8_t>(dst.lowIdx(), src.lowIdx()));
+			schedule();
+		}
+
 		constexpr void sub(const Register dst, const int32_t size) {
 			if (size < std::numeric_limits<int8_t>::max()) {
 				rexw < Opcode{ 0x83, 5 } > (dst, static_cast<int8_t>(size));
@@ -652,42 +789,42 @@ namespace modernRX::assembler {
 
 		// Generates binary code for pushing registers on stack.
 		// For general purpose registers it uses PUSH instruction.
-		// For YMM registers it expands stack and copies register to stack.
+		// For XMM registers it expands stack and copies register to stack.
 		// Example:
-		// context.push(RAX, R8, YMM1, YMM0) will generate:
+		// context.push(RAX, R8, XMM1, XMM0) will generate:
 		//
 		// push rax
 		// push r8
-		// sub rsp, 0x40
-		// vmovqdu ymmword ptr [rsp], ymm1
-		// vmovqdu ymmword ptr [rsp + 0x20], ymm0
+		// sub rsp, 0x20
+		// vmovqdu xmmword ptr [rsp], xmm1
+		// vmovqdu xmmword ptr [rsp + 0x10], xmm0
 		template<typename... Reg>
-			requires (std::is_same_v<Reg, Register> && ...)
+		requires (std::is_same_v<Reg, Register> && ...)
 		constexpr void push(Reg... regs) {
 			static_assert(sizeof...(regs) > 0);
 
-			std::array<Register, sizeof...(regs)> ymm_regs{};
-			int32_t ymm_regs_cnt{ 0 };
+			std::array<Register, sizeof...(regs)> xmm_regs{};
+			int32_t xmm_regs_cnt{ 0 };
 
 			for (const auto& reg : { regs... }) {
 				// General purpose registers are pushed on stack using PUSH instruction: 
 				if (reg.type == RegisterType::GPR) {
 					push(reg);
 				}
-				// YMM registers are pushed on stack by expanding stack and copying register to stack.
-				// Lets just count how many YMM registers was passed and push them at the end, because they may be between general purpose registers.
-				else if (reg.type == RegisterType::YMM) {
-					ymm_regs[ymm_regs_cnt++] = reg;
+				// XMM registers are pushed on stack by expanding stack and copying register to stack.
+				// Lets just count how many XMM registers was passed and push them at the end, because they may be between general purpose registers.
+				else if (reg.type == RegisterType::XMM) {
+					xmm_regs[xmm_regs_cnt++] = reg;
 				}
 			}
 
-			if (ymm_regs_cnt > 0) {
-				const int32_t stack_size{ ymm_regs_cnt * Register::YMM(0).size() };
+			if (xmm_regs_cnt > 0) {
+				const int32_t stack_size{ xmm_regs_cnt * Register::XMM(0).size() };
 				sub(registers::RSP, stack_size);
 
-				for (int32_t i = ymm_regs_cnt - 1; i >= 0; --i) {
-					const auto& reg{ ymm_regs[i] };
-					const int32_t stack_offset{ (ymm_regs_cnt - 1 - i) * reg.size() };
+				for (int32_t i = xmm_regs_cnt - 1; i >= 0; --i) {
+					const auto& reg{ xmm_regs[i] };
+                    const int32_t stack_offset{ (xmm_regs_cnt - 1 - i) * reg.size() };
 
 					vmovdqu(registers::RSP[stack_offset], reg);
 				}
@@ -696,42 +833,41 @@ namespace modernRX::assembler {
 
 		// Generates binary code for poping registers from stack.
 		// For general purpose registers it uses POP instruction.
-		// For YMM registers it copies values from stack to registers.
+		// For XMM registers it copies values from stack to registers.
 		// It is important to use this function with registers in reverse order of adequate push function.
 		// Example:
-		// context.pop(YMM0, YMM1, R8, RAX) will generate:
+		// context.pop(XMM0, XMM1, R8, RAX) will generate:
 		//
-		// vmovqdu ymm0, ymmword ptr [rsp + 0x20]
-		// vmovqdu ymm1, ymmword ptr [rsp]
-		// add rsp, 0x40
+		// vmovqdu xmm0, xmmword ptr [rsp + 0x10]
+		// vmovqdu xmm1, xmmword ptr [rsp]
+		// add rsp, 0x20
 		// pop r8
 		// pop rax
 		template<typename... Reg>
-			requires (std::is_same_v<Reg, Register> && ...)
+		requires (std::is_same_v<Reg, Register> && ...)
 		constexpr void pop(Reg... regs) {
 			static_assert(sizeof...(regs) > 0);
 
-			std::array<Register, sizeof...(regs)> ymm_regs{};
-			int32_t ymm_regs_cnt{ 0 };
+			std::array<Register, sizeof...(regs)> xmm_regs{};
+			int32_t xmm_regs_cnt{ 0 };
 
 			for (const auto& reg : { regs... }) {
-				// YMM registers are popped from stack by copying values from stack back to register and shrinking stack.
-				// Lets just count how many YMM registers was passed and pop them right after, when stack size reserved for them is known.
-				if (reg.type == RegisterType::YMM) {
-					ymm_regs[ymm_regs_cnt++] = reg;
+				// XMM registers are popped from stack by copying values from stack back to register and shrinking stack.
+				// Lets just count how many XMM registers was passed and pop them right after, when stack size reserved for them is known.
+				if (reg.type == RegisterType::XMM) {
+					xmm_regs[xmm_regs_cnt++] = reg;
 				}
 			}
 
-			if (ymm_regs_cnt > 0) {
-				for (int32_t i = 0; i < ymm_regs_cnt; ++i) {
-					const auto& reg{ ymm_regs[i] };
+			if (xmm_regs_cnt > 0) {
+				for (int32_t i = 0; i < xmm_regs_cnt; ++i) {
+					const auto& reg{ xmm_regs[i] };
 					const int32_t stack_offset{ i * reg.size() };
 
-					// vmovqdu ymmX, ymmword ptr [rsp + stack_offset]: {vex.2B: 0xc5} {vex.0bR'0000'1'F3} {opcode: 0x6f /r} {modrm: 0b00'reg.idx'100} {sib: rsp + disp8/32} {disp8/32}
 					vmovdqu(reg, registers::RSP[stack_offset]);
 				}
 
-				const int32_t stack_size{ ymm_regs_cnt * Register::YMM(0).size() };
+				const int32_t stack_size{ xmm_regs_cnt * Register::XMM(0).size() };
 				add(registers::RSP, stack_size);
 			}
 
@@ -747,7 +883,7 @@ namespace modernRX::assembler {
 		constexpr void nop(const int32_t size) {
 			int s = size;
 			while (s > 15) {
-				code.append_range(std::vector<uint8_t>{ 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x2e, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00});
+				code.append_range(std::vector<uint8_t>{ 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x2e, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00}); 
 				s -= 15;
 			}
 			switch (s % 16) {
@@ -781,12 +917,18 @@ namespace modernRX::assembler {
 		}
 
 		// Flushes generated code that results in giving away ownership of the buffer.
-		[[nodiscard]] std::vector<uint8_t> flushCode() {
+		[[nodiscard]] std::vector<uint8_t> flushCode() noexcept {
 			return std::move(code);
 		}
 
 		// Flushes generated data that results in giving away ownership of the buffer.
-		[[nodiscard]] std::vector<uint8_t> flushData() {
+		// Fills data pointers in code.
+		[[nodiscard]] data_vector flushData() noexcept {
+			for (const auto& [code_pos, data_offset] : data_ptr_pos) {
+				auto dp{ dataPtr() + data_offset };
+				std::memcpy(code.data() + code_pos, &dp, sizeof(int64_t));
+			}
+
 			return std::move(data);
 		}
 
@@ -798,9 +940,9 @@ namespace modernRX::assembler {
 			return static_cast<int32_t>(data.size());
 		}
 
-	private:
+		std::vector<std::pair<size_t, size_t>> data_ptr_pos;
 		std::vector<uint8_t> code;
-		std::vector<uint8_t> data;
+		data_vector data;
 		std::vector<uint8_t> instruction;
 		std::unordered_map<std::string, size_t> labels;
 
@@ -840,7 +982,7 @@ namespace modernRX::assembler {
 
 			if (offset == 0) {
 				encode(modregrm<uint8_t>(dst % 8, src % 8, MOD::MOD00)); // Indirect or SIB mode if RSP used.
-			} else if (offset < std::numeric_limits<int8_t>::max()) {
+			} else if (offset >= std::numeric_limits<int8_t>::min() && offset <= std::numeric_limits<int8_t>::max()) {
 				encode(modregrm<uint8_t>(dst % 8, src % 8, MOD::MOD01)); // Indirect + disp8 or SIB mode + disp8 if RSP used.
 			} else {
 				encode(modregrm<uint8_t>(dst % 8, src % 8, MOD::MOD10)); // Indirect + disp32 or SIB mode + disp32 if RSP used.
@@ -852,12 +994,12 @@ namespace modernRX::assembler {
 			}
 
 			// Disp8
-			if (offset > 0) {
+			if (offset != 0) {
 				encode((uint8_t)byte<0>(offset));
 			}
 
 			// Disp32
-			if (offset >= std::numeric_limits<int8_t>::max()) {
+			if (offset < std::numeric_limits<int8_t>::min() || offset > std::numeric_limits<int8_t>::max()) {
 				encode((uint8_t)byte<1>(offset));
 				encode((uint8_t)byte<2>(offset));
 				encode((uint8_t)byte<3>(offset));
@@ -866,7 +1008,7 @@ namespace modernRX::assembler {
 
 		// Generates instruction with REX.W prefix and Register/IMM as operands.
 		template<Opcode opcode, typename Imm>
-			requires (std::is_same_v<Imm, int8_t> || std::is_same_v<Imm, int32_t> || std::is_same_v<Imm, int64_t>)
+		requires (std::is_same_v<Imm, int8_t> || std::is_same_v<Imm, int32_t> || std::is_same_v<Imm, int64_t>)
 		constexpr void rexw(const Register dst, const Imm imm) {
 			encode(rex<uint8_t>(1, 0, 0, dst.isHigh()));
 			encode(opcode.code);
@@ -886,6 +1028,7 @@ namespace modernRX::assembler {
 				encode((uint8_t)byte<6>(imm));
 				encode((uint8_t)byte<7>(imm));
 			}
+
 			schedule();
 		}
 
@@ -943,6 +1086,31 @@ namespace modernRX::assembler {
 			schedule();
 		}
 
+		// Generates instruction with VEX128 prefix and Register/Register as operands (eg. vmovdqa).
+		template<PP pp, MM mm, Opcode opcode, uint8_t w = 0>
+		constexpr void vex128(const Register dst, const Register src1) {
+			if constexpr (mm == MM::MM0x0F) {
+				if (src1.isLow()) {
+					// INSTR ymmD, ymmS1, ymmS2: {vex.2B: 0xc5} {vex.0b1'ffff'1'66} {opcode.code /opcode.mod} {modrm: 0b11'ddd'ss@}
+					encode(vex1<uint8_t>(false));
+					encode(vex2<uint8_t>(0, pp, dst.isLow(), 0));
+				} else {
+					// INSTR ymmD, ymmS1, ymmS2: {vex.3B: 0xc4} {vex.0bR0B'00001} {vex.0bW'ffff'1'66} {opcode.code /opcode.mod} {modrm: 0b11'ddd'ss@}
+					encode(vex1<uint8_t>(true));
+					encode(vex2<uint8_t>(MM::MM0x0F, dst.isLow(), 0, src1.isLow()));
+					encode(vex3<uint8_t>(0, pp, w, 0));
+				}
+			} else {
+				encode(vex1<uint8_t>(true));
+				encode(vex2<uint8_t>(mm, dst.isLow(), 0, src1.isLow()));
+				encode(vex3<uint8_t>(0, pp, w, 0));
+			}
+
+			encode(opcode.code);
+			encode(modregrm<uint8_t>(dst.lowIdx(), src1.lowIdx()));
+			schedule();
+		}
+
 		// Generates instruction with VEX256 prefix and Register/Memory as operands (eg. vmovdqa).
 		template<PP pp, MM mm, Opcode opcode, uint8_t w = 0>
 		constexpr void vex256(const Register dst, const Memory src1) {
@@ -954,13 +1122,38 @@ namespace modernRX::assembler {
 				} else {
 					// INSTR ymmD, ymmS1, ymmS2: {vex.3B: 0xc4} {vex.0bR0B'00001} {vex.0bW'ffff'1'66} {opcode.code /opcode.mod} {modrm: 0b11'ddd'ss@}
 					encode(vex1<uint8_t>(true));
-					encode(vex2<uint8_t>(MM::MM0x0F, dst.isLow()));
+					encode(vex2<uint8_t>(MM::MM0x0F, dst.isLow(), 0, src1.isLow()));
 					encode(vex3<uint8_t>(0, pp, w));
 				}
 			} else {
 				encode(vex1<uint8_t>(true));
 				encode(vex2<uint8_t>(mm, dst.isLow(), 0, src1.isLow()));
 				encode(vex3<uint8_t>(0, pp, w));
+			}
+
+			encode(opcode.code);
+			addr(dst.idx, src1.reg, src1.offset);
+			schedule();
+		}
+
+		// Generates instruction with VEX128 prefix and Register/Memory as operands (eg. vmovdqa).
+		template<PP pp, MM mm, Opcode opcode, uint8_t w = 0>
+		constexpr void vex128(const Register dst, const Memory src1) {
+			if constexpr (mm == MM::MM0x0F) {
+				if (src1.isLow()) {
+					// INSTR ymmD, ymmS1, ymmS2: {vex.2B: 0xc5} {vex.0b1'ffff'1'66} {opcode.code /opcode.mod} {modrm: 0b11'ddd'ss@}
+					encode(vex1<uint8_t>(false));
+					encode(vex2<uint8_t>(0, pp, dst.isLow(), 0));
+				} else {
+					// INSTR ymmD, ymmS1, ymmS2: {vex.3B: 0xc4} {vex.0bR0B'00001} {vex.0bW'ffff'1'66} {opcode.code /opcode.mod} {modrm: 0b11'ddd'ss@}
+					encode(vex1<uint8_t>(true));
+					encode(vex2<uint8_t>(MM::MM0x0F, dst.isLow()));
+					encode(vex3<uint8_t>(0, pp, w, 0));
+				}
+			} else {
+				encode(vex1<uint8_t>(true));
+				encode(vex2<uint8_t>(mm, dst.isLow(), 0, src1.isLow()));
+				encode(vex3<uint8_t>(0, pp, w, 0));
 			}
 
 			encode(opcode.code);

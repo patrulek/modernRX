@@ -262,6 +262,7 @@
     <ClInclude Include="aes1rrandom.hpp" />
     <ClInclude Include="aes4rrandom.hpp" />
     <ClInclude Include="aliases.hpp" />
+    <ClInclude Include="alignedallocator.hpp" />
     <ClInclude Include="argon2d.hpp" />
     <ClInclude Include="argon2davx2.hpp" />
     <ClInclude Include="assembler.hpp" />
