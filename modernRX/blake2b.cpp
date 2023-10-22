@@ -43,7 +43,10 @@ namespace modernRX::blake2b {
 	inline namespace internal {
 		Context::Context(const uint32_t digest_size) noexcept
 			: digest_size{ digest_size } {
-			state[0] ^= 0x01010000 ^ digest_size;
+			using namespace intrinsics;
+
+			const avx2::ymm<uint64_t> digest_size_ymm{ avx2::vset<uint64_t>(0, 0, 0, 0x01010000 ^ digest_size) };
+			state[0] = avx2::vxor<uint64_t>(state[0], digest_size_ymm);
 		}
 
 		template void update<true>(Context&, const_span<std::byte>) noexcept;
@@ -58,6 +61,7 @@ namespace modernRX::blake2b {
 			if constexpr (!Empty) {
 				std::memcpy(ctx.block.data() + (ctx.counter % Block_Size), input.data(), input.size());
 			}
+
 			ctx.counter += input.size();
 		}
 
@@ -80,7 +84,7 @@ namespace modernRX::blake2b {
 			using namespace intrinsics;
 
 			// Prepare block for permutations.
-			const_array<avx2::ymm<uint64_t>, 8> msg{
+			alignas(64) const_array<avx2::ymm<uint64_t>, 8> msg{
 				avx2::vbcasti128<uint64_t>(ctx.block.data()),
 				avx2::vbcasti128<uint64_t>(ctx.block.data() + 16),
 				avx2::vbcasti128<uint64_t>(ctx.block.data() + 32),
@@ -92,13 +96,13 @@ namespace modernRX::blake2b {
 			};
 
 			// Used in ROUND macro.
-			auto m = msgPermutation<0, 0>(msg);
+			auto m{ msgPermutation<0, 0>(msg) };
 
 			// Initialize working vector.
-			auto v1{ avx2::vload256<uint64_t>(ctx.state.data()) }; // {h[0], h[1], h[2], h[3]}
-			auto v2{ avx2::vload256<uint64_t>(ctx.state.data() + 4) }; // {h[4], h[5], h[6], h[7]}
-			auto v3{ avx2::vload256<uint64_t>(IV.data()) }; // {IV[0], IV[1], IV[2], IV[3]}
-			auto v4{ avx2::vload256<uint64_t>(IV.data() + 4) }; // {IV[4] ^ ctx.count, IV[5], IV[6] ^ oneof(0xffffffff, 0), h[7]}
+			auto v1{ ctx.state[0] }; // {h[0], h[1], h[2], h[3]}
+			auto v2{ ctx.state[1] }; // {h[4], h[5], h[6], h[7]}
+			auto v3{ IV1 }; // {IV[0], IV[1], IV[2], IV[3]}
+			auto v4{ IV2 }; // {IV[4] ^ ctx.count, IV[5], IV[6] ^ oneof(0xffffffff, 0), h[7]}
 			v4 = avx2::vxor<uint64_t>(v4, avx2::vset<uint64_t>(0, (Last ? std::numeric_limits<uint64_t>::max() : 0ULL), 0, ctx.counter));
 
 			// Prepare rotation constants. Taken from: https://github.com/jedisct1/libsodium/blob/1.0.16/src/libsodium/crypto_generichash/blake2b/ref/blake2b-compress-avx2.h
@@ -122,8 +126,8 @@ namespace modernRX::blake2b {
 			ROUND(1, msg, v1, v2, v3, v4, rot24, rot16);
 
 			// Finalize compression
-			avx2::vstore256<uint64_t>(avx2::vxor<uint64_t>(avx2::vload256<uint64_t>(ctx.state.data()), avx2::vxor<uint64_t>(v1, v3)), ctx.state.data());
-			avx2::vstore256<uint64_t>(avx2::vxor<uint64_t>(avx2::vload256<uint64_t>(ctx.state.data() + 4), avx2::vxor<uint64_t>(v2, v4)), ctx.state.data() + 4);
+			ctx.state[0] = avx2::vxor<uint64_t>(ctx.state[0], avx2::vxor<uint64_t>(v1, v3));
+			ctx.state[1] = avx2::vxor<uint64_t>(ctx.state[1], avx2::vxor<uint64_t>(v2, v4));
 		}
 	}
 };

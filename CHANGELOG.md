@@ -1,5 +1,11 @@
 ## Changelog
 
+### v0.3.12 - 23.10.2023:
+
+Blake2b optimizations.
+All optimization decisions made in this version:
+* reorder some instructions to reduce chain dependency
+
 ### v0.3.11 - 22.10.2023:
 
 Dataset generation and JIT-compiler general improvements.
