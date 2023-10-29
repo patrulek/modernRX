@@ -15,9 +15,9 @@ class HeapArray {
     static_assert(std::has_single_bit(Align), "Alignment must be power of two.");
 
 public:
-    [[nodiscard]] constexpr HeapArray() noexcept 
+    [[nodiscard]] constexpr explicit HeapArray() noexcept 
         : data_(nullptr), size_(0) {}
-    [[nodiscard]] constexpr HeapArray(const size_t size) noexcept
+    [[nodiscard]] constexpr explicit HeapArray(const size_t size) noexcept
         : data_(static_cast<T*>(_aligned_malloc(sizeof(T)* size, Align))), size_(size) {}
     constexpr ~HeapArray() noexcept {
         if (data_ != nullptr) {
@@ -26,9 +26,9 @@ public:
         }
     }
 
-    HeapArray(const HeapArray&) = delete;
+    [[nodiscard]] constexpr explicit HeapArray(const HeapArray&) = delete;
     constexpr HeapArray& operator=(const HeapArray&) = delete;
-    [[nodiscard]] HeapArray(HeapArray&& other) noexcept {
+    [[nodiscard]] constexpr HeapArray(HeapArray&& other) noexcept {
         this->~HeapArray();
         data_ = other.data_;
         size_ = other.size_;

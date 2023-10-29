@@ -2,7 +2,7 @@
 
 ## Overview
 
-This project aims to provide minimal implementation of [RandomX algorithm](https://github.com/tevador/RandomX) using modern C++ language.
+This project aims to provide minimal implementation of [RandomX v1 algorithm](https://github.com/tevador/RandomX) using modern C++ language.
 
 Current state of this project does not provide sensible performance to use in mining, but you can still use this repository for educational purposes (or whatever that will make sense for you).
 
@@ -24,32 +24,15 @@ Current state of this project does not provide sensible performance to use in mi
 * [ ] Optimize hash calculation with multithreading.
 * [ ] Experiment with further JIT optimizations for faster hash calculation.
 * [ ] Experiment with system and architecture specific optimizations (Huge Pages, MSR etc.) for faster hash calculation.
+* [ ] Port library to Unix-based systems.
 * [ ] Implement RandomX light mode.
 * [ ] Implement RandomX GPU mode.
-* [ ] Port library to Unix-based systems.
 
 ## Build and run
 
 To build this repository you should download the most recent Visual Studio version (at least 17.7) with C++ tools.
 
-Library requires support for AVX2 instructions. There are no runtime checks so if its crashing, make sure your CPU supports AVX2.
-
-To run tests open solution, set `tests` project as the startup one and click "run".
-Sample output:
-
-```console
-[ 0] Blake2b::hash                            ... Passed (<1ms)
-[ 1] Argon2d::Blake2b::hash                   ... Passed (<1ms)
-[ 2] Argon2d::fillMemory                      ... Passed (0.456s)
-[ 3] AesGenerator1R::fill                     ... Passed (<1ms)
-[ 4] AesGenerator4R::fill                     ... Passed (<1ms)
-[ 5] AesHash1R                                ... Passed (<1ms)
-[ 6] Blake2brandom::get                       ... Passed (<1ms)
-[ 7] Reciprocal                               ... Passed (<1ms)
-[ 8] Superscalar::generate                    ... Passed (<1ms)
-[ 9] Dataset::generate                        ... Passed (1.890s)
-[10] Hasher::run                              ... Passed (2.016s)
-```
+Library requires support for AVX2 instructions. In a case of lacking support, exception will be thrown at runtime.
 
 ### Portability
 
@@ -65,78 +48,106 @@ But it should work with Windows 7 and higher and any 64-bit little-endian CPU wi
 This repository is meant to be build as a library that can be linked into other programs, specifically Monero miner programs.
 
 ```c++
-#include "hasher.hpp"
+#include "modernRX/hasher.hpp"
 
-// Initialize hasher somewhere in your code.
-modernRX::Hasher hasher{};
+// Declare hasher somewhere in your code.
+std::unique_ptr<modernRX::Hasher> hasher{ nullptr };
+
+// It is advised to initialize it in a place where exception can be handled.
+void initialize() {
+    try {
+        hasher = std::make_unique<modernRX::Hasher>();
+    } catch (const modernRX::Exception& ex) {
+        // Handle exception.
+    }
+}
 
 void calcHash() {
-	// Miner's responsibility to get proper data from blockchain node and setup job parameters.
-	// For tests these values are hardcoded.
-	auto [key, input] { miner.getHashingDataFromNode() };	
+    // Miner's responsibility to get proper data from blockchain node and setup job parameters.
+    // For tests these values are hardcoded.
+    auto [key, input] { miner.getHashingDataFromNode() };    
 
-	// calculate hash
-	hasher.reset(key); // Resets hasher with new key.
-	auto hash{ hasher.run(input) }; // Calculates hash for input data.
+    // Calculate single hash.
+    hasher->reset(key); // Resets hasher with new key.
+    auto hash{ hasher->run(input) }; // Calculates hash for input data.
 
-	// Miner's responsibility to do something with calculated hash.
-	miner.doSomethingWithHash(hash);
+    // Miner's responsibility to do something with calculated hash.
+    miner.doSomethingWithHash(hash);
 }
 ```
 
+## Tests
+
+To run tests open solution, set `tests` project with `ReleaseAsan` configuration as the startup one and click "run".
+Sample output:
+
+```console
+[ 0] Blake2b::hash                            ... Passed (<1ms)
+[ 1] Argon2d::Blake2b::hash                   ... Passed (<1ms)
+[ 2] Argon2d::fillMemory                      ... Passed (19.750s)
+[ 3] AesGenerator1R::fill                     ... Passed (<1ms)
+[ 4] AesGenerator4R::fill                     ... Passed (<1ms)
+[ 5] AesHash1R                                ... Passed (<1ms)
+[ 6] Blake2brandom::get                       ... Passed (<1ms)
+[ 7] Reciprocal                               ... Passed (<1ms)
+[ 8] Superscalar::generate                    ... Passed (0.010s)
+[ 9] Dataset::generate                        ... Passed (28.183s)
+[10] Hasher::run                              ... Passed (19.058s)
+```
+
+Ideally, tests should be run before every release in `Release` and `Debug` mode with `AddressSanitizer` enabled. `ReleaseAsan` and `DebugAsan` project configurations are provided for this purpose.
+
+### Fuzzing
+
+Repository contains `fuzzer` project that can be used to fuzz this library with `libFuzzer`.
+Except of fuzzing to find fatal bugs, it is also used to fuzz against original RandomX implementation to find differences in behavior.
+
+Ideally, fuzzing should be run before every release in `Release` mode with `AddressSanitizer` enabled. 
+`ReleaseFuzzer` project configuration is provided for this purpose.
+
+Options used for fuzzing:
+
+```console
+-max_len=76 -len_control=0 -rss_limit_mb=8192 -max_total_time=14400 -dict=.dict -artifact_prefix=c:/tmp/ -print_pcs=1 -print_final_stats=1
+```
+
+Be aware that fuzzing is very resource intensive and may take a lot of time to complete.
+By default it expect up to 8GB of RAM usage and runs for 4 hours.
+
+### Code coverage
+
+[OpenCppCoverage](https://github.com/OpenCppCoverage/OpenCppCoverage) is used to measure code coverage. To run code coverage download and install latest OpenCppCoverage for Windows, build `tests` project with `Debug` configuration and finally run it with command:
+
+```console
+OpenCppCoverage.exe --sources \path\to\modernRX\ -- \path\to\modernRX\x64\Debug\tests.exe
+```
+
+Ideally, code coverage should be checked before every release in `Debug` mode.
+
+For a full report see [code coverage report](/assets/covreport/index.html){:target="_blank"}.
+
+## Profile-guided optimization
+
+Repository contains `pgo` project that can be used to generate profile data in `Release` mode. `ReleasePgo` project configuration is provided for this purpose.
+In a case of missing `pgort140.dll` just copy it from VisualStudio installation folder to `x64/ReleasePGO` folder.
+
+Generated profiles are used for benchmarking (experimental).
+
 ## Benchmarks
 
-Benchmarks were performed on Ryzen 5800H CPU with 32GB of RAM (Dual-channel, 3200 MT/s) and Windows 11.
+Benchmarks were performed on AMD Ryzen 5800H CPU with 32GB of RAM (Dual-channel, 3200 MT/s) and Windows 11.
 
 CPU frequency turbo boost was disabled (3.2GHz base frequency).
-
-Benchmarks compare modernRX implementation with fully optimized RandomX implementation and with RandomX implementation that match optimizations available in current modernRX version.
+CPU temperature limit was set to 95°C.
 
 |                                | Blake2b [H/s] | Blake2bLong [H/s] | Argon2d [MB/s] | Aes1R [MB/s] | Aes4R [MB/s] | AesHash1R [H/s] | Superscalar [Prog/s] | Dataset [MB/s] | Hash [H/s] | Efficiency [H/Watt/s] |
 | ------------------------------ | :-----------: | :---------------: | :------------: | :----------: | :----------: | :-------------: | :------------------: | :------------: | :--------: | :-------------------: |
-| RandomX (901f8ef7)             |        3.178M |           102.18K |          912.9 |  **48987.6** |  **12004.5** |       **23510** |                 3997 |         ~812.2 |   **4510** |            **~73.93** |
-| RandomX (901f8ef7)<sup>3</sup> |        3.178M |           102.18K |          912.9 |       2412.8 |        548.5 |            1153 |                 3997 |	       ~812.2 |       19.9 |                 ~0.71 |
-| modernRX 0.3.12                |	  **5.450M** |       **170.98K** |	       1276.1 |       2941.8 |        758.4 |            1428 |             **9671** |         1321.4 |       26.3 |                 ~0.89 |
-| modernRX 0.3.11                |	      5.001M |           158.60K |	       1283.8 |       2905.4 |        759.9 |            1428 |                 9473 |     **1323.3** |       26.1 |                 ~0.87 |
-| modernRX 0.3.10                |	      4.993M |           159.09K |	   **1291.4** |       2911.0 |        758.7 |            1429 |                 9459 |         1303.1 |       26.6 |                 ~0.91 |
-| modernRX 0.3.9                 |	      4.994M |           159.01K |	       1025.1 |       2792.2 |        753.5 |            1420 |                 9566 |         1298.2 |       25.5 |                 ~0.85 |
-| modernRX 0.3.8                 |	      4.980M |           159.19K |	       1020.4 |       2925.7 |        718.7 |            1426 |                 9559 |         1236.6 |       26.2 |                 ~0.87 |
-| modernRX 0.3.7                 |	      4.985M |           158.94K |	        994.4 |       2889.6 |        748.1 |            1410 |                 9509 |         1073.1 |       25.4 |                 ~0.85 |
-| modernRX 0.3.6                 |	      4.914M |           156.10K |	       1006.4 |       2763.4 |        734.6 |            1429 |                 9376 |         1055.1 |       25.7 |                 ~0.88 |
-| modernRX 0.3.5                 |	      4.946M |           155.74K |	        989.8 |       2852.6 |        752.0 |            1424 |                 9340 |         1035.6 |       26.7 |                 ~0.90 |
-| modernRX 0.3.4                 |	      4.910M |           155.95K |	       1003.6 |       2885.6 |        712.6 |            1420 |                 9327 |         1064.0 |       26.8 |                 ~0.92 |
-| modernRX 0.3.3                 |	      4.911M |           155.90K |	        999.1 |       2904.0 |        752.9 |            1411 |                 9270 |          971.0 |       27.0 |                 ~0.93 |
-| modernRX 0.3.2                 |	      4.901M |           154.91K |	       1001.3 |       2701.4 |        754.7 |            1419 |                 9307 |          979.6 |       25.6 |                 ~0.85 |
-| modernRX 0.3.1                 |	      4.867M |           156.60K |	       1005.3 |       2726.5 |        751.4 |            1419 |                 9355 |          955.3 |       26.2 |                 ~0.90 |
-| modernRX 0.3.0                 |	      4.906M |           156.62K |	       1004.2 |       2913.6 |        724.6 |            1421 |                 9350 |          932.6 |       26.9 |                 ~0.92 |
-| RandomX (901f8ef7)<sup>2</sup> |        3.178M |           102.18K |          912.9 |       2412.8 |        548.5 |            1153 |                 3997 |          ~28.9 |       19.9 |                 ~0.71 |
-| modernRX 0.2.3                 |		  4.872M |           154.30K |		    957.1 |       2789.8 |        732.6 |            1394 |                 9356 |          113.1 |       26.2 |                 ~0.87 |
-| modernRX 0.2.2                 |		  4.893M |           156.04K |		    988.0 |       2789.2 |        742.4 |            1415 |                 9419 |           38.7 |       25.8 |                 ~0.83 |
-| modernRX 0.2.1                 |        4.903M |           156.11K |          973.0 |       2868.4 |        734.8 |            1436 |                 9458 |           36.0 |       25.9 |                 ~0.89 |
-| modernRX 0.2.0                 |		  4.902M |           154.70K |          990.3 |       2893.3 |        751.6 |            1419 |                 9409 |           19.2 |       25.8 |                 ~0.86 |
-| RandomX (901f8ef7)<sup>1</sup> |        3.178M |           102.18K |          400.6 |       2412.8 |        548.5 |            1153 |                 3997 |           ~2.1 |       19.9 |                 ~0.71 |
-| modernRX 0.1.2 (reference)     |        2.125M |            69.53K |          412.4 |       2906.7 |        758.9 |            1444 |                 8242 |            1.7 |       26.7 |                 ~0.92 |
+| RandomX-1.2.1 (102f8acf)       |        3.231M |           103.46K |          881.4 |  **47402.5** |  **11473.4** |       **23702** |                 2754 |         ~838.7 |   **4554** |            **~84.33** |
+| modernRX 0.4.0                 |    **5.450M** |       **170.25K** |     **1241.6** |       2781.1 |        728.6 |            1449 |             **9741** |     **1254.0** |       31.6 |                 ~1.31 |
 
-<sup>1)</sup> no avx argon2d, interpreted mode, software AES mode, small pages mode, no batch, single-threaded, full memory mode
+Original RandomX provides benchmark only for calculating final hashes. All other values were estimated (based on information benchmark provides) or some custom benchmarks were written on top of RandomX implementation, thus values may not be 100% accurate.
 
-<sup>2)</sup> avx2 argon2d, interpreted mode, software AES mode, small pages mode, no batch, multi-threaded dataset, single-threaded hash, full memory mode
-
-<sup>3)</sup> avx2 argon2d, dataset JIT mode, hash calculation interpreted mode, software AES mode, small pages mode, no batch, multi-threaded dataset, single-threaded hash, full memory mode
-
-Original RandomX provides benchmark only for calculating final hashes. All other values were estimated (based on information benchmark provides) or some custom benchmarks were written on top of original RandomX implementation, thus values may not be 100% accurate.
-
-Benchmarks description:
-
-* Blake2b - calculating 64-byte blake2b hash for 64 bytes of input data.
-* Blake2bLong - calculating 1024-byte blake2b hash for 64 bytes of input data.
-* Argon2d - filling 256 MB of memory.
-* Aes1R - generating 2MB of output data with 64 bytes of input data.
-* Aes4R - generating 2176 bytes of output data with 64 bytes of input data.
-* AesHash1R - calculating 64-byte aes hash for 2MB of input data.
-* Superscalar - generating superscalar program.
-* Dataset - generating >2GB of dataset.
-* Hash - calculating final RandomX hash.
-* Efficiency - calculating final RandomX hash per watt per second. Power consumption was measured by wattmeter.
+For details and full benchmark results see [BENCHMARKS.md](BENCHMARKS.md).
 
 ## Coding guidelines
 
@@ -150,8 +161,7 @@ Code found in this repository follows guidelines listed below:
 * Describe all headers at the beginning of file, right before imports.
 * Document all functions and types in headers. If function is declared in .cpp prefer documentation close to the definition, not declaration.
 * Use forward declarations wherever possible.
-* If output parameter is chosen over returned one, it must be the first argument in function.
-* No more than single output parameter per function.
+* If output parameters are chosen over returned one, they must be the left-most arguments in function.
 * Use consteval/constexpr/const wherever possible.
 * Constexpr variables used only within single functions should be defined in that function.
 * Use inline for constexpr variables in headers. All exceptions from this rule must be documented.
@@ -176,9 +186,8 @@ Project follows [zero-based versioning](https://0ver.org/) with several specific
 
 ## Changelog
 
-* **v0.3.12 - 23.10.2023:** blake2b optimization (reorder some instructions)
-* ...
-* **v0.1.2 - 28.09.2023:** bugfixes, renaming, documentation updates
+* **v0.4.0 - 29.10.2023:** maintenance release (fuzzing, refactoring, fixing, documentation updates)
+* **v0.1.3 - 29.10.2023:** bugfixes, benchmarks corrections, code cleanup
 * ...
 * **v0.1.0 - 03.09.2023:** reference implementation
 * **v0.0.1 - 10.08.2023:** initial implementation
@@ -188,15 +197,15 @@ For more details see [CHANGELOG.md](CHANGELOG.md).
 ### Code statistics (via [gocloc](https://github.com/hhatto/gocloc))
 
 ```console
-$> gocloc /exclude-ext xml,json,txt .
+$> gocloc /exclude-ext "xml,json,txt,exp" /not-match-d "3rdparty/*|x64/*|assets/*" .
 -------------------------------------------------------------------------------
 Language                     files          blank        comment           code
 -------------------------------------------------------------------------------
-C++ Header                      31            483            547           2764
-C++                             15            505            335           2364
-Markdown                         2            114              0            328
+C++ Header                      33            474            555           2705
+C++                             17            550            342           2544
+Markdown                         3            152              0            428
 -------------------------------------------------------------------------------
-TOTAL                           48           1102            882           5456
+TOTAL                           53           1176            897           5677
 -------------------------------------------------------------------------------
 ```
 

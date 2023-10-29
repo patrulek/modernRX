@@ -1,0 +1,581 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+        <meta charset="utf-8"/>
+	    <title>interpreter.cpp</title>
+	    <link href="../../third-party/google-code-prettify/prettify-CppCoverage.css" type="text/css" rel="stylesheet" />
+	    <script type="text/javascript" src="../../third-party/google-code-prettify/prettify.js"></script>
+	</head>
+    <body onload="prettyPrint()">
+        <h4></h4>
+        <pre class="prettyprint lang-cpp linenums">
+#include &lt;array&gt;
+#include &lt;utility&gt;
+
+#include "aes1rhash.hpp"
+#include "aes4rrandom.hpp"
+#include "bytecode.hpp"
+#include "interpreter.hpp"
+#include "intrinsics.hpp"
+#include "randomxparams.hpp"
+#include "reciprocal.hpp"
+
+
+namespace modernRX {
+    namespace {
+        constexpr uint32_t Int_Register_Count{ 8 };
+        constexpr uint32_t Float_Register_Count{ 4 };
+
+        constexpr uint64_t Mantissa_Size{ 52 };
+        constexpr uint64_t Cache_Line_Size{ sizeof(DatasetItem) };
+        constexpr uint64_t Cache_Line_Align_Mask{ (Rx_Dataset_Base_Size - 1) &amp; ~(Cache_Line_Size - 1) }; // Dataset 64-byte alignment mask.
+
+        using xmm128d_t = intrinsics::sse::xmm&lt;double&gt;;
+
+        // Holds representation of register file used by interpreter during program execution.
+        // https://github.com/tevador/RandomX/blob/master/doc/specs.md#43-registers
+        struct RegisterFile {
+            std::array&lt;uint64_t, Int_Register_Count&gt; r{}; // Common integer registers. Source or destination of integer instructions. Can be used as address registers for scratchpad access.
+            std::array&lt;xmm128d_t, Float_Register_Count&gt; f{}; // "Additive" registers. Destination of floating point addition and substraction instructions.
+            std::array&lt;xmm128d_t, Float_Register_Count&gt; e{}; // "Multiplicative" registers. Destination of floating point multiplication, division and square root instructions.
+            std::array&lt;xmm128d_t, Float_Register_Count&gt; a{}; // Read-only, fixed-value floating point registers. Source operand of any floating point instruction.
+        };
+
+        // Holds memory addresses for program execution.
+        // https://github.com/tevador/RandomX/blob/master/doc/specs.md#43-registers
+        struct MemoryRegisters {
+            uint32_t mx{ 0 }; // Holds memory address of the next Dataset read. Always aligned to be multiple of 64.
+            uint32_t ma{ 0 }; // Holds memory address of the next Dataset prefetch. Always aligned to be multiple of 64.
+        };
+
+        // Holds configuration of the program.
+        // https://github.com/tevador/RandomX/blob/master/doc/specs.md#454-address-registers
+        // https://github.com/tevador/RandomX/blob/master/doc/specs.md#455-dataset-offset
+        // https://github.com/tevador/RandomX/blob/master/doc/specs.md#456-group-e-register-masks
+        struct ProgramConfiguration {
+            std::array&lt;uint64_t, 2&gt; e_mask{}; // Used for the conversion of "E-group" registers.
+            std::array&lt;uint32_t, 4&gt; read_reg{}; // Used to select 4 address registers for program execution.
+            uint64_t dataset_offset{ 0 }; // Used when reading values from the Dataset.
+        };
+
+        [[nodiscard]] constexpr double getSmallPositiveFloat(const uint64_t entropy) noexcept;
+        [[nodiscard]] constexpr uint64_t getFloatRegisterMask(const uint64_t entropy) noexcept;
+        [[nodiscard]] xmm128d_t convertFloatRegister(const xmm128d_t x, const_span&lt;uint64_t, 2&gt; mask) noexcept;
+    }
+
+    // Defines single RandomX program instruction: https://github.com/tevador/RandomX/blob/master/doc/specs.md#51-instruction-encoding
+    // Initialized by AES-filled buffer. 
+    // Must preserve order of fields.
+    struct RxInstruction {
+        uint8_t opcode; // https://github.com/tevador/RandomX/blob/master/doc/specs.md#511-opcode
+        uint8_t dst_register; // https://github.com/tevador/RandomX/blob/master/doc/specs.md#512-dst
+        uint8_t src_register; // https://github.com/tevador/RandomX/blob/master/doc/specs.md#513-src
+        uint8_t mod; // https://github.com/tevador/RandomX/blob/master/doc/specs.md#514-mod
+        uint32_t imm32; // https://github.com/tevador/RandomX/blob/master/doc/specs.md#515-imm32
+
+        // Used to select between Scratchpad levels L1 and L2 when reading from or writing to memory.
+<span style = "background-color:#dfd">        [[nodiscard]] uint8_t modMask() const noexcept {
+            return mod % 4;
+        }</span>
+
+        // Used by IADD_RS instruction.
+<span style = "background-color:#dfd">        [[nodiscard]] uint8_t modShift() const noexcept {
+            return (mod &gt;&gt; 2) % 4;
+        }</span>
+
+        // Used by CBRANCH and ISTORE instructions.
+<span style = "background-color:#dfd">        [[nodiscard]] uint8_t modCond() const noexcept {
+            return mod &gt;&gt; 4;
+        }</span>
+    };
+    static_assert(sizeof(RxInstruction) == 8, "Size of single instruction must be 8 bytes");
+
+    // Holds RandomX program entropy and instructions: https://github.com/tevador/RandomX/blob/master/doc/specs.md#44-program-buffer
+    // Initialized by AES-filled buffer. Must preserve order of fields.
+    struct RxProgram {
+        std::array&lt;uint64_t, 16&gt; entropy{};
+        std::array&lt;RxInstruction, Rx_Program_Size&gt; instructions{};
+    };
+
+    struct ProgramContext {
+        [[nodiscard]] explicit ProgramContext(const RxProgram&amp; program) noexcept;
+
+        RegisterFile rf{};
+        MemoryRegisters mem{};
+        MemoryRegisters sp_addr{};
+        ProgramConfiguration cfg{};
+        std::array&lt;int32_t, Int_Register_Count&gt; reg_usage{};
+<span style = "background-color:#dfd">        uint32_t ic{ 0 };
+        uint32_t iter{ 0 };</span>
+        std::array&lt;int16_t, Rx_Program_Size&gt; branch_target{};
+    };
+
+<span style = "background-color:#dfd">    std::pair&lt;ProgramContext, RxProgram&gt; Interpreter::generateProgram() {
+        RxProgram program{};
+        aes::fill4R(span_cast&lt;std::byte&gt;(program), seed);</span>
+
+        // Last 64 bytes of the program are now the new seed.
+
+<span style = "background-color:#dfd">        return std::make_pair(ProgramContext{ program }, program);
+    }</span>
+
+    Interpreter::Interpreter(std::span&lt;std::byte, 64&gt; seed, const_span&lt;DatasetItem&gt; dataset)
+<span style = "background-color:#dfd">        : dataset(dataset), scratchpad(seed) {
+        std::memcpy(this-&gt;seed.data(), seed.data(), seed.size());
+    }</span>
+
+<span style = "background-color:#dfd">    void Interpreter::executeProgram(ProgramContext&amp; ctx, const RxProgram&amp; program) {</span>
+        // https://github.com/tevador/RandomX/blob/master/doc/specs.md#462-loop-execution
+<span style = "background-color:#dfd">        for (ctx.iter = 0; ctx.iter &lt; Rx_Program_Iterations; ++ctx.iter) {</span>
+            // This performs steps: 1-3
+<span style = "background-color:#dfd">            initializeRegisters(ctx);</span>
+
+            // This loop performs step: 4
+<span style = "background-color:#dfd">            for (ctx.ic = 0; ctx.ic &lt; program.instructions.size(); ++ctx.ic) {
+                const auto&amp; instr{ program.instructions[ctx.ic] };
+                executeInstruction(ctx, instr);
+            }</span>
+
+            // This performs steps: 5-12
+<span style = "background-color:#dfd">            finalizeRegisters(ctx);
+        }
+    }</span>
+
+<span style = "background-color:#dfd">    std::array&lt;std::byte, 32&gt; Interpreter::execute() {</span>
+        // RandomX requires specific float environment before executing any program.
+        // This RAII object will set proper float flags on creation and restore its values on destruction. 
+<span style = "background-color:#dfd">        const intrinsics::sse::FloatEnvironment fenv{};</span>
+
+<span style = "background-color:#dfd">        for (uint32_t i = 0; i &lt; Rx_Program_Count - 1; ++i) {
+            auto [ctx, program] { generateProgram() };
+            executeProgram(ctx, program);
+            blake2b::hash(seed, span_cast&lt;std::byte, sizeof(ctx.rf)&gt;(ctx.rf));
+        }</span>
+
+<span style = "background-color:#dfd">        auto [ctx, program] { generateProgram() };
+        executeProgram(ctx, program);
+        aes::hash1R(span_cast&lt;std::byte, sizeof(ctx.rf.a)&gt;(ctx.rf.a), span_cast&lt;std::byte, Rx_Scratchpad_L3_Size&gt;(scratchpad.data()));</span>
+
+<span style = "background-color:#dfd">        std::array&lt;std::byte, 32&gt; output{};
+        blake2b::hash(output, span_cast&lt;std::byte&gt;(ctx.rf));</span>
+
+<span style = "background-color:#dfd">        return output;
+    }</span>
+
+<span style = "background-color:#dfd">    void Interpreter::initializeRegisters(ProgramContext&amp; ctx) {
+        constexpr uint32_t Scratchpad_L3_Mask64{ (Rx_Scratchpad_L3_Size - 1) &amp; ~63 }; // L3 cache 64-byte alignment mask.</span>
+
+        // Step 1.
+<span style = "background-color:#dfd">        const uint64_t spMix{ ctx.rf.r[ctx.cfg.read_reg[0]] ^ ctx.rf.r[ctx.cfg.read_reg[1]] };
+        ctx.sp_addr.mx ^= spMix;
+        ctx.sp_addr.mx &amp;= Scratchpad_L3_Mask64;
+        ctx.sp_addr.ma ^= spMix &gt;&gt; 32;
+        ctx.sp_addr.ma &amp;= Scratchpad_L3_Mask64;</span>
+
+        // Step 2.
+<span style = "background-color:#dfd">        for (uint32_t i = 0; i &lt; Int_Register_Count; ++i) {
+            const auto offset{ ctx.sp_addr.mx + 8 * i };
+            ctx.rf.r[i] ^= scratchpad.read(offset);
+        }</span>
+
+        // Step 3.
+        // -----
+        // "F-group" register initialization: https://github.com/tevador/RandomX/blob/master/doc/specs.md#431-group-f-register-conversion
+<span style = "background-color:#dfd">        for (uint32_t i = 0; i &lt; Float_Register_Count; ++i) {
+            const auto offset{ ctx.sp_addr.ma + 8 * i };
+            ctx.rf.f[i] = intrinsics::sse::vcvtpi32&lt;double&gt;(scratchpad.data() + offset);
+        }</span>
+
+        // "E-group" register initialization: https://github.com/tevador/RandomX/blob/master/doc/specs.md#432-group-e-register-conversion
+<span style = "background-color:#dfd">        for (uint32_t i = 0; i &lt; Float_Register_Count; ++i) {
+            const auto offset{ ctx.sp_addr.ma + 8 * (4 + i) };
+            const auto x{ intrinsics::sse::vcvtpi32&lt;double&gt;(scratchpad.data() + offset) };</span>
+
+<span style = "background-color:#dfd">            ctx.rf.e[i] = convertFloatRegister(x, ctx.cfg.e_mask);
+        }
+    }</span>
+
+<span style = "background-color:#dfd">    void Interpreter::executeInstruction(ProgramContext&amp; ctx, const RxInstruction&amp; instr) {
+        constexpr uint32_t Scratchpad_L1_Mask{ (Rx_Scratchpad_L1_Size - 1) &amp; ~7 }; // L1 cache 8-byte alignment mask.
+        constexpr uint32_t Scratchpad_L2_Mask{ (Rx_Scratchpad_L2_Size - 1) &amp; ~7 }; // L2 cache 8-byte alignment mask.
+        constexpr uint32_t Scratchpad_L3_Mask{ (Rx_Scratchpad_L3_Size - 1) &amp; ~7 }; // L3 cache 8-byte alignment mask.</span>
+
+        // Initialize register indexes. Modulo is used to handle register overflow.
+<span style = "background-color:#dfd">        const auto src_register{ instr.src_register % Int_Register_Count };
+        const auto dst_register{ instr.dst_register % Int_Register_Count };
+        const auto f_src_register{ instr.src_register % Float_Register_Count };
+        const auto f_dst_register{ instr.dst_register % Float_Register_Count };</span>
+
+        // Calculate the offset for the memory instructions.
+<span style = "background-color:#dfd">        const auto offset = [&amp;]() {</span>
+            // Check if the instruction is an integer one based on the opcode.
+<span style = "background-color:#dfd">            const auto bc{ static_cast&lt;uint8_t&gt;(LUT_Opcode[instr.opcode]) };
+            const bool is_integer_instr{ bc &lt; static_cast&lt;uint8_t&gt;(Bytecode::FSWAP_R) || bc &gt; static_cast&lt;uint8_t&gt;(Bytecode::FSQRT_R) };</span>
+
+<span style = "background-color:#dfd">            const auto imm{ static_cast&lt;int32_t&gt;(instr.imm32) }; // Two's complement sign extension.</span>
+
+            // L3 cache is used only for integer instructions.
+<span style = "background-color:#dfd">            if (is_integer_instr &amp;&amp; src_register == dst_register) {
+                return static_cast&lt;uint64_t&gt;(imm) &amp; Scratchpad_L3_Mask;</span>
+            }
+
+<span style = "background-color:#dfd">            const auto mem_mask{ instr.modMask() ? Scratchpad_L1_Mask : Scratchpad_L2_Mask };
+            const auto src_value{ ctx.rf.r[src_register] };</span>
+
+<span style = "background-color:#dfd">            return (src_value + imm) &amp; mem_mask;
+        }();</span>
+
+        // Source operands.
+<span style = "background-color:#dfd">        uint64_t r_src_value{ ctx.rf.r[src_register] }; // Integer register source value.
+        uint64_t m_src_value{ scratchpad.read(offset) }; // Integer memory source value.
+        xmm128d_t f_src_value{ intrinsics::sse::vcvtpi32&lt;double&gt;(scratchpad.data() + offset) }; // Float memory source value.</span>
+
+        // Instruction execution: https://github.com/tevador/RandomX/blob/master/doc/specs.md#5-instruction-set
+<span style = "background-color:#dfd">        switch (LUT_Opcode[instr.opcode]) { using enum Bytecode;</span>
+        case IADD_RS:
+        {
+<span style = "background-color:#dfd">            constexpr uint8_t Displacement_Reg_Idx{ 5 };
+            const auto imm{ (dst_register != Displacement_Reg_Idx) ? 0 : static_cast&lt;int32_t&gt;(instr.imm32) };
+            ctx.rf.r[dst_register] += (r_src_value &lt;&lt; instr.modShift()) + imm;
+            break;</span>
+        }
+        case IADD_M:
+<span style = "background-color:#dfd">            ctx.rf.r[dst_register] += m_src_value;
+            break;</span>
+        case ISUB_R:
+<span style = "background-color:#dfd">            if (src_register == dst_register) {
+                r_src_value = static_cast&lt;int32_t&gt;(instr.imm32);</span>
+            }
+
+<span style = "background-color:#dfd">            ctx.rf.r[dst_register] -= r_src_value;
+            break;</span>
+        case ISUB_M:
+<span style = "background-color:#dfd">            ctx.rf.r[dst_register] -= m_src_value;
+            break;</span>
+        case IMUL_R:
+<span style = "background-color:#dfd">            if (src_register == dst_register) {
+                r_src_value = static_cast&lt;int32_t&gt;(instr.imm32);</span>
+            }
+
+<span style = "background-color:#dfd">            ctx.rf.r[dst_register] *= r_src_value;
+            break;</span>
+        case IMUL_M:
+<span style = "background-color:#dfd">            ctx.rf.r[dst_register] *= m_src_value;
+            break;</span>
+        case IMULH_R:
+<span style = "background-color:#dfd">            ctx.rf.r[dst_register] = intrinsics::umulh(ctx.rf.r[dst_register], r_src_value);
+            break;</span>
+        case IMULH_M:
+<span style = "background-color:#dfd">            ctx.rf.r[dst_register] = intrinsics::umulh(ctx.rf.r[dst_register], m_src_value);
+            break;</span>
+        case ISMULH_R:
+<span style = "background-color:#dfd">            ctx.rf.r[dst_register] = intrinsics::smulh(ctx.rf.r[dst_register], r_src_value);
+            break;</span>
+        case ISMULH_M:
+<span style = "background-color:#dfd">            ctx.rf.r[dst_register] = intrinsics::smulh(ctx.rf.r[dst_register], m_src_value);
+            break;</span>
+        case IMUL_RCP:
+        {
+<span style = "background-color:#dfd">            const uint32_t divisor{ instr.imm32 };
+            if (divisor != 0 &amp;&amp; !std::has_single_bit(divisor)) {
+                r_src_value = reciprocal(divisor);
+                ctx.rf.r[dst_register] *= r_src_value;</span>
+            }
+<span style = "background-color:#dfd">            break;</span>
+        }
+        case INEG_R:
+<span style = "background-color:#dfd">            ctx.rf.r[dst_register] = ~(ctx.rf.r[dst_register]) + 1; // Two's complement negative.
+            break;</span>
+        case IXOR_R:
+<span style = "background-color:#dfd">            if (src_register == dst_register) {
+                r_src_value = static_cast&lt;int32_t&gt;(instr.imm32);</span>
+            }
+
+<span style = "background-color:#dfd">            ctx.rf.r[dst_register] ^= r_src_value;
+            break;</span>
+        case IXOR_M:
+<span style = "background-color:#dfd">            ctx.rf.r[dst_register] ^= m_src_value;
+            break;</span>
+        case IROR_R:
+<span style = "background-color:#dfd">            if (src_register == dst_register) {
+                r_src_value = instr.imm32;</span>
+            }
+
+<span style = "background-color:#dfd">            ctx.rf.r[dst_register] = std::rotr(ctx.rf.r[dst_register], r_src_value % 64);
+            break;</span>
+        case IROL_R:
+<span style = "background-color:#dfd">            if (src_register == dst_register) {
+                r_src_value = instr.imm32;</span>
+            }
+
+<span style = "background-color:#dfd">            ctx.rf.r[dst_register] = std::rotl(ctx.rf.r[dst_register], r_src_value % 64);
+            break;</span>
+        case ISWAP_R:
+<span style = "background-color:#dfd">            if (src_register != dst_register) {
+                std::swap(ctx.rf.r[src_register], ctx.rf.r[dst_register]);</span>
+            }
+<span style = "background-color:#dfd">            break;</span>
+        case FSWAP_R:
+<span style = "background-color:#dfd">            if (dst_register &lt; Float_Register_Count) {
+                ctx.rf.f[f_dst_register] = intrinsics::sse::vswap&lt;double&gt;(ctx.rf.f[f_dst_register]);
+                break;</span>
+            }
+
+<span style = "background-color:#dfd">            ctx.rf.e[f_dst_register] = intrinsics::sse::vswap&lt;double&gt;(ctx.rf.e[f_dst_register]);
+            break;</span>
+        case FADD_R:
+<span style = "background-color:#dfd">            ctx.rf.f[f_dst_register] = intrinsics::sse::vadd&lt;double&gt;(ctx.rf.f[f_dst_register], ctx.rf.a[f_src_register]);
+            break;</span>
+        case FADD_M:
+<span style = "background-color:#dfd">            ctx.rf.f[f_dst_register] = intrinsics::sse::vadd&lt;double&gt;(ctx.rf.f[f_dst_register], f_src_value);
+            break;</span>
+        case FSUB_R:
+<span style = "background-color:#dfd">            ctx.rf.f[f_dst_register] = intrinsics::sse::vsub&lt;double&gt;(ctx.rf.f[f_dst_register], ctx.rf.a[f_src_register]);
+            break;</span>
+        case FSUB_M:
+<span style = "background-color:#dfd">            ctx.rf.f[f_dst_register] = intrinsics::sse::vsub&lt;double&gt;(ctx.rf.f[f_dst_register], f_src_value);
+            break;</span>
+        case FSCAL_R:
+        {
+<span style = "background-color:#dfd">            const auto mask{ intrinsics::sse::vbcasti64&lt;double&gt;(0x80F0000000000000) };
+            ctx.rf.f[f_dst_register] = intrinsics::sse::vxor&lt;double&gt;(ctx.rf.f[f_dst_register], mask);
+            break;</span>
+        }
+        case FMUL_R:
+<span style = "background-color:#dfd">            ctx.rf.e[f_dst_register] = intrinsics::sse::vmul&lt;double&gt;(ctx.rf.e[f_dst_register], ctx.rf.a[f_src_register]);
+            break;</span>
+        case FDIV_M:
+        {
+<span style = "background-color:#dfd">            f_src_value = convertFloatRegister(f_src_value, ctx.cfg.e_mask);
+            ctx.rf.e[f_dst_register] = intrinsics::sse::vdiv&lt;double&gt;(ctx.rf.e[f_dst_register], f_src_value);
+            break;</span>
+        }
+        case FSQRT_R:
+<span style = "background-color:#dfd">            ctx.rf.e[f_dst_register] = intrinsics::sse::vsqrt&lt;double&gt;(ctx.rf.e[f_dst_register]);
+            break;</span>
+        case CBRANCH:
+        {
+<span style = "background-color:#dfd">            constexpr uint32_t Condition_Mask{ (1 &lt;&lt; Rx_Jump_Bits) - 1 };</span>
+
+<span style = "background-color:#dfd">            const auto shift{ instr.modCond() + Rx_Jump_Offset };
+            const auto mem_mask{ Condition_Mask &lt;&lt; shift }; </span>
+            
+<span style = "background-color:#dfd">            uint64_t imm{ static_cast&lt;int32_t&gt;(instr.imm32) | (1ULL &lt;&lt; shift) };</span>
+            static_assert(Rx_Jump_Offset &gt; 0, "Below simplification requires this assertion");
+<span style = "background-color:#dfd">            imm &amp;= ~(1ULL &lt;&lt; (shift - 1)); // Clear the bit below the condition mask - this limits the number of successive jumps to 2.</span>
+
+<span style = "background-color:#dfd">            ctx.rf.r[dst_register] += imm;
+            if ((ctx.rf.r[dst_register] &amp; mem_mask) == 0) {
+                ctx.ic = ctx.branch_target[ctx.ic];</span>
+            }
+
+<span style = "background-color:#dfd">            break;</span>
+        }
+        case CFROUND:
+        {
+<span style = "background-color:#dfd">            const auto imm{ instr.imm32 % 64 };
+            intrinsics::sse::setFloatRoundingMode(std::rotr(r_src_value, imm) % intrinsics::sse::Floating_Round_Modes);
+            break;</span>
+        }
+        case ISTORE:
+        {
+<span style = "background-color:#dfd">            constexpr uint32_t L3_Store_Condition{ 14 };
+            const auto imm{ static_cast&lt;int32_t&gt;(instr.imm32) };</span>
+
+<span style = "background-color:#dfd">            auto mem_mask{ Scratchpad_L3_Mask };
+            if (instr.modCond() &lt; L3_Store_Condition) {
+                mem_mask = instr.modMask() ? Scratchpad_L1_Mask : Scratchpad_L2_Mask;</span>
+            }
+
+<span style = "background-color:#dfd">            const auto store_offset{ (ctx.rf.r[dst_register] + imm) &amp; mem_mask };
+            scratchpad.write(store_offset, r_src_value);
+            break;</span>
+        }
+        default:
+<span style = "background-color:#fdd">            std::unreachable();</span>
+        }
+<span style = "background-color:#dfd">    }</span>
+
+<span style = "background-color:#dfd">    void Interpreter::finalizeRegisters(ProgramContext&amp; ctx) {</span>
+        // Step 5.
+<span style = "background-color:#dfd">        ctx.mem.mx ^= ctx.rf.r[ctx.cfg.read_reg[2]] ^ ctx.rf.r[ctx.cfg.read_reg[3]];
+        ctx.mem.mx &amp;= Cache_Line_Align_Mask;</span>
+
+        // Step 6. - omitted
+        // Step 7. and step 9.
+<span style = "background-color:#dfd">        const auto dt_index{ (ctx.cfg.dataset_offset + ctx.mem.ma) / Cache_Line_Size };
+        DatasetItem dt_item{ dataset[dt_index] };</span>
+
+<span style = "background-color:#dfd">        for (uint32_t i = 0; i &lt; Int_Register_Count; ++i) {
+            const auto offset{ ctx.sp_addr.ma + 8 * i };
+            ctx.rf.r[i] ^= dt_item[i];
+            scratchpad.write(offset, ctx.rf.r[i]);
+        }</span>
+
+        // Step 8.
+<span style = "background-color:#dfd">        std::swap(ctx.mem.mx, ctx.mem.ma);</span>
+
+        // Step 10.
+<span style = "background-color:#dfd">        for (uint32_t i = 0; i &lt; Float_Register_Count; ++i) {
+            ctx.rf.f[i] = intrinsics::sse::vxor&lt;double&gt;(ctx.rf.f[i], ctx.rf.e[i]);
+        }</span>
+
+        // Step 11.
+<span style = "background-color:#dfd">        for (uint32_t i = 0; i &lt; Float_Register_Count; ++i) {
+            const auto offset{ ctx.sp_addr.mx + 16 * i };
+            scratchpad.write(offset, std::bit_cast&lt;uint64_t&gt;(ctx.rf.f[i].m128d_f64[0]));
+            scratchpad.write(offset + 8, std::bit_cast&lt;uint64_t&gt;(ctx.rf.f[i].m128d_f64[1]));
+        }</span>
+
+        // Step 12.
+<span style = "background-color:#dfd">        ctx.sp_addr.mx = 0;
+        ctx.sp_addr.ma = 0;
+    }</span>
+
+<span style = "background-color:#dfd">    ProgramContext::ProgramContext(const RxProgram&amp; program) noexcept {
+        constexpr uint64_t Dataset_Extra_Items{ Rx_Dataset_Extra_Size / sizeof(DatasetItem) };
+        const auto entropy{ program.entropy };</span>
+        
+        // "A-group" register initialization: https://github.com/tevador/RandomX/blob/master/doc/specs.md#452-group-a-register-initialization
+<span style = "background-color:#dfd">        rf.a[0] = { getSmallPositiveFloat(entropy[0]), getSmallPositiveFloat(entropy[1]) }; 
+        rf.a[1] = { getSmallPositiveFloat(entropy[2]), getSmallPositiveFloat(entropy[3]) };
+        rf.a[2] = { getSmallPositiveFloat(entropy[4]), getSmallPositiveFloat(entropy[5]) };
+        rf.a[3] = { getSmallPositiveFloat(entropy[6]), getSmallPositiveFloat(entropy[7]) };</span>
+
+        // Memory registers initialization: https://github.com/tevador/RandomX/blob/master/doc/specs.md#453-memory-registers
+<span style = "background-color:#dfd">        mem.ma = static_cast&lt;uint32_t&gt;(entropy[8] &amp; Cache_Line_Align_Mask);
+        mem.mx = static_cast&lt;uint32_t&gt;(entropy[10]);</span>
+
+        // Scratchpad address registers initialization: https://github.com/tevador/RandomX/blob/master/doc/specs.md#461-initialization
+<span style = "background-color:#dfd">        sp_addr.ma = mem.ma;
+        sp_addr.mx = mem.mx;</span>
+
+        // Address registers initialization: https://github.com/tevador/RandomX/blob/master/doc/specs.md#454-address-registers
+<span style = "background-color:#dfd">        for (uint32_t i = 0; i &lt; cfg.read_reg.size(); ++i) {
+            cfg.read_reg[i] = (i * 2) + ((entropy[12] &gt;&gt; i) &amp; 1);
+        }</span>
+
+        // Dataset offset initialization: https://github.com/tevador/RandomX/blob/master/doc/specs.md#455-dataset-offset
+<span style = "background-color:#dfd">        cfg.dataset_offset = (entropy[13] % (Dataset_Extra_Items + 1)) * Cache_Line_Size;</span>
+
+        // "E-group" register masks initialization: https://github.com/tevador/RandomX/blob/master/doc/specs.md#456-group-e-register-masks
+<span style = "background-color:#dfd">        cfg.e_mask[0] = getFloatRegisterMask(entropy[14]);
+        cfg.e_mask[1] = getFloatRegisterMask(entropy[15]);</span>
+
+<span style = "background-color:#dfd">        reg_usage.fill(-1);</span>
+        
+<span style = "background-color:#dfd">        for (uint32_t i = 0; i &lt; program.instructions.size(); ++i) {</span>
+            // Getting registers indexes. Modulo is used to handle register overflow.
+<span style = "background-color:#dfd">            const auto dst_register{ program.instructions[i].dst_register % Int_Register_Count };
+            const auto src_register{ program.instructions[i].src_register % Int_Register_Count };</span>
+
+<span style = "background-color:#dfd">            switch (LUT_Opcode[program.instructions[i].opcode]) { using enum Bytecode;</span>
+            case IADD_RS: [[fallthrough]];
+            case IADD_M: [[fallthrough]];
+            case ISUB_R: [[fallthrough]];
+            case ISUB_M: [[fallthrough]];
+            case IMUL_R: [[fallthrough]];
+            case IMUL_M: [[fallthrough]];
+            case IMULH_R: [[fallthrough]];
+            case IMULH_M: [[fallthrough]];
+            case ISMULH_R: [[fallthrough]];
+            case ISMULH_M: [[fallthrough]];
+            case INEG_R: [[fallthrough]];
+            case IXOR_R: [[fallthrough]];
+            case IXOR_M: [[fallthrough]];
+            case IROR_R: [[fallthrough]];
+            case IROL_R:
+<span style = "background-color:#dfd">                reg_usage[dst_register] = i;
+                break;</span>
+            case IMUL_RCP:
+<span style = "background-color:#dfd">                if (!std::has_single_bit(program.instructions[i].imm32)) {
+                    reg_usage[dst_register] = i;</span>
+                }
+                // No else, because IMUL_RCP with power of 2 is a NOP.
+<span style = "background-color:#dfd">                break;</span>
+            case ISWAP_R:
+<span style = "background-color:#dfd">                if (src_register != dst_register) {
+                    reg_usage[dst_register] = i;
+                    reg_usage[src_register] = i;</span>
+                }
+                // No else, because ISWAP_R with same registers is a NOP.
+<span style = "background-color:#dfd">                break;</span>
+            case CBRANCH:
+<span style = "background-color:#dfd">                branch_target[i] = reg_usage[dst_register];
+                for (auto&amp; reg : reg_usage) { reg = i; } // Set all registers as used.</span>
+                break;
+            default:
+                // For all other instructions, do nothing.
+                break;
+            }
+<span style = "background-color:#dfd">        }
+    }</span>
+
+    namespace {
+        // Used to initialize "A-group" register values:
+        // https://github.com/tevador/RandomX/blob/master/doc/specs.md#452-group-a-register-initialization
+<span style = "background-color:#dfd">        constexpr double getSmallPositiveFloat(const uint64_t entropy) noexcept {
+            constexpr uint64_t Exponent_Size{ 11 };
+            constexpr uint64_t Mantissa_Mask{ (1ULL &lt;&lt; Mantissa_Size) - 1 };
+            constexpr uint64_t Exponent_Mask{ (1ULL &lt;&lt; Exponent_Size) - 1 };
+            constexpr uint64_t Exponent_Bias{ 1023 };</span>
+
+<span style = "background-color:#dfd">            const auto mantissa{ entropy &amp; Mantissa_Mask };</span>
+
+<span style = "background-color:#dfd">            auto exponent{ entropy &gt;&gt; 59 }; // 0 .. 31
+            exponent += Exponent_Bias;
+            exponent &amp;= Exponent_Mask;
+            exponent &lt;&lt;= Mantissa_Size;</span>
+
+<span style = "background-color:#dfd">            return std::bit_cast&lt;double&gt;(exponent | mantissa);
+        }</span>
+
+        // Used to get "E-group" register masks:
+        // https://github.com/tevador/RandomX/blob/master/doc/specs.md#456-group-e-register-masks
+<span style = "background-color:#dfd">        constexpr uint64_t getFloatRegisterMask(const uint64_t entropy) noexcept {
+            constexpr uint64_t Mask22_Bits{ (1ULL &lt;&lt; 22) - 1 };
+            constexpr uint64_t Exponent_Bits{ 4 };</span>
+
+<span style = "background-color:#dfd">            uint64_t exponent{ 0b01100000000 }; // Step 2. of: https://github.com/tevador/RandomX/blob/master/doc/specs.md#432-group-e-register-conversion
+            exponent |= (entropy &gt;&gt; (64 - Exponent_Bits)) &lt;&lt; Exponent_Bits;
+            exponent &lt;&lt;= Mantissa_Size;</span>
+
+<span style = "background-color:#dfd">            return (entropy &amp; Mask22_Bits) | exponent;
+        }</span>
+
+        // Used to convert "E-group" registers values:
+        // https://github.com/tevador/RandomX/blob/master/doc/specs.md#432-group-e-register-conversion
+<span style = "background-color:#dfd">        xmm128d_t convertFloatRegister(const xmm128d_t x, const_span&lt;uint64_t, 2&gt; mask) noexcept {
+            constexpr uint64_t Exponent_Bits{ 4 };
+            constexpr uint64_t Mantissa_Mask{ (1ULL &lt;&lt; (Mantissa_Size + Exponent_Bits)) - 1 };</span>
+
+            const xmm128d_t xmm_mantissa_mask{
+<span style = "background-color:#dfd">                std::bit_cast&lt;double&gt;(Mantissa_Mask),
+                std::bit_cast&lt;double&gt;(Mantissa_Mask),</span>
+            };
+
+            const xmm128d_t xmm_exponent_mask{
+<span style = "background-color:#dfd">                std::bit_cast&lt;double&gt;(mask[0]),
+                std::bit_cast&lt;double&gt;(mask[1]),</span>
+            };
+
+<span style = "background-color:#dfd">            const auto y{ intrinsics::sse::vand&lt;double&gt;(x, xmm_mantissa_mask) };
+            return intrinsics::sse::vor&lt;double&gt;(y, xmm_exponent_mask);
+        }</span>
+    }
+}</pre>
+        <hr />
+        <table width="100%">
+            <thead>
+                <tr>
+                    <th align="center">
+                        <small>Generated by</small>
+                        <a href="https://github.com/OpenCppCoverage/OpenCppCoverage/releases">
+                            <strong>OpenCppCoverage (Version: 0.9.9.0)</strong>
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+        </table>
+    </body>
+</html>

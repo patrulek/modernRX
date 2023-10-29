@@ -1,0 +1,186 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+        <meta charset="utf-8"/>
+	    <title>sse.hpp</title>
+	    <link href="../../third-party/google-code-prettify/prettify-CppCoverage.css" type="text/css" rel="stylesheet" />
+	    <script type="text/javascript" src="../../third-party/google-code-prettify/prettify.js"></script>
+	</head>
+    <body onload="prettyPrint()">
+        <h4></h4>
+        <pre class="prettyprint lang-cpp linenums">
+#pragma once
+
+/*
+* Wrapper over some SSE intrinsics required by RandomX algorithm.
+* Implements FloatEnvironment RAII class to set and reset float environment, which is required by RandomX algorithm.
+* Used by RandomX algorithm.
+* Code may be a little bit messy and not fully documented as this will be further extended in unknown direction.
+*/
+
+#include &lt;array&gt;
+#include &lt;bit&gt;
+#include &lt;cfenv&gt;
+#include &lt;emmintrin.h&gt;
+
+namespace modernRX::intrinsics::sse {
+    inline constexpr uint32_t Rx_Mxcsr_Default{ 0x9FC0 }; //Flush to zero, denormals are zero, default rounding mode, all exceptions disabled.
+    inline constexpr uint32_t Floating_Round_Modes{ 4 };
+
+    // Sets float environment and restore it on destruction.
+    class FloatEnvironment {
+    public:
+        // Swaps current float environment with provided one.
+<span style = "background-color:#dfd">        [[nodiscard]] explicit FloatEnvironment(const uint32_t csr = Rx_Mxcsr_Default) noexcept {
+            fegetenv(&amp;fenv);
+            _mm_setcsr(csr); // Reset float state.
+        }
+        ~FloatEnvironment() {
+            fesetenv(&amp;fenv);
+        }</span>
+        FloatEnvironment(const FloatEnvironment&amp;) = delete;
+        FloatEnvironment(const FloatEnvironment&amp;&amp;) = delete;
+        FloatEnvironment&amp; operator=(const FloatEnvironment&amp;) = delete;
+        FloatEnvironment&amp; operator=(const FloatEnvironment&amp;&amp;) = delete;
+    private:
+        fenv_t fenv;
+    };
+
+    // Modifies environment's rounding mode.
+    // Mode limited to 4 values with modulo operation.
+<span style = "background-color:#dfd">    inline void setFloatRoundingMode(const uint32_t mode, const uint32_t csr = Rx_Mxcsr_Default) noexcept {
+        _mm_setcsr(csr | (mode &lt;&lt; 13));
+    }</span>
+
+    template&lt;typename T&gt;
+    struct xmm_wrapper {
+        using type = std::conditional_t&lt;std::is_same_v&lt;T, double&gt;, __m128d, void&gt;;
+
+        static_assert(!std::is_same_v&lt;type, void&gt;, "type must be double");
+    };
+
+    template&lt;typename T&gt;
+    using xmm = xmm_wrapper&lt;T&gt;::type;
+
+    template&lt;typename T&gt;
+<span style = "background-color:#dfd">    [[nodiscard]] constexpr xmm&lt;T&gt; vxor(const xmm&lt;T&gt; x, const xmm&lt;T&gt; y) noexcept {</span>
+        if constexpr (std::is_same_v&lt;T, double&gt;) {
+<span style = "background-color:#dfd">            return _mm_xor_pd(x, y);</span>
+        } else {
+            static_assert(!sizeof(T), "the only supported type for this operation is: float64");
+        }
+<span style = "background-color:#dfd">    }</span>
+
+    template&lt;typename T&gt;
+<span style = "background-color:#dfd">    [[nodiscard]] constexpr xmm&lt;T&gt; vand(const xmm&lt;T&gt; x, const xmm&lt;T&gt; y) noexcept {</span>
+        if constexpr (std::is_same_v&lt;T, double&gt;) {
+<span style = "background-color:#dfd">            return _mm_and_pd(x, y);</span>
+        } else {
+            static_assert(!sizeof(T), "the only supported type for this operation is: float64");
+        }
+<span style = "background-color:#dfd">    }</span>
+
+
+    template&lt;typename T&gt;
+<span style = "background-color:#dfd">    [[nodiscard]] constexpr xmm&lt;T&gt; vor(const xmm&lt;T&gt; x, const xmm&lt;T&gt; y) noexcept {</span>
+        if constexpr (std::is_same_v&lt;T, double&gt;) {
+<span style = "background-color:#dfd">            return _mm_or_pd(x, y);</span>
+        } else {
+            static_assert(!sizeof(T), "the only supported type for this operation is: float64");
+        }
+<span style = "background-color:#dfd">    }</span>
+
+    template&lt;typename T&gt;
+<span style = "background-color:#dfd">    [[nodiscard]] constexpr xmm&lt;T&gt; vadd(const xmm&lt;T&gt; x, const xmm&lt;T&gt; y) noexcept {</span>
+        if constexpr (std::is_same_v&lt;T, double&gt;) {
+<span style = "background-color:#dfd">            return _mm_add_pd(x, y);</span>
+        } else {
+            static_assert(!sizeof(T), "the only supported type for this operation is: float64");
+        }
+<span style = "background-color:#dfd">    }</span>
+
+    template&lt;typename T&gt;
+<span style = "background-color:#dfd">    [[nodiscard]] constexpr xmm&lt;T&gt; vsub(const xmm&lt;T&gt; x, const xmm&lt;T&gt; y) noexcept {</span>
+        if constexpr (std::is_same_v&lt;T, double&gt;) {
+<span style = "background-color:#dfd">            return _mm_sub_pd(x, y);</span>
+        } else {
+            static_assert(!sizeof(T), "the only supported type for this operation is: float64");
+        }
+<span style = "background-color:#dfd">    }</span>
+
+    template&lt;typename T&gt;
+<span style = "background-color:#dfd">    [[nodiscard]] constexpr xmm&lt;T&gt; vmul(const xmm&lt;T&gt; x, const xmm&lt;T&gt; y) noexcept {</span>
+        if constexpr (std::is_same_v&lt;T, double&gt;) {
+<span style = "background-color:#dfd">            return _mm_mul_pd(x, y);</span>
+        } else {
+            static_assert(!sizeof(T), "the only supported type for this operation is: float64");
+        }
+<span style = "background-color:#dfd">    }</span>
+
+    template&lt;typename T&gt;
+<span style = "background-color:#dfd">    [[nodiscard]] constexpr xmm&lt;T&gt; vdiv(const xmm&lt;T&gt; x, const xmm&lt;T&gt; y) noexcept {</span>
+        if constexpr (std::is_same_v&lt;T, double&gt;) {
+<span style = "background-color:#dfd">            return _mm_div_pd(x, y);</span>
+        } else {
+            static_assert(!sizeof(T), "the only supported type for this operation is: float64");
+        }
+<span style = "background-color:#dfd">    }</span>
+
+    template&lt;typename T&gt;
+<span style = "background-color:#dfd">    [[nodiscard]] constexpr xmm&lt;T&gt; vsqrt(const xmm&lt;T&gt; x) noexcept {</span>
+        if constexpr (std::is_same_v&lt;T, double&gt;) {
+<span style = "background-color:#dfd">            return _mm_sqrt_pd(x);</span>
+        } else {
+            static_assert(!sizeof(T), "the only supported type for this operation is: float64");
+        }
+<span style = "background-color:#dfd">    }</span>
+
+    template&lt;typename T&gt;
+<span style = "background-color:#dfd">    [[nodiscard]] constexpr xmm&lt;T&gt; vswap(const xmm&lt;T&gt; x) noexcept {</span>
+        if constexpr (std::is_same_v&lt;T, double&gt;) {
+<span style = "background-color:#dfd">            return _mm_shuffle_pd(x, x, 1);</span>
+        } else {
+            static_assert(!sizeof(T), "the only supported type for this operation is: float64");
+        }
+<span style = "background-color:#dfd">    }</span>
+
+    template&lt;typename T1, typename T2&gt;
+    concept equal_greater_size = sizeof(T1) &gt;= sizeof(T2);
+
+    // Converts 2 packed int32 values into two floating point values.
+    template&lt;typename To&gt;
+    requires std::floating_point&lt;To&gt;&amp;&amp; equal_greater_size&lt;To, int32_t&gt;
+<span style = "background-color:#dfd">    [[nodiscard]] constexpr xmm&lt;To&gt; vcvtpi32(const std::byte* addr) noexcept {</span>
+        if constexpr (std::is_same_v&lt;To, double&gt;) {
+<span style = "background-color:#dfd">            const __m128i x{ _mm_loadl_epi64(reinterpret_cast&lt;const __m128i*&gt;(addr)) };
+            return _mm_cvtepi32_pd(x);</span>
+        } else {
+            static_assert(!sizeof(To), "the only supported type for this operation is: int32 -&gt; float64");
+        }
+<span style = "background-color:#dfd">    }</span>
+
+    template&lt;typename T&gt;
+<span style = "background-color:#dfd">    [[nodiscard]] constexpr xmm&lt;T&gt; vbcasti64(const uint64_t x) noexcept {</span>
+        if constexpr (std::is_same_v&lt;T, double&gt;) {
+<span style = "background-color:#dfd">            const __m128i v{ _mm_set1_epi64x(x) };
+            return _mm_castsi128_pd(v);</span>
+        } else {
+            static_assert(!sizeof(T), "the only supported type for this operation is: int64 -&gt; float64");
+        }
+<span style = "background-color:#dfd">    }</span>
+}</pre>
+        <hr />
+        <table width="100%">
+            <thead>
+                <tr>
+                    <th align="center">
+                        <small>Generated by</small>
+                        <a href="https://github.com/OpenCppCoverage/OpenCppCoverage/releases">
+                            <strong>OpenCppCoverage (Version: 0.9.9.0)</strong>
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+        </table>
+    </body>
+</html>

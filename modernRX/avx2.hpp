@@ -27,7 +27,6 @@ namespace modernRX::intrinsics::avx2 {
 
     template<typename T, typename... Args>
     [[nodiscard]] constexpr ymm<T> vset(Args... args) noexcept {
-
         if constexpr (std::is_same_v<T, uint64_t>) {
             if constexpr (sizeof...(Args) == 1) {
                 return _mm256_set1_epi64x(args...);
@@ -50,25 +49,6 @@ namespace modernRX::intrinsics::avx2 {
         }
     }
 
-
-    template<typename T>
-    [[nodiscard]] constexpr ymm<T> vlshift(const ymm<T> x, const int shift) noexcept {
-        if constexpr (std::is_same_v<T, uint64_t>) {
-            return _mm256_slli_epi64(x, shift);
-        } else {
-            static_assert(!sizeof(T), "the only supported type for this operation is: uint64");
-        }
-    }
-
-    template<typename T>
-    [[nodiscard]] constexpr ymm<T> vrshift(const ymm<T> x, const int shift) noexcept {
-        if constexpr (std::is_same_v<T, uint64_t>) {
-            return _mm256_srli_epi64(x, shift);
-        } else {
-            static_assert(!sizeof(T), "the only supported type for this operation is: uint64");
-        }
-    }
-
     template<typename T>
     [[nodiscard]] constexpr ymm<T> vmul(const ymm<T> x, const ymm<T> y) noexcept {
         if constexpr (std::is_same_v<T, uint64_t>) {
@@ -79,27 +59,9 @@ namespace modernRX::intrinsics::avx2 {
     }
 
     template<typename T>
-    [[nodiscard]] constexpr ymm<T> vsub(const ymm<T> x, const ymm<T> y) noexcept {
-        if constexpr (std::is_same_v<T, uint64_t>) {
-            return _mm256_sub_epi64(x, y);
-        } else {
-            static_assert(!sizeof(T), "the only supported type for this operation is: uint64");
-        }
-    }
-
-    template<typename T>
     [[nodiscard]] constexpr ymm<T> vxor(const ymm<T> x, const ymm<T> y) noexcept {
         if constexpr (std::is_same_v<T, uint64_t>) {
             return _mm256_xor_si256(x, y);
-        } else {
-            static_assert(!sizeof(T), "the only supported type for this operation is: uint64");
-        }
-    }
-
-    template<typename T>
-    [[nodiscard]] constexpr ymm<T> vand(const ymm<T> x, const ymm<T> y) noexcept {
-        if constexpr (std::is_same_v<T, uint64_t>) {
-            return _mm256_and_si256(x, y);
         } else {
             static_assert(!sizeof(T), "the only supported type for this operation is: uint64");
         }
@@ -203,18 +165,6 @@ namespace modernRX::intrinsics::avx2 {
         }
     }
 
-    // Right rotate packed 64-bit integers.
-    template<typename T>
-    [[nodiscard]] constexpr ymm<T> vrorpi64(const ymm<T> x, const int shift) noexcept {
-        if constexpr (std::is_same_v<T, uint64_t>) {
-            // value >> shift | value << (64 - shift);
-            ASSERTUME(shift > 0 && shift < 64);
-            return vor<T>(vrshift<T>(x, shift), vlshift<T>(x, shift));
-        } else {
-            static_assert(!sizeof(T), "the only supported type for this operation is: uint64");
-        }
-    }
-
 
     template<typename T, int imm8>
     [[nodiscard]] constexpr ymm<T> vpermuteepi64(const ymm<T> x) noexcept {
@@ -224,38 +174,6 @@ namespace modernRX::intrinsics::avx2 {
             return _mm256_permute4x64_epi64(x, imm8);
         } else {
             static_assert(!sizeof(T), "the only supported type for this operation is: uint64");
-        }
-    }
-
-    template<typename T, int imm8>
-    [[nodiscard]] constexpr ymm<T> vpermute2x128(const ymm<T> x, const ymm<T> y) noexcept {
-        static_assert(imm8 >= 0 && imm8 <= 255, "imm8 must be in range 0-255");
-
-        if constexpr (std::is_same_v<T, uint64_t>) {
-            return _mm256_permute2x128_si256(x, y, imm8);
-        } else {
-            static_assert(!sizeof(T), "the only supported type for this operation is: uint64");
-        }
-    }
-
-    // Loads integer values from aligned memory location.
-    template<typename T>
-    [[nodiscard]] constexpr ymm<T> vload256(const void* addr) noexcept {
-        if constexpr (std::is_integral_v<T>) {
-            return _mm256_load_si256(reinterpret_cast<const __m256i*>(addr));
-        } else {
-            static_assert(!sizeof(T), "the only supported type for this operation are integral types");
-        }
-    }
-
-    // Stores integer in address.
-    template<typename T>
-    [[nodiscard]] constexpr void vstore256(const ymm<T> x, void* addr) noexcept {
-        if constexpr (std::is_integral_v<T>) {
-            _mm256_storeu_si256(reinterpret_cast<__m256i*>(addr), x);
-            return;
-        } else {
-            static_assert(!sizeof(T), "the only supported type for this operation are integral types");
         }
     }
 }

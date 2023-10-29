@@ -6,7 +6,6 @@
 #include "bytecode.hpp"
 #include "interpreter.hpp"
 #include "intrinsics.hpp"
-#include "logger.hpp"
 #include "randomxparams.hpp"
 #include "reciprocal.hpp"
 
@@ -105,7 +104,6 @@ namespace modernRX {
         aes::fill4R(span_cast<std::byte>(program), seed);
 
         // Last 64 bytes of the program are now the new seed.
-        std::memcpy(seed.data(), span_cast<std::byte>(program).data() + sizeof(RxProgram) - seed.size(), seed.size());
 
         return std::make_pair(ProgramContext{ program }, program);
     }
@@ -123,7 +121,7 @@ namespace modernRX {
 
             // This loop performs step: 4
             for (ctx.ic = 0; ctx.ic < program.instructions.size(); ++ctx.ic) {
-                const auto& instr = program.instructions[ctx.ic];
+                const auto& instr{ program.instructions[ctx.ic] };
                 executeInstruction(ctx, instr);
             }
 
@@ -154,14 +152,14 @@ namespace modernRX {
     }
 
     void Interpreter::initializeRegisters(ProgramContext& ctx) {
-        static constexpr uint32_t ScratchpadL3Mask64{ (Rx_Scratchpad_L3_Size - 1) & ~63 }; // L3 cache 64-byte alignment mask.
+        constexpr uint32_t Scratchpad_L3_Mask64{ (Rx_Scratchpad_L3_Size - 1) & ~63 }; // L3 cache 64-byte alignment mask.
 
         // Step 1.
         const uint64_t spMix{ ctx.rf.r[ctx.cfg.read_reg[0]] ^ ctx.rf.r[ctx.cfg.read_reg[1]] };
         ctx.sp_addr.mx ^= spMix;
-        ctx.sp_addr.mx &= ScratchpadL3Mask64;
+        ctx.sp_addr.mx &= Scratchpad_L3_Mask64;
         ctx.sp_addr.ma ^= spMix >> 32;
-        ctx.sp_addr.ma &= ScratchpadL3Mask64;
+        ctx.sp_addr.ma &= Scratchpad_L3_Mask64;
 
         // Step 2.
         for (uint32_t i = 0; i < Int_Register_Count; ++i) {
@@ -187,9 +185,9 @@ namespace modernRX {
     }
 
     void Interpreter::executeInstruction(ProgramContext& ctx, const RxInstruction& instr) {
-        static constexpr uint32_t ScratchpadL1Mask{ (Rx_Scratchpad_L1_Size - 1) & ~7 }; // L1 cache 8-byte alignment mask.
-        static constexpr uint32_t ScratchpadL2Mask{ (Rx_Scratchpad_L2_Size - 1) & ~7 }; // L2 cache 8-byte alignment mask.
-        static constexpr uint32_t ScratchpadL3Mask{ (Rx_Scratchpad_L3_Size - 1) & ~7 }; // L3 cache 8-byte alignment mask.
+        constexpr uint32_t Scratchpad_L1_Mask{ (Rx_Scratchpad_L1_Size - 1) & ~7 }; // L1 cache 8-byte alignment mask.
+        constexpr uint32_t Scratchpad_L2_Mask{ (Rx_Scratchpad_L2_Size - 1) & ~7 }; // L2 cache 8-byte alignment mask.
+        constexpr uint32_t Scratchpad_L3_Mask{ (Rx_Scratchpad_L3_Size - 1) & ~7 }; // L3 cache 8-byte alignment mask.
 
         // Initialize register indexes. Modulo is used to handle register overflow.
         const auto src_register{ instr.src_register % Int_Register_Count };
@@ -207,10 +205,10 @@ namespace modernRX {
 
             // L3 cache is used only for integer instructions.
             if (is_integer_instr && src_register == dst_register) {
-                return static_cast<uint64_t>(imm) & ScratchpadL3Mask;
+                return static_cast<uint64_t>(imm) & Scratchpad_L3_Mask;
             }
 
-            const auto mem_mask{ instr.modMask() ? ScratchpadL1Mask : ScratchpadL2Mask };
+            const auto mem_mask{ instr.modMask() ? Scratchpad_L1_Mask : Scratchpad_L2_Mask };
             const auto src_value{ ctx.rf.r[src_register] };
 
             return (src_value + imm) & mem_mask;
@@ -225,8 +223,8 @@ namespace modernRX {
         switch (LUT_Opcode[instr.opcode]) { using enum Bytecode;
         case IADD_RS:
         {
-            constexpr uint8_t displacement_reg_idx{ 5 };
-            const auto imm{ (dst_register != displacement_reg_idx) ? 0 : static_cast<int32_t>(instr.imm32) };
+            constexpr uint8_t Displacement_Reg_Idx{ 5 };
+            const auto imm{ (dst_register != Displacement_Reg_Idx) ? 0 : static_cast<int32_t>(instr.imm32) };
             ctx.rf.r[dst_register] += (r_src_value << instr.modShift()) + imm;
             break;
         }
@@ -267,7 +265,7 @@ namespace modernRX {
             break;
         case IMUL_RCP:
         {
-            const uint64_t divisor{ instr.imm32 };
+            const uint32_t divisor{ instr.imm32 };
             if (divisor != 0 && !std::has_single_bit(divisor)) {
                 r_src_value = reciprocal(divisor);
                 ctx.rf.r[dst_register] *= r_src_value;
@@ -346,15 +344,14 @@ namespace modernRX {
             break;
         case CBRANCH:
         {
-            static constexpr uint32_t condition_mask{ (1 << Rx_Jump_Bits) - 1 };
+            constexpr uint32_t Condition_Mask{ (1 << Rx_Jump_Bits) - 1 };
 
             const auto shift{ instr.modCond() + Rx_Jump_Offset };
-            const auto mem_mask{ condition_mask << shift }; 
+            const auto mem_mask{ Condition_Mask << shift }; 
             
             uint64_t imm{ static_cast<int32_t>(instr.imm32) | (1ULL << shift) };
-            if (Rx_Jump_Offset > 0 || shift > 0) { // Clear the bit below the condition mask - this limits the number of successive jumps to 2.
-                imm &= ~(1ULL << (shift - 1));
-            }
+            static_assert(Rx_Jump_Offset > 0, "Below simplification requires this assertion");
+            imm &= ~(1ULL << (shift - 1)); // Clear the bit below the condition mask - this limits the number of successive jumps to 2.
 
             ctx.rf.r[dst_register] += imm;
             if ((ctx.rf.r[dst_register] & mem_mask) == 0) {
@@ -371,12 +368,12 @@ namespace modernRX {
         }
         case ISTORE:
         {
-            constexpr uint32_t l3_store_condition{ 14 };
+            constexpr uint32_t L3_Store_Condition{ 14 };
             const auto imm{ static_cast<int32_t>(instr.imm32) };
 
-            auto mem_mask{ ScratchpadL3Mask };
-            if (instr.modCond() < l3_store_condition) {
-                mem_mask = instr.modMask() ? ScratchpadL1Mask : ScratchpadL2Mask;
+            auto mem_mask{ Scratchpad_L3_Mask };
+            if (instr.modCond() < L3_Store_Condition) {
+                mem_mask = instr.modMask() ? Scratchpad_L1_Mask : Scratchpad_L2_Mask;
             }
 
             const auto store_offset{ (ctx.rf.r[dst_register] + imm) & mem_mask };
@@ -425,7 +422,7 @@ namespace modernRX {
     }
 
     ProgramContext::ProgramContext(const RxProgram& program) noexcept {
-        static constexpr uint64_t Dataset_Extra_Items{ Rx_Dataset_Extra_Size / sizeof(DatasetItem) };
+        constexpr uint64_t Dataset_Extra_Items{ Rx_Dataset_Extra_Size / sizeof(DatasetItem) };
         const auto entropy{ program.entropy };
         
         // "A-group" register initialization: https://github.com/tevador/RandomX/blob/master/doc/specs.md#452-group-a-register-initialization
@@ -507,16 +504,16 @@ namespace modernRX {
         // Used to initialize "A-group" register values:
         // https://github.com/tevador/RandomX/blob/master/doc/specs.md#452-group-a-register-initialization
         constexpr double getSmallPositiveFloat(const uint64_t entropy) noexcept {
-            constexpr uint64_t exponent_size{ 11 };
-            constexpr uint64_t mantissa_mask{ (1ULL << Mantissa_Size) - 1 };
-            constexpr uint64_t exponent_mask{ (1ULL << exponent_size) - 1 };
-            constexpr uint64_t exponent_bias{ 1023 };
+            constexpr uint64_t Exponent_Size{ 11 };
+            constexpr uint64_t Mantissa_Mask{ (1ULL << Mantissa_Size) - 1 };
+            constexpr uint64_t Exponent_Mask{ (1ULL << Exponent_Size) - 1 };
+            constexpr uint64_t Exponent_Bias{ 1023 };
 
-            const auto mantissa{ entropy & mantissa_mask };
+            const auto mantissa{ entropy & Mantissa_Mask };
 
             auto exponent{ entropy >> 59 }; // 0 .. 31
-            exponent += exponent_bias;
-            exponent &= exponent_mask;
+            exponent += Exponent_Bias;
+            exponent &= Exponent_Mask;
             exponent <<= Mantissa_Size;
 
             return std::bit_cast<double>(exponent | mantissa);
@@ -525,25 +522,25 @@ namespace modernRX {
         // Used to get "E-group" register masks:
         // https://github.com/tevador/RandomX/blob/master/doc/specs.md#456-group-e-register-masks
         constexpr uint64_t getFloatRegisterMask(const uint64_t entropy) noexcept {
-            constexpr uint64_t mask22bits{ (1ULL << 22) - 1 };
-            constexpr uint64_t exponent_bits{ 4 };
+            constexpr uint64_t Mask22_Bits{ (1ULL << 22) - 1 };
+            constexpr uint64_t Exponent_Bits{ 4 };
 
             uint64_t exponent{ 0b01100000000 }; // Step 2. of: https://github.com/tevador/RandomX/blob/master/doc/specs.md#432-group-e-register-conversion
-            exponent |= (entropy >> (64 - exponent_bits)) << exponent_bits;
+            exponent |= (entropy >> (64 - Exponent_Bits)) << Exponent_Bits;
             exponent <<= Mantissa_Size;
 
-            return (entropy & mask22bits) | exponent;
+            return (entropy & Mask22_Bits) | exponent;
         }
 
         // Used to convert "E-group" registers values:
         // https://github.com/tevador/RandomX/blob/master/doc/specs.md#432-group-e-register-conversion
         xmm128d_t convertFloatRegister(const xmm128d_t x, const_span<uint64_t, 2> mask) noexcept {
-            static constexpr uint64_t exponent_bits{ 4 };
-            static constexpr uint64_t mantissa_mask{ (1ULL << (Mantissa_Size + exponent_bits)) - 1 };
+            constexpr uint64_t Exponent_Bits{ 4 };
+            constexpr uint64_t Mantissa_Mask{ (1ULL << (Mantissa_Size + Exponent_Bits)) - 1 };
 
             const xmm128d_t xmm_mantissa_mask{
-                std::bit_cast<double>(mantissa_mask),
-                std::bit_cast<double>(mantissa_mask),
+                std::bit_cast<double>(Mantissa_Mask),
+                std::bit_cast<double>(Mantissa_Mask),
             };
 
             const xmm128d_t xmm_exponent_mask{

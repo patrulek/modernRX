@@ -1,0 +1,107 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
+    </Filter>
+    <Filter Include="Resource Files">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="fuzzer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\RandomX\src\randomx.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\RandomX\src\argon2_avx2.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\RandomX\src\argon2_core.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\RandomX\src\argon2_ssse3.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\RandomX\src\blake2\blake2b.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\RandomX\src\argon2_ref.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\RandomX\src\jit_compiler_x86.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\RandomX\src\virtual_machine.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\RandomX\src\vm_compiled.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\RandomX\src\vm_interpreted.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\RandomX\src\aes_hash.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\RandomX\src\bytecode_machine.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\RandomX\src\vm_compiled_light.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\RandomX\src\vm_interpreted_light.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\RandomX\src\allocator.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\RandomX\src\assembly_generator_x86.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\RandomX\src\blake2_generator.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\RandomX\src\cpu.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\RandomX\src\dataset.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\RandomX\src\instruction.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\RandomX\src\reciprocal.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\RandomX\src\soft_aes.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\RandomX\src\superscalar.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\RandomX\src\virtual_memory.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="3rdparty\RandomX\src\instructions_portable.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="3rdparty\RandomX\src\asm\randomx_reciprocal.inc">
+      <Filter>Source Files</Filter>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <MASM Include="3rdparty\RandomX\src\jit_compiler_x86_static.asm">
+      <Filter>Source Files</Filter>
+    </MASM>
+  </ItemGroup>
+</Project>

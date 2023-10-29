@@ -1,0 +1,345 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+        <meta charset="utf-8"/>
+	    <title>jitcompiler.cpp</title>
+	    <link href="../../third-party/google-code-prettify/prettify-CppCoverage.css" type="text/css" rel="stylesheet" />
+	    <script type="text/javascript" src="../../third-party/google-code-prettify/prettify.js"></script>
+	</head>
+    <body onload="prettyPrint()">
+        <h4></h4>
+        <pre class="prettyprint lang-cpp linenums">
+#include "assembler.hpp"
+#include "jitcompiler.hpp"
+#include "superscalar.hpp"
+
+
+namespace modernRX {
+    namespace {
+        [[nodiscard]] void emitAVX2Instruction(assembler::Context&amp; asmb, int32_t&amp; data_offset, const SuperscalarInstruction&amp; instr);
+    }
+
+<span style = "background-color:#dfd">    [[nodiscard]] jit_function_ptr&lt;JITDatasetItemProgram&gt; compile(const_span&lt;SuperscalarProgram, Rx_Cache_Accesses&gt; programs) {</span>
+        using namespace assembler::registers;
+        using namespace assembler;
+<span style = "background-color:#dfd">        assembler::Context asmb(128 * 1024, 32 * 1024);</span>
+
+        // I. Prolog
+        // 1) Push registers to stack and align it to 64 bytes boundary.
+<span style = "background-color:#dfd">        asmb.push(RBX, RSI, RDI, R13, R14, R15, XMM6, XMM7, XMM8, XMM9, XMM10, XMM11, XMM12, XMM13, XMM14, XMM15);
+        asmb.alignStack();</span>
+        // 2) Declare local variable (in order: cache_indexes, Cache_Item_Mask, vpmulhuq mask, vpmullq mask, v4q_add_consts, v4q_item_numbers_step).
+<span style = "background-color:#dfd">        asmb.sub(RSP, 0xC0); // 6x ymm registers</span>
+        // 3) Move data ptr to RBX.
+<span style = "background-color:#dfd">        asmb.movDataPtr(RBX);</span>
+        // 4) Prepare const values used in step 1 of: https://github.com/tevador/RandomX/blob/master/doc/specs.md#73-dataset-block-generation
+<span style = "background-color:#dfd">        const auto v4q_item_numbers_add{ asmb.storeVector4q&lt;uint64_t, RBX&gt;(1, 2, 3, 4) }; // item_number adder - RBX[0]
+        const auto v4q_mul_consts{ asmb.storeImmediate&lt;uint64_t, Register::YMM(0).size(), RBX&gt;(6364136223846793005ULL) }; // mul_consts - RBX[32]
+        asmb.storeImmediate&lt;uint64_t, Register::YMM(0).size()&gt;(9298411001130361340ULL); // RBX[64]
+        asmb.storeImmediate&lt;uint64_t, Register::YMM(0).size()&gt;(12065312585734608966ULL); // RBX[96]
+        asmb.storeImmediate&lt;uint64_t, Register::YMM(0).size()&gt;(9306329213124626780ULL); // RBX[128]
+        asmb.storeImmediate&lt;uint64_t, Register::YMM(0).size()&gt;(5281919268842080866ULL); // RBX[160]
+        asmb.storeImmediate&lt;uint64_t, Register::YMM(0).size()&gt;(10536153434571861004ULL); // RBX[192]
+        asmb.storeImmediate&lt;uint64_t, Register::YMM(0).size()&gt;(3398623926847679864ULL); // RBX[224]
+        asmb.storeImmediate&lt;uint64_t, Register::YMM(0).size()&gt;(9549104520008361294ULL); // RBX[256]</span>
+
+        // 5) Set buffer ptr in R10. [RCX] + 128 - pointer in span. Move pointer by 128 bytes to reduce total code size when storing dataset items.
+<span style = "background-color:#dfd">        asmb.mov(R10, RCX[0]);
+        asmb.add(R10, 128);</span>
+        // 6) Set buffer size in R13. [RCX + 8] - size of submemory span.
+        //    Divide size by batch size (4) - this register is loop counter.
+<span style = "background-color:#dfd">        asmb.mov(R13, RCX[8]);
+        asmb.shr(R13, 2);</span>
+        // 7) Move cache ptr to YMM6. This register will never be used for anything else.
+<span style = "background-color:#dfd">        asmb.vpbroadcastq(YMM6, RDX);
+        const auto&amp; cache_ptr_reg{ YMM6 };</span>
+
+        // 9) Initialize local variables
+<span style = "background-color:#dfd">        const auto Cache_Item_Mask{ asmb.put4qVectorOnStack(R08, 32) };
+        asmb.put4qVectorOnStack(0x00000000ffffffff, 64); // vpmulhuq mask
+        const auto v4q_mullq_mask{ asmb.put4qVectorOnStack(0xffffffff00000000, 96) };
+        const auto v4q_add_consts{ asmb.put4qVectorOnStack(7009800821677620404ULL, 128) }; // This value is v4q_mul_consts multiplied by 4.
+        const auto v4q_item_numbers_step{ asmb.put4qVectorOnStack(4, 160) };
+        asmb.vpbroadcastq(YMM5, R09);
+        asmb.vonereg(YMM4);
+        asmb.vpaddq(YMM5, YMM5, v4q_item_numbers_add);
+        asmb.vpsubq(YMM3, YMM5, YMM4);
+        asmb.vmovdqa(RSP[0], YMM3);
+        const auto&amp; cache_indexes_stack{ RSP[0] };
+        const auto&amp; cache_indexes_reg{ YMM3 };</span>
+
+        // 10) Set initial ymmitem0 in YMM7. ymmitem0 = (v4q(start_item) + v4q_item_numbers_add) * v4q_mul_consts
+        // YMM7 will never be used for anything else.
+<span style = "background-color:#dfd">        asmb.vmovdqa(YMM4, v4q_mullq_mask);
+        asmb.vpmullq(YMM7, YMM5, v4q_mul_consts);
+        const auto&amp; ymmitem0{ YMM7 };</span>
+
+        // II. Main loop
+        // 11) Start loop over all elements.
+<span style = "background-color:#dfd">        asmb.label("loop");</span>
+
+        // 12) Set data pointer to proper offset.
+<span style = "background-color:#dfd">        asmb.movDataPtr(RBX, 192);</span>
+
+        // 13) Set initial dataset item values.
+        // Uses "register-wise" layout:
+        // A0 B0 C0 D0
+        // A1 B1 C1 D1
+        // ...
+        // A7 B7 C7 D7
+<span style = "background-color:#dfd">        asmb.vmovdqa(YMM8, YMM7);
+        asmb.vpxor(YMM9, YMM7, RBX[-128]);
+        asmb.vpxor(YMM10, YMM7, RBX[-96]);
+        asmb.vpxor(YMM11, YMM7, RBX[-64]);
+        asmb.vpxor(YMM12, YMM7, RBX[-32]);
+        asmb.vpxor(YMM13, YMM7, RBX[0]);
+        asmb.vpxor(YMM14, YMM7, RBX[32]);
+        asmb.vpxor(YMM15, YMM7, RBX[64]);
+        int32_t data_offset{ 96 };</span>
+
+        // 14) Execute all programs.
+<span style = "background-color:#dfd">        for (uint32_t i = 0; i &lt; 8; ++i) {
+            const auto&amp; program{ programs[i] };</span>
+
+            // 15) Prepare registers for program execution.
+<span style = "background-color:#dfd">            asmb.vmovdqa(YMM4, v4q_mullq_mask); // Set vpmullq mask in YMM4.
+            asmb.vzeroreg(YMM5); // Zero out YMM5.</span>
+
+            // 16) Set cache item indexes.
+<span style = "background-color:#dfd">            if (i == 0) {
+                asmb.vpand(YMM0, cache_indexes_reg, Cache_Item_Mask);
+            } else {</span>
+                // For programs 1-7 address register of the previous program is used.
+<span style = "background-color:#dfd">                const auto cache_indexes_reg_tmp{ Register::YMM(8 | programs[i - 1].address_register) };
+                asmb.vpand(YMM0, cache_indexes_reg_tmp, Cache_Item_Mask);</span>
+            }
+
+            // 17) Set cache item pointers.
+            static_assert(sizeof(DatasetItem) == 64);
+<span style = "background-color:#dfd">            asmb.vpsllq(YMM0, YMM0, static_cast&lt;int&gt;(std::log2(sizeof(DatasetItem)))); // Shift by 6.
+            asmb.vpaddq(YMM0, YMM0, cache_ptr_reg);</span>
+
+            // 18) Prefetch cache items.
+<span style = "background-color:#dfd">            asmb.vextracti128(XMM1, YMM0, 1);
+            asmb.vpextrq(R14, XMM0, 1);
+            asmb.prefetchnta(R14[0]);
+            asmb.vmovq(RSI, XMM0);
+            asmb.prefetchnta(RSI[0]);
+            asmb.vmovq(RDI, XMM1);
+            asmb.prefetchnta(RDI[0]);
+            asmb.vpextrq(R15, XMM1, 1);
+            asmb.prefetchnta(R15[0]);</span>
+
+            // 19) Execute every single instruction of program.
+<span style = "background-color:#dfd">            for (uint32_t j = 0; j &lt; program.size; ++j) {
+                const SuperscalarInstruction&amp; instr{ program.instructions[j] };
+                emitAVX2Instruction(asmb, data_offset, instr);
+            }</span>
+
+            // 20) Transpose forth and back registers 0-3 and perform XOR with cache items.
+<span style = "background-color:#dfd">            asmb.vpunpcklqdq(YMM0, YMM8, YMM9);         // A0 A1 C0 C1
+            asmb.vpunpcklqdq(YMM1, YMM10, YMM11);       // A2 A3 C2 C3
+            asmb.vperm2i128(YMM2, YMM0, YMM1, 0x20);    // A0 A1 A2 A3
+            asmb.vperm2i128(YMM3, YMM0, YMM1, 0x31);    // C0 C1 C2 C3</span>
+
+<span style = "background-color:#dfd">            asmb.vpunpckhqdq(YMM0, YMM8, YMM9);         // B0 B1 D0 D1
+            asmb.vpunpckhqdq(YMM1, YMM10, YMM11);       // B2 B3 D2 D3
+            asmb.vperm2i128(YMM4, YMM0, YMM1, 0x20);    // B0 B1 B2 B3
+            asmb.vperm2i128(YMM5, YMM0, YMM1, 0x31);    // D0 D1 D2 D3</span>
+
+            // 21) If this is the last program do not transpose registers.
+<span style = "background-color:#dfd">            if (i == programs.size() - 1) {
+                asmb.vpxor(YMM8, YMM2, RSI[0]);
+                asmb.vpxor(YMM10, YMM3, RDI[0]);
+                asmb.vpxor(YMM9, YMM4, R14[0]);
+                asmb.vpxor(YMM11, YMM5, R15[0]);
+            } else {
+                asmb.vpxor(YMM2, YMM2, RSI[0]);
+                asmb.vpxor(YMM3, YMM3, RDI[0]);
+                asmb.vpxor(YMM4, YMM4, R14[0]);
+                asmb.vpxor(YMM5, YMM5, R15[0]);</span>
+
+<span style = "background-color:#dfd">                asmb.vpunpcklqdq(YMM0, YMM2, YMM4);         // A0 B0 A2 B2
+                asmb.vpunpcklqdq(YMM1, YMM3, YMM5);         // C0 D0 C2 D2
+                asmb.vperm2i128(YMM8, YMM0, YMM1, 0x20);    // A0 B0 C0 D0
+                asmb.vperm2i128(YMM10, YMM0, YMM1, 0x31);   // A2 B2 C2 D2</span>
+
+<span style = "background-color:#dfd">                asmb.vpunpckhqdq(YMM0, YMM2, YMM4);         // A1 B1 A3 B3
+                asmb.vpunpckhqdq(YMM1, YMM3, YMM5);         // C1 D1 C3 D3
+                asmb.vperm2i128(YMM9, YMM0, YMM1, 0x20);    // A1 B1 C1 D1
+                asmb.vperm2i128(YMM11, YMM0, YMM1, 0x31);   // A3 B3 C3 D3</span>
+            }
+
+            // 22) Transpose forth and back registers 4-7 and perform XOR with cache items.
+<span style = "background-color:#dfd">            asmb.vpunpcklqdq(YMM0, YMM12, YMM13);        // A4 A5 C4 C5
+            asmb.vpunpcklqdq(YMM1, YMM14, YMM15);        // A6 A7 C6 C7
+            asmb.vperm2i128(YMM2, YMM0, YMM1, 0x20);     // A4 A5 A6 A7
+            asmb.vperm2i128(YMM3, YMM0, YMM1, 0x31);     // C4 C5 C6 C7</span>
+
+<span style = "background-color:#dfd">            asmb.vpunpckhqdq(YMM0, YMM12, YMM13);        // B4 B5 D4 D5
+            asmb.vpunpckhqdq(YMM1, YMM14, YMM15);        // B6 B7 D6 D7
+            asmb.vperm2i128(YMM4, YMM0, YMM1, 0x20);     // B4 B5 B6 B7
+            asmb.vperm2i128(YMM5, YMM0, YMM1, 0x31);     // D4 D5 D6 D7</span>
+
+
+            // 23) If this is the last program do not transpose registers.
+<span style = "background-color:#dfd">            if (i == programs.size() - 1) {
+                asmb.vpxor(YMM12, YMM2, RSI[32]);
+                asmb.vpxor(YMM14, YMM3, RDI[32]);
+                asmb.vpxor(YMM13, YMM4, R14[32]);
+                asmb.vpxor(YMM15, YMM5, R15[32]);
+            } else {
+                asmb.vpxor(YMM2, YMM2, RSI[32]);
+                asmb.vpxor(YMM3, YMM3, RDI[32]);
+                asmb.vpxor(YMM4, YMM4, R14[32]);
+                asmb.vpxor(YMM5, YMM5, R15[32]);</span>
+
+<span style = "background-color:#dfd">                asmb.vpunpcklqdq(YMM0, YMM2, YMM4);        // A4 B4 A6 B6    
+                asmb.vpunpcklqdq(YMM1, YMM3, YMM5);        // C4 D4 C6 D6
+                asmb.vperm2i128(YMM12, YMM0, YMM1, 0x20);  // A4 B4 C4 D4
+                asmb.vperm2i128(YMM14, YMM0, YMM1, 0x31);  // A6 B6 C6 D6</span>
+
+<span style = "background-color:#dfd">                asmb.vpunpckhqdq(YMM0, YMM2, YMM4);        // A5 B5 A7 B7
+                asmb.vpunpckhqdq(YMM1, YMM3, YMM5);        // C5 D5 C7 D7
+                asmb.vperm2i128(YMM13, YMM0, YMM1, 0x20);  // A5 B5 C5 D5
+                asmb.vperm2i128(YMM15, YMM0, YMM1, 0x31);  // A7 B7 C7 D7</span>
+            }
+<span style = "background-color:#dfd">        }</span>
+
+        // 24) Prepare ymmitem0 for next iteration. ymmitem0 = ymmitem0 + v4q_add_consts
+<span style = "background-color:#dfd">        asmb.vpaddq(YMM7, YMM7, v4q_add_consts);</span>
+
+        // 25) Prepare cache_indexes for next iteration. cache_indexes = cache_indexes + v4q_item_numbers_step
+<span style = "background-color:#dfd">        asmb.vmovdqa(cache_indexes_reg, cache_indexes_stack);
+        asmb.vpaddq(cache_indexes_reg, cache_indexes_reg, v4q_item_numbers_step);
+        asmb.vmovdqa(cache_indexes_stack, cache_indexes_reg);</span>
+
+        // 26) Store dataset items to memory.
+<span style = "background-color:#dfd">        asmb.vmovntdq(R10[-128], YMM8);
+        asmb.vmovntdq(R10[-96], YMM12);
+        asmb.vmovntdq(R10[-64], YMM9);
+        asmb.vmovntdq(R10[-32], YMM13);
+        asmb.vmovntdq(R10[0], YMM10);
+        asmb.vmovntdq(R10[32], YMM14);
+        asmb.vmovntdq(R10[64], YMM11);
+        asmb.vmovntdq(R10[96], YMM15);</span>
+
+        // III. End of loop.
+        // 27) Update dataset pointer.
+<span style = "background-color:#dfd">        asmb.add(R10, 256);</span>
+
+        // 28) Decrease loop counter.
+<span style = "background-color:#dfd">        asmb.sub(R13, 1);
+        asmb.jne("loop");</span>
+
+        // IV. Epilogue
+        // 29) Destroy local variable (cache_indexes, Cache_Item_Mask, vpmulhuq mask, vpmullq mask, v4q_add_consts, v4q_item_numbers_step).
+<span style = "background-color:#dfd">        asmb.add(RSP, 0xC0);</span>
+
+        // 30) Unalign stack.
+<span style = "background-color:#dfd">        asmb.unalignStack();</span>
+
+        // 31) Pop registers from stack.
+<span style = "background-color:#dfd">        asmb.pop(XMM15, XMM14, XMM13, XMM12, XMM11, XMM10, XMM9, XMM8, XMM7, XMM6, R15, R14, R13, RDI, RSI, RBX);</span>
+
+        // 32) Zero out upper 128 bits of all YMM registers.
+<span style = "background-color:#dfd">        asmb.vzeroupper();</span>
+
+        // 33) Return.
+<span style = "background-color:#dfd">        asmb.ret();</span>
+
+        // Make the compiled code executable and store a pointer to it in the program.
+        // Give away ownership of the code and data to the program.
+<span style = "background-color:#dfd">        return makeExecutable&lt;JITDatasetItemProgram&gt;(asmb.flushCode(), asmb.flushData());
+    }</span>
+
+    namespace {
+        // Translates every single superscalar instruction into native code using AVX2.
+        // data_offset is used to track data section offset. If 256 bytes of data section is used, data pointer in RBX is moved to next 256 bytes. This is for reducing total code size.
+<span style = "background-color:#dfd">        void emitAVX2Instruction(assembler::Context&amp; asmb, int32_t&amp; data_offset, const SuperscalarInstruction&amp; instr) {</span>
+            using namespace assembler::registers;
+            using namespace assembler;
+
+<span style = "background-color:#dfd">            const Register dst{ Register::YMM(instr.dst_register | 8) };
+            Register src{ Register::YMM(instr.src_register.has_value() ? instr.src_register.value() | 8 : static_cast&lt;reg_idx_t&gt;(0)) };</span>
+
+<span style = "background-color:#dfd">            switch (instr.type()) {</span>
+            case SuperscalarInstructionType::IADD_C7: [[fallthrough]];
+            case SuperscalarInstructionType::IADD_C8: [[fallthrough]];
+            case SuperscalarInstructionType::IADD_C9:
+            {
+<span style = "background-color:#dfd">                asmb.storeImmediate&lt;int64_t, Register::YMM(0).size()&gt;(static_cast&lt;int64_t&gt;(static_cast&lt;int32_t&gt;(instr.imm32))); // Store 2's complement of immediate value.
+                asmb.vpaddq(dst, dst, RBX[data_offset]);
+                data_offset += 32;
+                break;</span>
+            }
+            case SuperscalarInstructionType::IXOR_C7: [[fallthrough]];
+            case SuperscalarInstructionType::IXOR_C8: [[fallthrough]];
+            case SuperscalarInstructionType::IXOR_C9:
+            {
+<span style = "background-color:#dfd">                asmb.storeImmediate&lt;int64_t, Register::YMM(0).size()&gt;(static_cast&lt;int64_t&gt;(static_cast&lt;int32_t&gt;(instr.imm32))); // Store 2's complement of immediate value.
+                asmb.vpxor(dst, dst, RBX[data_offset]);
+                data_offset += 32;
+                break;</span>
+            }
+            case SuperscalarInstructionType::IADD_RS:
+<span style = "background-color:#dfd">                if (instr.modShift() &gt; 0) {
+                    asmb.vpsllq(YMM0, src, instr.modShift());
+                    src = YMM0;</span>
+                }
+
+<span style = "background-color:#dfd">                asmb.vpaddq(dst, dst, src);
+                break;</span>
+            case SuperscalarInstructionType::ISUB_R:
+<span style = "background-color:#dfd">                asmb.vpsubq(dst, dst, src);
+                break;</span>
+            case SuperscalarInstructionType::IXOR_R:
+<span style = "background-color:#dfd">                asmb.vpxor(dst, dst, src);
+                break;</span>
+            case SuperscalarInstructionType::IROR_C:
+<span style = "background-color:#dfd">                asmb.vpsrlq(YMM0, dst, instr.imm32);
+                asmb.vpsllq(dst, dst, 64 - instr.imm32);
+                asmb.vpor(dst, dst, YMM0);
+                break;</span>
+            case SuperscalarInstructionType::IMUL_R:
+<span style = "background-color:#dfd">                asmb.vpmullq(dst, dst, src);
+                break;</span>
+            case SuperscalarInstructionType::ISMULH_R:
+<span style = "background-color:#dfd">                asmb.vpmulhq(dst, src);
+                break;</span>
+            case SuperscalarInstructionType::IMULH_R:
+<span style = "background-color:#dfd">                asmb.vpmulhuq(dst, dst, src);
+                break;</span>
+            case SuperscalarInstructionType::IMUL_RCP:
+            {
+<span style = "background-color:#dfd">                asmb.storeImmediate&lt;uint64_t, Register::YMM(0).size()&gt;(instr.reciprocal);
+                asmb.vpmullq(dst, dst, RBX[data_offset]);
+                data_offset += 32;
+                break;</span>
+            }
+            default:
+<span style = "background-color:#fdd">                std::unreachable();</span>
+            }
+
+<span style = "background-color:#dfd">            if (data_offset == 128) {
+                data_offset = -128;
+                asmb.add(RBX, 256);</span>
+            }
+<span style = "background-color:#dfd">        }</span>
+    }
+}</pre>
+        <hr />
+        <table width="100%">
+            <thead>
+                <tr>
+                    <th align="center">
+                        <small>Generated by</small>
+                        <a href="https://github.com/OpenCppCoverage/OpenCppCoverage/releases">
+                            <strong>OpenCppCoverage (Version: 0.9.9.0)</strong>
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+        </table>
+    </body>
+</html>

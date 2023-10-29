@@ -7,10 +7,10 @@
 
 namespace modernRX {
     namespace {
-        constexpr uint32_t cache_item_count{ argon2d::Memory_Size / sizeof(DatasetItem) }; // Number of dataset items contained in cache.
-        static_assert(std::has_single_bit(cache_item_count)); // Vectorized code assumes that cache_item_count is a power of 2.
+        constexpr uint32_t Cache_Item_Count{ argon2d::Memory_Size / sizeof(DatasetItem) }; // Number of dataset items contained in cache.
+        static_assert(std::has_single_bit(Cache_Item_Count)); // Vectorized code assumes that Cache_Item_Count is a power of 2.
 
-        constexpr uint32_t cache_item_mask{ cache_item_count - 1 }; // Mask used to get cache item for dataset item calculation.
+        constexpr uint32_t Cache_Item_Mask{ Cache_Item_Count - 1 }; // Mask used to get cache item for dataset item calculation.
     }
 
     HeapArray<DatasetItem, 4096> generateDataset(const_span<argon2d::Block> cache, const_span<SuperscalarProgram, Rx_Cache_Accesses> programs) {
@@ -27,7 +27,7 @@ namespace modernRX {
         const uint32_t items_per_thread{ dataset_items_count / thread_count };
 
         // Allocate memory for dataset.
-        HeapArray<DatasetItem, 4096> memory(dataset_items_count);
+        HeapArray<DatasetItem, 4096> memory{ dataset_items_count };
 
         // Split each thread task into smaller jobs. This is for reducing potential variances in execution.
         constexpr uint32_t Min_Items_Per_Job{ 32'768 }; // Value was chosen empirically.
@@ -46,16 +46,16 @@ namespace modernRX {
 
         // Task that will be executed by each thread.
         const auto task = [max_jobs, items_per_job, &job_counter, jit_program{ *jit }, cache_ptr{ cache.data() }](std::span<DatasetItem> memory) {
-            auto job_id = job_counter.fetch_add(1, std::memory_order_relaxed);
+            auto job_id{ job_counter.fetch_add(1, std::memory_order_relaxed) };
             while (job_id < max_jobs) {
                 const auto start_item{ job_id * items_per_job };
-                jit_program(memory.subspan(start_item, items_per_job), reinterpret_cast<uintptr_t>(cache_ptr), cache_item_mask, start_item);
+                jit_program(memory.subspan(start_item, items_per_job), reinterpret_cast<uintptr_t>(cache_ptr), Cache_Item_Mask, start_item);
                 job_id = job_counter.fetch_add(1, std::memory_order_relaxed);
             }
         };
 
         // Start threads.
-        std::vector<std::thread> threads(thread_count);
+        std::vector<std::thread> threads{ thread_count };
 
         for (uint32_t tid = 0; tid < thread_count; ++tid) {
             threads[tid] = std::thread{ task, memory.buffer() };

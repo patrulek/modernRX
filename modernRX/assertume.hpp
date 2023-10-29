@@ -14,5 +14,12 @@
 #else
 #include <cassert>
 // Convenient macro for using assert() in debug mode.
-#define ASSERTUME(x) assert(x);
+// If expression can be evaluated at compile time, do a compile-time check.
+#define ASSERTUME(x) ([&]() constexpr {  \
+    if (std::is_constant_evaluated()) {  \
+        if(!(x)) throw -1;               \
+    } else {                             \
+        assert(x);                       \
+    }                                    \
+}());  
 #endif

@@ -1,0 +1,353 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+        <meta charset="utf-8"/>
+	    <title>argon2d.cpp</title>
+	    <link href="../../third-party/google-code-prettify/prettify-CppCoverage.css" type="text/css" rel="stylesheet" />
+	    <script type="text/javascript" src="../../third-party/google-code-prettify/prettify.js"></script>
+	</head>
+    <body onload="prettyPrint()">
+        <h4></h4>
+        <pre class="prettyprint lang-cpp linenums">
+ï»¿#include &lt;bit&gt;
+#include &lt;format&gt;
+
+#include "argon2d.hpp"
+#include "argon2davx2.hpp"
+#include "assertume.hpp"
+#include "avx2.hpp"
+#include "blake2b.hpp"
+#include "cast.hpp"
+#include "intrinsics.hpp"
+
+namespace modernRX::argon2d {
+    namespace {
+        constexpr uint32_t Initial_Hash_Size{ 64 }; 
+        constexpr uint32_t Sync_Points{ 4 }; // Number of equally long lane slices. End of slice can be treated as synchronization point.
+
+        // Holds information about block indexes used in mixing function.
+        struct BlockContext {
+            uint64_t cur_idx;
+            uint64_t prev_idx;
+            uint64_t ref_idx;
+        };
+
+        [[nodiscard]] consteval uint32_t blocksPerLane() noexcept;
+        [[nodiscard]] consteval uint32_t blocksPerSlice() noexcept;
+        [[nodiscard]] std::array&lt;std::byte, Initial_Hash_Size&gt; initialize(const_span&lt;std::byte&gt; password) noexcept;
+        void makeFirstPass(std::span&lt;Block&gt; memory, const_span&lt;std::byte, Initial_Hash_Size&gt; hash) noexcept;
+        void makeSecondPass(std::span&lt;Block&gt; memory) noexcept;
+
+        template&lt;bool XorBlocks&gt;
+        void mixBlocks(std::span&lt;Block&gt; memory, BlockContext&amp; ctx) noexcept;
+
+        template&lt;bool XorBlocks&gt;
+        void calcRefIndex(std::span&lt;Block&gt; memory, BlockContext&amp; ctx, const uint32_t tmp_value) noexcept;
+    }
+
+<span style = "background-color:#dfd">    void fillMemory(std::span&lt;Block&gt; memory, const_span&lt;std::byte&gt; password) noexcept {</span>
+        // Some assumptions were made to optimize this function:
+        //   - This function is only called with memory that size is Rx_Argon2d_Memory_Blocks.
+        //   - This function is only called with password that size is equal to block template.
+<span style = "background-color:#dfd">        ASSERTUME(memory.size() == Rx_Argon2d_Memory_Blocks);
+        ASSERTUME(password.size() &gt; 0 &amp;&amp; password.size() &lt;= Rx_Block_Template_Size);</span>
+
+<span style = "background-color:#dfd">        const auto hash{ initialize(password) };
+        makeFirstPass(memory, hash);
+        makeSecondPass(memory);
+    }</span>
+
+    namespace blake2b {
+<span style = "background-color:#dfd">        void hash(std::span&lt;std::byte&gt; output, const_span&lt;std::byte&gt; input) noexcept {</span>
+            // Some assumptions were made to optimize this function:
+            //   - This function is only called with input that size is 72 bytes.
+            //   - This function is only called with output that size is 1024 bytes.
+            static_assert(Initial_Hash_Size + 8 + 4 &lt;= modernRX::blake2b::Block_Size, "Below assumptions can be made only if input for initial hash size fit in single blake2b block.");
+<span style = "background-color:#dfd">            ASSERTUME(output.size() == Block_Size);
+            ASSERTUME(input.size() == Initial_Hash_Size + 8);
+            ASSERTUME(Block_Size &gt; Initial_Hash_Size);</span>
+
+            using namespace modernRX::blake2b;
+
+<span style = "background-color:#dfd">            constexpr uint32_t digest_size{ Block_Size };
+            Context ctx{ Initial_Hash_Size };</span>
+
+<span style = "background-color:#dfd">            update(ctx, span_cast&lt;const std::byte, sizeof(uint32_t)&gt;(digest_size));
+            update(ctx, input);
+            final(output.subspan(0, Max_Digest_Size), ctx);</span>
+
+<span style = "background-color:#dfd">            constexpr uint32_t step{ Max_Digest_Size / 2 };
+            constexpr uint32_t max_offset{ digest_size - Max_Digest_Size };</span>
+
+<span style = "background-color:#dfd">            for (uint32_t offset = step; offset &lt;= max_offset; offset += step) {
+                auto out{ std::span&lt;std::byte&gt;{ output.begin() + offset, output.begin() + offset + Max_Digest_Size } };
+                const auto in{ std::span&lt;std::byte&gt;{ output.begin() + offset - step, output.begin() + offset - step + Max_Digest_Size} };</span>
+
+                // Use vanilla blake2b to produce next digest.
+<span style = "background-color:#dfd">                modernRX::blake2b::hash(out, in);
+            }
+        }</span>
+    }
+
+    namespace {
+        // Returns number of argon2d blocks per single lane.
+        consteval uint32_t blocksPerLane() noexcept {
+            return Rx_Argon2d_Memory_Blocks / Rx_Argon2d_Parallelism;
+        }
+
+        // Returns number of argon2d blocks per single slice.
+        consteval uint32_t blocksPerSlice() noexcept {
+            return blocksPerLane() / Sync_Points;
+        }
+
+        // Calculates initial 64-bytes long Blake2b hash from argon2d parameters according to first step 
+        // from https://github.com/P-H-C/phc-winner-argon2/blob/master/argon2-specs.pdf section 3.2
+<span style = "background-color:#dfd">        std::array&lt;std::byte, Initial_Hash_Size&gt; initialize(const_span&lt;std::byte&gt; password) noexcept {</span>
+            // Some assumptions were made to optimize this function:
+            //   - Rx_Argon2d_Salt is required by RandomX to be at least 8 bytes long.
+            //   - This function is only called with password that size is equal to block template.
+<span style = "background-color:#dfd">            ASSERTUME(Rx_Argon2d_Salt.size() &gt;= 8);
+            ASSERTUME(password.size() &gt; 0 &amp;&amp; password.size() &lt;= Rx_Block_Template_Size);</span>
+
+            using namespace modernRX::blake2b;
+
+<span style = "background-color:#dfd">            Context ctx{ Initial_Hash_Size };</span>
+
+            // Incrementally update the hash context with all inputs.
+<span style = "background-color:#dfd">            update(ctx, span_cast&lt;const std::byte, sizeof(uint32_t)&gt;(Rx_Argon2d_Parallelism));
+            update&lt;Rx_Argon2d_Tag_Length == 0&gt;(ctx, span_cast&lt;const std::byte, sizeof(uint32_t)&gt;(Rx_Argon2d_Tag_Length));
+            update(ctx, span_cast&lt;const std::byte, sizeof(uint32_t)&gt;(Rx_Argon2d_Memory_Blocks));
+            update(ctx, span_cast&lt;const std::byte, sizeof(uint32_t)&gt;(Rx_Argon2d_Iterations));
+            update(ctx, span_cast&lt;const std::byte, sizeof(uint32_t)&gt;(Rx_Argon2d_Version));
+            update&lt;Rx_Argon2d_Type == 0&gt;(ctx, span_cast&lt;const std::byte, sizeof(uint32_t)&gt;(Rx_Argon2d_Type));
+            update(ctx, span_cast&lt;const std::byte, sizeof(uint32_t)&gt;(password.size()));
+            update(ctx, password);
+            update(ctx, span_cast&lt;const std::byte, sizeof(uint32_t)&gt;(Rx_Argon2d_Salt.size()));
+            update(ctx, Rx_Argon2d_Salt);</span>
+
+            // If theres nothing to hash, only increase counter inside update.
+            if constexpr (Rx_Argon2d_Secret.size() == 0) {
+<span style = "background-color:#dfd">                update&lt;true&gt;(ctx, span_cast&lt;const std::byte, sizeof(uint32_t)&gt;(0));</span>
+            } else {
+                update(ctx, span_cast&lt;const std::byte, sizeof(uint32_t)&gt;(Rx_Argon2d_Secret.size()));
+                update(ctx, password);
+            }
+
+            // If theres nothing to hash, only increase counter inside update.
+            if constexpr (Rx_Argon2d_Data.size() == 0) {
+<span style = "background-color:#dfd">                update&lt;true&gt;(ctx, span_cast&lt;const std::byte, sizeof(uint32_t)&gt;(0));</span>
+            } else {
+                update(ctx, span_cast&lt;const std::byte, sizeof(uint32_t)&gt;(Rx_Argon2d_Data.size()));
+                update(ctx, Rx_Argon2d_Data);
+            }
+
+<span style = "background-color:#dfd">            std::array&lt;std::byte, Initial_Hash_Size&gt; hash{};
+            final(hash, ctx);</span>
+
+<span style = "background-color:#dfd">            return hash;
+        }</span>
+
+        /*
+        * Performs first iteration of filling memory in two steps:
+        * 1. Initializes first three blocks of every memory lane, because they are special cases:
+        *    block[0] = Blake2HashLong(hash .. 0 .. lane_index)
+        *    block[1] = Blake2HashLong(hash .. 1 .. lane_index)
+        *    block[2] = Mix(block[0], block[1])
+        * 2. Initializes all other blocks in a lane.
+        *    block[n] = Mix(block[n-1], block[rand()%(n-1)])
+        * 
+        *   where `rand() % (n-1)` is defined by https://github.com/P-H-C/phc-winner-argon2/blob/master/argon2-specs.pdf section 3.3.
+        *   In general in this step, the referenced random block may be one of the blocks already computed in this step or step 1.
+        *
+        * Memory is arranged like this (every slice has equal number of blocks):
+        *
+        *         || slice[0]                  || slice[1]                  || slice[2]                  || slice[3]                   |
+        *         || ------------------------- || ------------------------- || ------------------------- || -------------------------- |
+        *         || block[0] | block[1] | ... || .... | .... | .... | .... || .... | .... | .... | .... || ... | ... | ... | block[n] |
+        * ========||==========|==========|=====||======|======|======|======||======|======|======|======||=====|=====|=====|==========|
+        * lane[0] || aaaaaaaa | bbbbbbbb | ... || .... | .... | .... | .... || .... | .... | .... | .... || ... | ... | ... | cccccccc |
+        * 
+        * Beginning of (or ending, depending on PoV) slice is a synchronization point in which threads must synchronize their
+        * states to be able to reference blocks in other lanes from previous (already processed) slices.
+        *
+        * Function was simplified with assumption that parallelism is always 1, thus no synchronization is needed because there is always only one thread.
+        */
+<span style = "background-color:#dfd">        void makeFirstPass(std::span&lt;Block&gt; memory, const_span&lt;std::byte, Initial_Hash_Size&gt; hash) noexcept {</span>
+            // Below assertion is very limiting and removing this will not simply make function work with other values.
+            static_assert(Rx_Argon2d_Parallelism == 1, "This simplification requires parallelism to be 1.");
+<span style = "background-color:#dfd">            ASSERTUME(memory.size() == Rx_Argon2d_Memory_Blocks);</span>
+
+            using namespace modernRX::blake2b;
+
+            // Calculate first three blocks in a lane.
+<span style = "background-color:#dfd">            std::array&lt;std::byte, Initial_Hash_Size + 2 * sizeof(uint32_t)&gt; input{};
+            std::memcpy(input.data(), hash.data(), Initial_Hash_Size);</span>
+
+            // First block.
+<span style = "background-color:#dfd">            blake2b::hash(std::span&lt;std::byte&gt;{ memory[0] }, input);</span>
+
+            // Second block.
+<span style = "background-color:#dfd">            input[Initial_Hash_Size] = std::byte{ 0x01 };
+            blake2b::hash(std::span&lt;std::byte&gt;{ memory[1] }, input);</span>
+
+            // Third block is always mix of first two.
+            // Calculate next blocks in a lane.
+<span style = "background-color:#dfd">            for (BlockContext ctx{ 2, 1, 0 }; ctx.cur_idx &lt; blocksPerLane(); ) {
+                mixBlocks&lt;false&gt;(memory, ctx);
+            }
+        }</span>
+
+        /*
+        * Performs all, except first, iterations of filling memory in two steps:
+        * 1. Calculate first block in lane.
+        * 2. Calculate all other blocks in lane.
+        *
+        * The main difference between this and first iteration is that referenced block will be the one of
+        * the block from previous iteration or the block from current iteration. It all depends if referenced block
+        * lies in rolling window of size equal to three full slices.
+        * 
+        * This function was simplified with assumption that parallelism is always 1.
+        *
+        * For more details check https://github.com/P-H-C/phc-winner-argon2/blob/master/argon2-specs.pdf section 3.2 and 3.3.
+        */
+<span style = "background-color:#dfd">        void makeSecondPass(std::span&lt;Block&gt; memory) noexcept {</span>
+            // Below assertion is very limiting and removing this will not simply make function work with other values.
+            static_assert(Rx_Argon2d_Parallelism == 1, "This simplification requires parallelism to be 1.");
+<span style = "background-color:#dfd">            ASSERTUME(memory.size() == Rx_Argon2d_Memory_Blocks);</span>
+
+<span style = "background-color:#dfd">            constexpr auto prev_idx{ blocksPerLane() - 1 };
+            constexpr auto ref_length{ blocksPerLane() - blocksPerSlice() - 1 };
+            constexpr auto shift_index{ blocksPerSlice() };</span>
+
+<span style = "background-color:#dfd">            for (uint32_t round = 1; round &lt; Rx_Argon2d_Iterations; ++round) {</span>
+                // Calculate first block.
+<span style = "background-color:#dfd">                const auto J1{ bytes_cast&lt;uint64_t&gt;(memory[prev_idx]) &amp; 0x00000000ffffffff };
+                const auto x{ (J1 * J1) &gt;&gt; 32 };
+                const auto y{ (ref_length * x) &gt;&gt; 32 };
+                const auto z{ ref_length - 1 - y };
+                const auto ref_index{ shift_index + z }; // No need to modulo by blocks_per_lane because it will always be less than blocks_per_lane.</span>
+
+<span style = "background-color:#dfd">                BlockContext ctx{ 0, prev_idx, ref_index };
+                mixBlocks&lt;true&gt;(memory, ctx);</span>
+
+                // Calculate all next blocks in a lane.
+<span style = "background-color:#dfd">                for (; ctx.cur_idx &lt; blocksPerLane(); ) {
+                    mixBlocks&lt;true&gt;(memory, ctx);
+                }
+            }
+        }</span>
+
+        // Calculates reference index needed for mixing function and updates BlockContext for next iteration.
+        // This function is called inside ROUND_V2WithPrefetch macro to prefetch referenced block as soon as possible and reduce stalls because of cache misses.
+        template&lt;bool XorBlocks&gt;
+<span style = "background-color:#dfd">        void calcRefIndex(std::span&lt;Block&gt; memory, BlockContext&amp; ctx, const uint32_t tmp_value) noexcept {</span>
+            static_assert(Rx_Argon2d_Parallelism == 1, "This simplification requires parallelism to be 1.");
+
+<span style = "background-color:#dfd">            ++ctx.cur_idx;
+            auto J1{ static_cast&lt;uint64_t&gt;(bytes_cast&lt;uint32_t&gt;(memory[ctx.prev_idx]) ^ bytes_cast&lt;uint32_t&gt;(memory[ctx.ref_idx]) ^ tmp_value) };</span>
+            
+            if constexpr (XorBlocks) {
+                // Map current block index in lane to current slice and index within current slice.
+<span style = "background-color:#dfd">                const auto slice_idx{ ctx.cur_idx % blocksPerSlice() };
+                const auto slice{ ctx.cur_idx / blocksPerSlice() };</span>
+                
+<span style = "background-color:#dfd">                const auto ref_length{ blocksPerLane() - blocksPerSlice() + slice_idx - 1 }; // Up to (sync_points - 1) * blocks_per_slice plus number of blocks processed in current slice - 1 can be picked up.
+                const auto shift_index{ blocksPerSlice() * ((slice + 1) % Sync_Points) }; // Start at beginning of (slice - 3; roll over if overflows).</span>
+
+                // Calculate reference index.
+<span style = "background-color:#dfd">                J1 ^= bytes_cast&lt;uint32_t&gt;(memory[ctx.cur_idx - 1]);
+                const auto x{ (J1 * J1) &gt;&gt; 32 };
+                const auto y{ (ref_length * x) &gt;&gt; 32 };
+                const auto z{ ref_length - 1 - y };</span>
+
+<span style = "background-color:#dfd">                ctx.ref_idx = (shift_index + z) % blocksPerLane(); // This may overflow blocksPerLane() so have to be rolled over (% blocksPerLane()).</span>
+            } else {
+<span style = "background-color:#dfd">                const auto ref_length{ ctx.prev_idx + 1 }; // For single lane and first iteration it will always be up to previous block.</span>
+
+                // Calculate reference index.
+<span style = "background-color:#dfd">                const auto x{ (J1 * J1) &gt;&gt; 32 };
+                const auto y{ (ref_length * x) &gt;&gt; 32 };</span>
+
+<span style = "background-color:#dfd">                ctx.ref_idx = ref_length - 1 - y;</span>
+            }
+
+<span style = "background-color:#dfd">            ctx.prev_idx = (ctx.prev_idx + 1) % blocksPerLane();
+        }</span>
+
+
+        // Calculates current block based on previous and referenced random block.
+        // If its first iteration XorBlocks should be false, otherwise should be true and will perform xor operation with overwritten block.
+        // The mixing function refers to https://github.com/P-H-C/phc-winner-argon2/blob/master/argon2-specs.pdf section 3.4.
+        // Enhanced by AVX2 intrinsics.
+        template&lt;bool XorBlocks&gt;
+<span style = "background-color:#dfd">        void mixBlocks(std::span&lt;Block&gt; memory, BlockContext&amp; ctx) noexcept {</span>
+            using namespace intrinsics;
+
+<span style = "background-color:#dfd">            constexpr uint32_t YMM_Per_Block{ Block_Size / sizeof(avx2::ymm&lt;uint64_t&gt;) };</span>
+
+            // For some reason its faster to use C-array than std::array (at least for tmp_block_ymm).
+            // It's already reported as a compiler bug: https://developercommunity.visualstudio.com/t/Performance-degradation-when-using-std::/10460894.
+            alignas(64) avx2::ymm&lt;uint64_t&gt; tmp_block_ymm[YMM_Per_Block];
+<span style = "background-color:#dfd">            avx2::ymm&lt;uint64_t&gt; (&amp;cur_block_ymm)[YMM_Per_Block]{ reinterpret_cast&lt;avx2::ymm&lt;uint64_t&gt;(&amp;)[YMM_Per_Block]&gt;(memory[ctx.cur_idx]) };
+            const avx2::ymm&lt;uint64_t&gt; (&amp;prev_block_ymm)[YMM_Per_Block] { reinterpret_cast&lt;const avx2::ymm&lt;uint64_t&gt;(&amp;)[YMM_Per_Block]&gt;(memory[ctx.prev_idx]) };
+            const avx2::ymm&lt;uint64_t&gt; (&amp;ref_block_ymm)[YMM_Per_Block] { reinterpret_cast&lt;const avx2::ymm&lt;uint64_t&gt;(&amp;)[YMM_Per_Block]&gt;(memory[ctx.ref_idx]) };</span>
+
+            // Initialize new block with previous and referenced ones.
+<span style = "background-color:#dfd">            for (uint32_t i = 0; i &lt; YMM_Per_Block; ++i) {
+                tmp_block_ymm[i] = avx2::vxor&lt;uint64_t&gt;(prev_block_ymm[i], ref_block_ymm[i]);
+            }</span>
+
+            // Prepare rotation constant. Taken from: https://github.com/jedisct1/libsodium/blob/1.0.16/src/libsodium/crypto_generichash/blake2b/ref/blake2b-compress-avx2.h
+<span style = "background-color:#dfd">            const auto avx_rot24{ avx2::vsetrepi8&lt;uint64_t&gt;(3, 4, 5, 6, 7, 0, 1, 2, 11, 12, 13, 14, 15, 8, 9, 10, 3, 4, 5, 6, 7, 0, 1, 2, 11, 12, 13, 14, 15, 8, 9, 10) };
+            const auto avx_rot16{ avx2::vsetrepi8&lt;uint64_t&gt;(2, 3, 4, 5, 6, 7, 0, 1, 10, 11, 12, 13, 14, 15, 8, 9, 2, 3, 4, 5, 6, 7, 0, 1, 10, 11, 12, 13, 14, 15, 8, 9) };</span>
+
+            // Used in macros.
+            avx2::ymm&lt;uint64_t&gt; ml, ml2;
+
+            // Both rounding loops are crucial for performance, otherwise function would expand too much and compiler would not be willing to inline it.
+
+            // Apply blake2b "rowwise", ie. elements (0,1,...,31), then (32,33,...,63) ... finally (96,97,...,127).
+<span style = "background-color:#dfd">            for (uint32_t i = 0; i &lt; 4; ++i) {
+                ROUND_V1(tmp_block_ymm[8 * i], tmp_block_ymm[8 * i + 4], tmp_block_ymm[8 * i + 1], tmp_block_ymm[8 * i + 5],</span>
+                    tmp_block_ymm[8 * i + 2], tmp_block_ymm[8 * i + 6], tmp_block_ymm[8 * i + 3], tmp_block_ymm[8 * i + 7], avx_rot24, avx_rot16);
+<span style = "background-color:#dfd">            }</span>
+
+            // Apply first iteration of blake2b "columnwise".
+            // This macro version calls calcRefIndex to calculate reference index early for prefetching to reduce stalls.
+<span style = "background-color:#dfd">            ROUND_V2WithPrefetch(tmp_block_ymm[0], tmp_block_ymm[4], tmp_block_ymm[8], tmp_block_ymm[12],</span>
+                tmp_block_ymm[16], tmp_block_ymm[20], tmp_block_ymm[24], tmp_block_ymm[28], avx_rot24, avx_rot16);
+
+
+            // Apply all other blake2b "columnwise" rounds, ie. elements (0,1,2,3,16,17,18,19,...,112,113,114,115), then (4,5,6,7,20,21,22,23,...,116,117,118,119) 
+            // ... finally (12,13,14,15,28,29,30,31,...,124,125,126,127).
+<span style = "background-color:#dfd">            for (uint32_t i = 1; i &lt; 4; ++i) {
+                ROUND_V2(tmp_block_ymm[i], tmp_block_ymm[4 + i], tmp_block_ymm[8 + i], tmp_block_ymm[12 + i],</span>
+                    tmp_block_ymm[16 + i], tmp_block_ymm[20 + i], tmp_block_ymm[24 + i], tmp_block_ymm[28 + i], avx_rot24, avx_rot16);
+<span style = "background-color:#dfd">            }</span>
+
+            // Finalize new block.
+<span style = "background-color:#dfd">            for (uint32_t i = 0; i &lt; YMM_Per_Block; ++i) {</span>
+                if constexpr (XorBlocks) {
+<span style = "background-color:#dfd">                    cur_block_ymm[i] = avx2::vxor&lt;uint64_t&gt;(avx2::vxor&lt;uint64_t&gt;(avx2::vxor&lt;uint64_t&gt;(prev_block_ymm[i], tmp_block_ymm[i]), cur_block_ymm[i]), ref_block_ymm[i]);</span>
+                } else {
+<span style = "background-color:#dfd">                    cur_block_ymm[i] = avx2::vxor&lt;uint64_t&gt;(avx2::vxor&lt;uint64_t&gt;(prev_block_ymm[i], tmp_block_ymm[i]), ref_block_ymm[i]);</span>
+                }
+<span style = "background-color:#dfd">            }
+        }</span>
+    }
+}</pre>
+        <hr />
+        <table width="100%">
+            <thead>
+                <tr>
+                    <th align="center">
+                        <small>Generated by</small>
+                        <a href="https://github.com/OpenCppCoverage/OpenCppCoverage/releases">
+                            <strong>OpenCppCoverage (Version: 0.9.9.0)</strong>
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+        </table>
+    </body>
+</html>

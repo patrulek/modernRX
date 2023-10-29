@@ -50,8 +50,8 @@ namespace modernRX {
     //   zero upper AVX registers bits
     //   return
     // 
-	// After compilation, sets the code buffer as executable and returns a function pointer.
+    // After compilation, sets the code buffer as executable and returns a function pointer.
     // May throw.
 
-    jit_function_ptr<JITDatasetItemProgram> compile(const_span<SuperscalarProgram, Rx_Cache_Accesses> programs);
+    [[nodiscard]] jit_function_ptr<JITDatasetItemProgram> compile(const_span<SuperscalarProgram, Rx_Cache_Accesses> programs);
 }

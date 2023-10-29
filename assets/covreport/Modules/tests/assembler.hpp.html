@@ -1,0 +1,1031 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+        <meta charset="utf-8"/>
+	    <title>assembler.hpp</title>
+	    <link href="../../third-party/google-code-prettify/prettify-CppCoverage.css" type="text/css" rel="stylesheet" />
+	    <script type="text/javascript" src="../../third-party/google-code-prettify/prettify.js"></script>
+	</head>
+    <body onload="prettyPrint()">
+        <h4></h4>
+        <pre class="prettyprint lang-cpp linenums">
+ï»¿#pragma once
+
+/*
+* This file contains functions for generating binary code for x86_64 architecture.
+* It is not a complete assembler, only instructions needed for JIT Compiler used for RandomX programs.
+* Code may be a little bit messy and not fully documented as this will be further extended in unknown direction.
+*/
+
+#include &lt;array&gt;
+#include &lt;iterator&gt;
+#include &lt;string&gt;
+#include &lt;unordered_map&gt;
+#include &lt;vector&gt;
+
+#include "alignedallocator.hpp"
+#include "assemblerdef.hpp"
+
+namespace modernRX::assembler {
+    using data_vector = std::vector&lt;uint8_t, AlignedAllocator&lt;uint8_t, 4096&gt;&gt;;
+
+    class Context {
+    public:
+<span style = "background-color:#dfd">        [[nodiscard]] explicit Context(const size_t code_size, const size_t data_size) {
+            code.reserve(code_size);
+            data.reserve(data_size);
+        }</span>
+
+        // Broadcasts 4x immediate 64-bit or value from GPR register into registers::RSP[offset] memory.
+        // Stack must be aligned to 32 bytes at least.
+        template&lt;typename Operand&gt;
+        requires (std::is_integral_v&lt;Operand&gt; || std::is_same_v&lt;Operand, Register&gt;)
+<span style = "background-color:#dfd">        constexpr Memory put4qVectorOnStack(const Operand value, const int32_t offset) {</span>
+            if constexpr (std::is_integral_v&lt;Operand&gt;) {
+<span style = "background-color:#dfd">                mov(registers::RAX, value);
+                vmovq(registers::XMM0, registers::RAX);</span>
+            } else {
+<span style = "background-color:#dfd">                vmovq(registers::XMM0, value);</span>
+            }
+<span style = "background-color:#dfd">            vpbroadcastq(registers::YMM0, registers::XMM0);
+            vmovdqa(registers::RSP[offset], registers::YMM0);
+            return registers::RSP[offset];
+        }</span>
+
+        // Puts placeholder in the code buffer that will be filled with data pointer before flush.
+        // Data pointer cannot be stored immediately because it may change because of reallocation (if data buffer is not big enough).
+        // Dst is a register that will be used to mov data pointer.
+        // Offset is an offset from the beginning of the data buffer.
+<span style = "background-color:#dfd">        constexpr void movDataPtr(const Register dst, const size_t offset = 0) {
+            mov(dst, 0xffffffffffffffff); // put pointer placeholder
+            data_ptr_pos.push_back(std::make_pair(code.size() - sizeof(int64_t), offset)); // save code position
+        }</span>
+
+        // Stores an immediate value in the data buffer.
+        // If any value is returned, it must be consumed by user.
+        template&lt;typename Immediate, size_t Bytes, Register reg = registers::DUMMY, typename Ret = std::conditional_t&lt;reg != registers::DUMMY, Memory, void&gt;&gt;
+        requires (std::is_integral_v&lt;Immediate&gt;&amp;&amp; Bytes % sizeof(Immediate) == 0)
+<span style = "background-color:#dfd">        [[nodiscard]] constexpr Ret storeImmediate(const Immediate imm) {
+            for (uint32_t i = 0; i &lt; Bytes / sizeof(Immediate); ++i) {</span>
+                if constexpr (sizeof(Immediate) &gt;= 1) {
+<span style = "background-color:#dfd">                    data.push_back((uint8_t)byte&lt;0&gt;(imm));</span>
+                }
+
+                if constexpr (sizeof(Immediate) &gt;= 2) {
+<span style = "background-color:#dfd">                    data.push_back((uint8_t)byte&lt;1&gt;(imm));</span>
+                }
+
+                if constexpr (sizeof(Immediate) &gt;= 4) {
+<span style = "background-color:#dfd">                    data.push_back((uint8_t)byte&lt;2&gt;(imm));
+                    data.push_back((uint8_t)byte&lt;3&gt;(imm));</span>
+                }
+
+                if constexpr (sizeof(Immediate) &gt;= 8) {
+<span style = "background-color:#dfd">                    data.push_back((uint8_t)byte&lt;4&gt;(imm));
+                    data.push_back((uint8_t)byte&lt;5&gt;(imm));
+                    data.push_back((uint8_t)byte&lt;6&gt;(imm));
+                    data.push_back((uint8_t)byte&lt;7&gt;(imm));</span>
+                }
+<span style = "background-color:#dfd">            }</span>
+
+            if constexpr (reg.type != RegisterType::DUMMY) {
+<span style = "background-color:#dfd">                return Memory{ static_cast&lt;reg_idx_t&gt;(reg.idx), static_cast&lt;int32_t&gt;(data.size() - Bytes) };</span>
+            }
+<span style = "background-color:#dfd">        }</span>
+
+        // Stores an 4 quadwords in the data buffer.
+        // If any value is returned, it must be consumed by user.
+        template&lt;typename Immediate, Register reg = registers::DUMMY, typename Ret = std::conditional_t&lt;reg != registers::DUMMY, Memory, void&gt;&gt;
+        requires (std::is_integral_v&lt;Immediate&gt; &amp;&amp; sizeof(Immediate) == 8)
+<span style = "background-color:#dfd">        [[nodiscard]] constexpr Ret storeVector4q(const Immediate imm1, const Immediate imm2, const Immediate imm3, const Immediate imm4) {
+            data.push_back((uint8_t)byte&lt;0&gt;(imm1));
+            data.push_back((uint8_t)byte&lt;1&gt;(imm1));
+            data.push_back((uint8_t)byte&lt;2&gt;(imm1));
+            data.push_back((uint8_t)byte&lt;3&gt;(imm1));
+            data.push_back((uint8_t)byte&lt;4&gt;(imm1));
+            data.push_back((uint8_t)byte&lt;5&gt;(imm1));
+            data.push_back((uint8_t)byte&lt;6&gt;(imm1));
+            data.push_back((uint8_t)byte&lt;7&gt;(imm1));</span>
+
+<span style = "background-color:#dfd">            data.push_back((uint8_t)byte&lt;0&gt;(imm2));
+            data.push_back((uint8_t)byte&lt;1&gt;(imm2));
+            data.push_back((uint8_t)byte&lt;2&gt;(imm2));
+            data.push_back((uint8_t)byte&lt;3&gt;(imm2));
+            data.push_back((uint8_t)byte&lt;4&gt;(imm2));
+            data.push_back((uint8_t)byte&lt;5&gt;(imm2));
+            data.push_back((uint8_t)byte&lt;6&gt;(imm2));
+            data.push_back((uint8_t)byte&lt;7&gt;(imm2));</span>
+
+<span style = "background-color:#dfd">            data.push_back((uint8_t)byte&lt;0&gt;(imm3));
+            data.push_back((uint8_t)byte&lt;1&gt;(imm3));
+            data.push_back((uint8_t)byte&lt;2&gt;(imm3));
+            data.push_back((uint8_t)byte&lt;3&gt;(imm3));
+            data.push_back((uint8_t)byte&lt;4&gt;(imm3));
+            data.push_back((uint8_t)byte&lt;5&gt;(imm3));
+            data.push_back((uint8_t)byte&lt;6&gt;(imm3));
+            data.push_back((uint8_t)byte&lt;7&gt;(imm3));</span>
+
+<span style = "background-color:#dfd">            data.push_back((uint8_t)byte&lt;0&gt;(imm4));
+            data.push_back((uint8_t)byte&lt;1&gt;(imm4));
+            data.push_back((uint8_t)byte&lt;2&gt;(imm4));
+            data.push_back((uint8_t)byte&lt;3&gt;(imm4));
+            data.push_back((uint8_t)byte&lt;4&gt;(imm4));
+            data.push_back((uint8_t)byte&lt;5&gt;(imm4));
+            data.push_back((uint8_t)byte&lt;6&gt;(imm4));
+            data.push_back((uint8_t)byte&lt;7&gt;(imm4));</span>
+
+
+            if constexpr (reg.type != RegisterType::DUMMY) {
+<span style = "background-color:#dfd">                return Memory{ static_cast&lt;reg_idx_t&gt;(reg.idx), static_cast&lt;int32_t&gt;(data.size() - 32) };</span>
+            }
+<span style = "background-color:#dfd">        }</span>
+
+<span style = "background-color:#dfd">        constexpr void prefetchnta(const Memory src_reg) {
+            if (src_reg.isHigh()) {
+                encode(rex&lt;uint8_t&gt;(0, 0, 0, 1));</span>
+            }
+
+<span style = "background-color:#dfd">            encode(0x0F);
+            encode(0x18);
+            addr(0, src_reg.reg % 8, src_reg.offset);
+            schedule();
+        }</span>
+
+        template&lt;typename Operand&gt;
+<span style = "background-color:#dfd">        constexpr void vpmuludq(const Register dst_reg, const Register src_reg1, const Operand src_reg2) {
+            vex256&lt;PP::PP0x66, MM::MM0x0F, Opcode{ 0xf4, -1 }&gt;(dst_reg, src_reg1, src_reg2);
+        }</span>
+        
+        template&lt;typename Operand, typename Control&gt;
+<span style = "background-color:#dfd">        constexpr void vpshufd(const Register dst_reg, const Operand src_reg, const Control control) {
+            vex256&lt;PP::PP0x66, MM::MM0x0F, Opcode{ 0x70, -1 }&gt;(dst_reg, src_reg, control);
+        }</span>
+
+        template&lt;typename Operand&gt;
+<span style = "background-color:#dfd">        constexpr void vpunpcklqdq(const Register dst_reg, const Register src_reg1, const Operand src_reg2) {
+            vex256 &lt; PP::PP0x66, MM::MM0x0F, Opcode{ 0x6c, -1 } &gt; (dst_reg, src_reg1, src_reg2);
+        }</span>
+
+        template&lt;typename Operand&gt;
+<span style = "background-color:#dfd">        constexpr void vpunpckhqdq(const Register dst_reg, const Register src_reg1, const Operand src_reg2) {
+            vex256 &lt; PP::PP0x66, MM::MM0x0F, Opcode{ 0x6d, -1 } &gt; (dst_reg, src_reg1, src_reg2);
+        }</span>
+
+        template&lt;typename Operand, typename Control&gt;
+<span style = "background-color:#dfd">        constexpr void vperm2i128(const Register dst_reg, const Register src_reg1, const Operand src_reg2, const Control control) {</span>
+            //VEX.256.66.0F3A.W0 46 / r ib VPERM2I128 ymm1, ymm2, ymm3 / m256, imm8
+<span style = "background-color:#dfd">            vex256 &lt; PP::PP0x66, MM::MM0x0F3A, Opcode{ 0x46, -1 } &gt; (dst_reg, src_reg1, src_reg2, control);
+        }</span>
+
+<span style = "background-color:#dfd">        constexpr void vzeroupper() {
+            encode(vex1&lt;uint8_t&gt;(false));
+            encode(vex2&lt;uint8_t&gt;(0, PP::PP0x00, 0, 0));
+            encode(0x77);
+            schedule();
+        }</span>
+
+        // https://stackoverflow.com/a/28827013
+        // Multiply packed unsigned quadwords and store high result.
+        // This is emulated instruction (not available in AVX2).
+        // Requires an 0x00000000ffffffff mask in RSP[64] register.
+        // Uses YMM0-YMM3 registers.
+<span style = "background-color:#dfd">        constexpr void vpmulhuq(const Register dst_reg, const Register src_reg1, const Register src_reg2) {
+            vpshufd(registers::YMM1, src_reg1, 0xb1); // vpshufd dst
+            vpshufd(registers::YMM2, src_reg2, 0xb1); // vpshufd src
+            vpmuludq(registers::YMM3, src_reg1, src_reg2); // vpmuludq_w0
+            vpmuludq(registers::YMM0, registers::YMM1, registers::YMM2); // vpmuludq_w3
+            vpmuludq(registers::YMM2, src_reg1, registers::YMM2); // vpmuludq_w1
+            vpsrlq(registers::YMM3, registers::YMM3, 32); // vpsrlq_w0h
+            vpaddq(registers::YMM3, registers::YMM3, registers::YMM2); // vpaddq_s1
+            vpand(registers::YMM2, registers::YMM3, registers::RSP[64]); // vpand_s1l
+            vpmuludq(registers::YMM1, src_reg2, registers::YMM1); // vpmuludq_w2
+            vpsrlq(registers::YMM3, registers::YMM3, 32); // vpsrlq_s1h
+            vpaddq(registers::YMM0, registers::YMM0, registers::YMM3); // vpaddq_hi
+            vpaddq(registers::YMM2, registers::YMM2, registers::YMM1); // vpaddq_s2
+            vpsrlq(registers::YMM2, registers::YMM2, 32); // vpsrlq_s2h
+            vpaddq(dst_reg, registers::YMM0, registers::YMM2); // vpaddq_ret)
+        }</span>
+
+
+
+        // https://stackoverflow.com/a/28827013
+        // Multiply packed quadwords and store high result.
+        // This is emulated instruction (not available in AVX2).
+        // Requires YMM5 to be zeroed.
+        // Uses YMM0-YMM2 registers.
+<span style = "background-color:#dfd">        constexpr void vpmulhq(const Register dst_reg, const Register src_reg) {
+            vpmulhuq(registers::YMM2, dst_reg, src_reg);
+            vpcmpgtq(registers::YMM0, registers::YMM5, dst_reg);
+            vpand(registers::YMM0, src_reg, registers::YMM0);
+            vpsubq(registers::YMM2, registers::YMM2, registers::YMM0);
+            vpcmpgtq(registers::YMM1, registers::YMM5, src_reg);
+            vpand(registers::YMM1, dst_reg, registers::YMM1);
+            vpsubq(dst_reg, registers::YMM2, registers::YMM1);
+        }</span>
+
+        // Aligns stack to 64-byte boundary.
+<span style = "background-color:#dfd">        constexpr void alignStack() {
+            mov(registers::RAX, registers::RSP);
+            mov(registers::RBX, registers::RSP);
+            and_(registers::RAX, -64);
+            sub(registers::RBX, registers::RAX);
+            sub(registers::RSP, registers::RBX);
+            push(registers::RBX);
+            sub(registers::RSP, 56);
+        }</span>
+
+<span style = "background-color:#dfd">        constexpr void and_(const Register dst_reg, const int32_t imm) {
+            encode(rex&lt;uint8_t&gt;(1, 0, 0, dst_reg.isHigh()));
+            encode(0x81);
+            encode(modregrm&lt;uint8_t&gt;(4, dst_reg.lowIdx()));
+            encode((uint8_t)byte&lt;0&gt;(imm));
+            encode((uint8_t)byte&lt;1&gt;(imm));
+            encode((uint8_t)byte&lt;2&gt;(imm));
+            encode((uint8_t)byte&lt;3&gt;(imm));
+            schedule();
+        }</span>
+
+        // Restores stack pointer. alignStack must be called before.
+        // Must be called after destruction of all local variables and before popping registers.
+<span style = "background-color:#dfd">        constexpr void unalignStack() {
+            add(registers::RSP, 56);
+            pop(registers::RAX);
+            add(registers::RSP, registers::RAX);
+        }</span>
+
+        // https://stackoverflow.com/a/37322570
+        // Multiply packed quadwords and store low result.
+        // This is emulated instruction (not available in AVX2).
+        // Requires an 0xffffffff00000000 mask in YMM4 register.
+        // Uses YMM0-YMM2 registers.
+        template&lt;typename Operand&gt;
+<span style = "background-color:#dfd">        constexpr void vpmullq(const Register dst_reg, const Register src_reg1, const Operand src_reg2) {
+            vpshufd(registers::YMM0, src_reg1, 0xb1);</span>
+            // VEX.256.66.0F38.WIG 40 /r VPMULLD ymm1, ymm2, ymm3/m256
+            if constexpr (std::is_same_v&lt;Operand, Register&gt;) {
+<span style = "background-color:#dfd">                vex256 &lt; PP::PP0x66, MM::MM0x0F38, Opcode{ 0x40, -1 } &gt; (registers::YMM0, src_reg2, registers::YMM0);</span>
+            } else {
+<span style = "background-color:#dfd">                vex256 &lt; PP::PP0x66, MM::MM0x0F38, Opcode{ 0x40, -1 } &gt; (registers::YMM0, registers::YMM0, src_reg2);</span>
+            }
+<span style = "background-color:#dfd">            vpsllq(registers::YMM1, registers::YMM0, 32);</span>
+            // VEX.256.66.0F.WIG FE /r VPADDD ymm1, ymm2, ymm3/m256
+<span style = "background-color:#dfd">            vex256 &lt; PP::PP0x66, MM::MM0x0F, Opcode{ 0xfe, -1 } &gt; (registers::YMM1, registers::YMM1, registers::YMM0);
+            vpmuludq(registers::YMM2, src_reg1, src_reg2);
+            vpand(registers::YMM1, registers::YMM1, registers::YMM4);
+            vpaddq(dst_reg, registers::YMM2, registers::YMM1);
+        }</span>
+
+        // Broadcasts 64-bit value from XMM register into YMM register.
+        // In a case when src is a GPR register, it is first moved to XMM register.
+        template&lt;typename Operand&gt;
+<span style = "background-color:#dfd">        constexpr void vpbroadcastq(const Register ymm, const Operand src) {</span>
+            if constexpr (std::is_same_v&lt;Operand, Register&gt;) {
+<span style = "background-color:#dfd">                if (src.type == RegisterType::GPR) {
+                    vmovq(Register::XMM(ymm.idx), src);
+                    vex256 &lt; PP::PP0x66, MM::MM0x0F38, Opcode{ 0x59, -1 } &gt; (ymm, Register::XMM(ymm.idx));
+                } else {
+                    vex256 &lt; PP::PP0x66, MM::MM0x0F38, Opcode{ 0x59, -1 } &gt; (ymm, src);</span>
+                }
+            } else {
+                vex256 &lt; PP::PP0x66, MM::MM0x0F38, Opcode{ 0x59, -1 } &gt; (ymm, src);
+            }        
+<span style = "background-color:#dfd">        }</span>
+
+        // Moves 64-bit value from GPR to XMM register.
+<span style = "background-color:#dfd">        constexpr void vmovq(const Register dst, const Register src) {</span>
+            // vmovq xmm, gpr: {vex.3B: 0xc4} {vex.0bR0B'00001} {vex.0b1'....'0'66} {opcode: #L:0x6e|#S:0x7e /r} {modrm: 0b11'xmm'gpr}
+<span style = "background-color:#dfd">            if (dst.type == RegisterType::XMM) {
+                encode(vex1&lt;uint8_t&gt;(true));
+                encode(vex2&lt;uint8_t&gt;(MM::MM0x0F, dst.isLow(), 0, src.isLow()));
+                encode(vex3&lt;uint8_t&gt;(0, PP::PP0x66, 1, 0));
+                encode(0x6e);
+                encode(modregrm&lt;uint8_t&gt;(dst.lowIdx(), src.lowIdx()));
+            } else {
+                encode(vex1&lt;uint8_t&gt;(true));
+                encode(vex2&lt;uint8_t&gt;(MM::MM0x0F, src.isLow(), 0, dst.isLow()));
+                encode(vex3&lt;uint8_t&gt;(0, PP::PP0x66, 1, 0));
+                encode(0x7e);
+                encode(modregrm&lt;uint8_t&gt;(src.lowIdx(), dst.lowIdx()));</span>
+            }
+<span style = "background-color:#dfd">            schedule();
+        }</span>
+
+        // Extracts 128-bit value from YMM register to XMM register.
+        template&lt;typename Control&gt;
+<span style = "background-color:#dfd">        constexpr void vextracti128(const Register dst, const Register src, const Control control) {</span>
+            // VEX.256.66.0F3A.W0 19 / r ib VEXTRACTF128 xmm1 / m128, ymm2, imm8
+<span style = "background-color:#dfd">            if (dst.type == RegisterType::XMM) {
+                vex256 &lt; PP::PP0x66, MM::MM0x0F3A, Opcode{ 0x39, -1 } &gt; (src, dst, control);
+            } else {</span>
+<span style = "background-color:#fdd">                vex256 &lt; PP::PP0x66, MM::MM0x0F3A, Opcode{ 0x39, -1 } &gt; (dst, src, control);</span>
+            }
+<span style = "background-color:#dfd">        }</span>
+
+        // Extracts quadword from xmm to gpr register.
+        template&lt;typename Control&gt;
+<span style = "background-color:#dfd">        constexpr void vpextrq(const Register dst, const Register src, const Control control) {</span>
+            // VEX.128.66.0F3A.W1 16 /r ib VPEXTRQ r64/m64, xmm2, imm8
+<span style = "background-color:#dfd">            encode(vex1&lt;uint8_t&gt;(true));
+            encode(vex2&lt;uint8_t&gt;(MM::MM0x0F3A, src.isLow(), 0, dst.isLow()));
+            encode(vex3&lt;uint8_t&gt;(0, PP::PP0x66, 1, 0));
+            encode(0x16);
+            encode(modregrm&lt;uint8_t&gt;(src.lowIdx(), dst.lowIdx()));
+            encode((uint8_t)byte&lt;0&gt;(control));
+            schedule();
+        }</span>
+
+        // Moves 64-bit value from Memory to gpr register.
+<span style = "background-color:#dfd">        constexpr void mov(const Register gpr, const Memory m64) {
+            encode(rex&lt;uint8_t&gt;(1, gpr.isHigh(), 0, m64.isHigh()));
+            encode(0x8b);
+            addr(gpr.lowIdx(), m64.reg % 8, m64.offset);
+            schedule();
+        }</span>
+
+        // Moves 64-bit value from Memory to gpr register.
+<span style = "background-color:#dfd">        constexpr void mov(const Register gpr, const Register src) {
+            encode(rex&lt;uint8_t&gt;(1, gpr.isHigh(), 0, src.isHigh()));
+            encode(0x8b);
+            encode(modregrm&lt;uint8_t&gt;(gpr.lowIdx(), src.lowIdx()));
+            schedule();
+        }</span>
+
+        // Moves 32 or 64-bit immediate value into register.
+<span style = "background-color:#dfd">        constexpr void mov(const Register gpr, const uint64_t imm64) {</span>
+            // mov gpr, imm32/64: [rex.w] {opcode: 0xb8+ rd io} {imm64}
+<span style = "background-color:#dfd">            if (imm64 &gt; std::numeric_limits&lt;uint32_t&gt;::max()) {
+                code.push_back(rex&lt;uint8_t&gt;(1, 0, 0, gpr.isHigh()));
+            } else {
+                code.push_back(rex&lt;uint8_t&gt;(0, 0, 0, gpr.isHigh()));</span>
+            }
+
+<span style = "background-color:#dfd">            code.push_back(0xb8 + gpr.lowIdx());
+            code.push_back((uint8_t)byte&lt;0&gt;(imm64));
+            code.push_back((uint8_t)byte&lt;1&gt;(imm64));
+            code.push_back((uint8_t)byte&lt;2&gt;(imm64));
+            code.push_back((uint8_t)byte&lt;3&gt;(imm64));</span>
+
+<span style = "background-color:#dfd">            if (imm64 &gt; std::numeric_limits&lt;uint32_t&gt;::max()) {
+                code.push_back((uint8_t)byte&lt;4&gt;(imm64));
+                code.push_back((uint8_t)byte&lt;5&gt;(imm64));
+                code.push_back((uint8_t)byte&lt;6&gt;(imm64));
+                code.push_back((uint8_t)byte&lt;7&gt;(imm64));</span>
+            }
+<span style = "background-color:#dfd">            schedule();
+        }</span>
+
+<span style = "background-color:#dfd">        constexpr void shr(const Register gpr, const int32_t imm) {
+            encode(rex&lt;uint8_t&gt;(1, 0, 0, gpr.isHigh()));
+            encode(0xc1);
+            encode(modregrm&lt;uint8_t&gt;(5, gpr.lowIdx()));
+            encode((uint8_t)byte&lt;0&gt;(imm));
+            schedule();
+        }</span>
+
+        // Can jump only backwards.
+<span style = "background-color:#dfd">        void jne(const std::string name) {
+            const auto rel32 = labels[name] - code.size() - 6;</span>
+
+<span style = "background-color:#dfd">            encode(0x0f);
+            encode(0x85);
+            encode((uint8_t)byte&lt;0&gt;(rel32));
+            encode((uint8_t)byte&lt;1&gt;(rel32));
+            encode((uint8_t)byte&lt;2&gt;(rel32));
+            encode((uint8_t)byte&lt;3&gt;(rel32));
+            schedule();
+        }</span>
+
+
+<span style = "background-color:#dfd">        constexpr void vmovntdq(const Memory dst, const Register src) {</span>
+            // VEX.256.66.0F.WIG E7 /r VMOVNTDQ m256, ymm1
+<span style = "background-color:#dfd">            vex256 &lt; PP::PP0x66, MM::MM0x0F, Opcode{ 0xe7, -1 } &gt; (src, dst);
+        }</span>
+
+        // Align to 32 bytes and store label.
+<span style = "background-color:#dfd">        void label(const std::string name) {
+            if (code.size() % 32 != 0) {
+                nop(32 - (code.size() % 32));</span>
+            }
+<span style = "background-color:#dfd">            labels[name] = code.size();
+        }</span>
+
+
+        // Both Dst and Src cannot be of Memory type.
+        template&lt;typename Dst, typename Src&gt;
+        requires (
+            (std::is_same_v&lt;Dst, Register&gt; || std::is_same_v&lt;Dst, Memory&gt;) &amp;&amp; 
+            (std::is_same_v&lt;Src, Register&gt; || std::is_same_v&lt;Src, Memory&gt;) &amp;&amp;
+            (!std::is_same_v&lt;Dst, Src&gt; || (std::is_same_v&lt;Dst, Register&gt; &amp;&amp; std::is_same_v&lt;Src, Register&gt;))
+        )
+<span style = "background-color:#dfd">        constexpr void vmovdqa(const Dst dst, const Src src) {</span>
+            // vmovqdu ymmX, ymmword ptr [gpr + offset]: {vex.2B: 0xc5} {vex.0bR'0000'1'66} {opcode: #L:0x6f|#S:0x7f /r} {modrm: 0b00'ymm'gpr} [sib: rsp] [disp8/32]
+            if constexpr (std::is_same_v&lt;Dst, Register&gt;) {
+<span style = "background-color:#dfd">                if (dst.type == RegisterType::YMM) {
+                    vex256 &lt; PP::PP0x66, MM::MM0x0F, Opcode{ 0x6f, -1 } &gt; (dst, src);
+                } else {</span>
+<span style = "background-color:#fdd">                    vex128&lt;PP::PP0x66, MM::MM0x0F, Opcode{ 0x6f, -1 } &gt; (dst, src);</span>
+                }
+            } else {
+<span style = "background-color:#dfd">                if (src.type == RegisterType::YMM) {
+                    vex256 &lt; PP::PP0x66, MM::MM0x0F, Opcode{ 0x7f, -1 } &gt; (src, dst);
+                } else {</span>
+<span style = "background-color:#fdd">                    vex128&lt;PP::PP0x66, MM::MM0x0F, Opcode{ 0x7f, -1 } &gt; (src, dst);</span>
+                }
+            }
+<span style = "background-color:#dfd">        }</span>
+
+        // Both Dst and Src cannot be of Memory type.
+        template&lt;typename Dst, typename Src&gt;
+        requires (
+            (std::is_same_v&lt;Dst, Register&gt; || std::is_same_v&lt;Dst, Memory&gt;) &amp;&amp;
+            (std::is_same_v&lt;Src, Register&gt; || std::is_same_v&lt;Src, Memory&gt;) &amp;&amp;
+            (!std::is_same_v&lt;Dst, Src&gt; || (std::is_same_v&lt;Dst, Register&gt; &amp;&amp; std::is_same_v&lt;Src, Register&gt;))
+        )
+<span style = "background-color:#dfd">        constexpr void vmovdqu(const Dst dst, const Src src) {</span>
+            // vmovqdu ymmX, ymmword ptr [gpr + offset]: {vex.2B: 0xc5} {vex.0bR'0000'1'66} {opcode: #L:0x6f|#S:0x7f /r} {modrm: 0b00'ymm'gpr} [sib: rsp] [disp8/32]
+            if constexpr (std::is_same_v&lt;Dst, Register&gt;) {
+<span style = "background-color:#dfd">                if (dst.type == RegisterType::YMM) {</span>
+<span style = "background-color:#fdd">                    vex256 &lt; PP::PP0xF3, MM::MM0x0F, Opcode{ 0x6f, -1 } &gt; (dst, src);
+                } else {</span>
+<span style = "background-color:#dfd">                    vex128 &lt; PP::PP0xF3, MM::MM0x0F, Opcode{ 0x6f, -1 } &gt; (dst, src);</span>
+                }
+            } else {
+<span style = "background-color:#dfd">                if (src.type == RegisterType::YMM) {</span>
+<span style = "background-color:#fdd">                    vex256 &lt; PP::PP0xF3, MM::MM0x0F, Opcode{ 0x7f, -1 } &gt; (src, dst);
+                } else {</span>
+<span style = "background-color:#dfd">                    vex128 &lt; PP::PP0xF3, MM::MM0x0F, Opcode{ 0x7f, -1 } &gt; (src, dst);</span>
+                }
+            }
+<span style = "background-color:#dfd">        }</span>
+
+        template&lt;typename Operand&gt;
+<span style = "background-color:#dfd">        constexpr void vpsrlq(const Register dst_reg, const Register src_reg, const Operand shift) {
+            vex256 &lt; PP::PP0x66, MM::MM0x0F, Opcode{ 0x73, 2 } &gt; (dst_reg, src_reg, shift);
+        }</span>
+
+        template&lt;typename Operand&gt;
+<span style = "background-color:#dfd">        constexpr void vpsllq(const Register dst_reg, const Register src_reg, const Operand shift) {
+            vex256&lt; PP::PP0x66, MM::MM0x0F, Opcode{ 0x73, 6 }&gt;(dst_reg, src_reg, shift);
+        }</span>
+
+
+        template&lt;typename Operand&gt;
+<span style = "background-color:#dfd">        constexpr void vpsubq(const Register dst_reg, const Register src_reg1, const Operand src_reg2) {
+            vex256 &lt; PP::PP0x66, MM::MM0x0F, Opcode{ 0xfb, -1 } &gt; (dst_reg, src_reg1, src_reg2);
+        }</span>
+
+        template&lt;typename Operand&gt;
+<span style = "background-color:#dfd">        constexpr void vpcmpgtq(const Register dst_reg, const Register src_reg1, const Operand src_reg2) {
+            vex256&lt; PP::PP0x66, MM::MM0x0F38, Opcode{ 0x37, -1 }&gt;(dst_reg, src_reg1, src_reg2);
+        }</span>
+
+        template&lt;typename Operand&gt;
+<span style = "background-color:#dfd">        constexpr void vpaddq(const Register dst_reg, const Register src_reg1, const Operand src_reg2) {
+            vex256&lt; PP::PP0x66, MM::MM0x0F, Opcode{ 0xd4, -1 }&gt;(dst_reg, src_reg1, src_reg2);
+        }</span>
+
+        template&lt;typename Operand&gt;
+<span style = "background-color:#dfd">        constexpr void vpxor(const Register dst_reg, const Register src_reg1, const Operand src_reg2) {
+            vex256&lt; PP::PP0x66, MM::MM0x0F, Opcode{ 0xef, -1 }&gt;(dst_reg, src_reg1, src_reg2);
+        }</span>
+
+        // Convenient function for zeroing YMM register.
+<span style = "background-color:#dfd">        constexpr void vzeroreg(const Register dst_reg) {
+            vpxor(dst_reg, dst_reg, dst_reg);
+        }</span>
+
+        // Convenient function for broadcasting 4 one's (quadwords equal 1) to YMM register.
+<span style = "background-color:#dfd">        constexpr void vonereg(const Register dst_reg) {</span>
+            // VEX.256.66.0F38.WIG 29 / r VPCMPEQQ ymm1, ymm2, ymm3 / m256
+<span style = "background-color:#dfd">            vex256&lt; PP::PP0x66, MM::MM0x0F38, Opcode{ 0x29, -1 }&gt;(dst_reg, dst_reg, dst_reg);
+            vpsrlq(dst_reg, dst_reg, 63);
+        }</span>
+
+        template&lt;typename Operand&gt;
+<span style = "background-color:#dfd">        constexpr void vpand(const Register dst_reg, const Register src_reg1, const Operand src_reg2) {
+            vex256&lt; PP::PP0x66, MM::MM0x0F, Opcode{ 0xdb, -1 }&gt;(dst_reg, src_reg1, src_reg2);
+        }</span>
+
+        template&lt;typename Operand&gt;
+<span style = "background-color:#dfd">        constexpr void vpor(const Register dst_reg, const Register src_reg1, const Operand src_reg2) {
+            vex256 &lt; PP::PP0x66, MM::MM0x0F, Opcode{ 0xeb, -1 } &gt; (dst_reg, src_reg1, src_reg2);
+        }</span>
+
+        // Pushes single GPR register on stack.
+<span style = "background-color:#dfd">        constexpr void push(const Register reg) {
+            if (reg.isHigh()) {
+                encode(rex&lt;uint8_t&gt;(0, 0, 0, 1));</span>
+            }
+<span style = "background-color:#dfd">            encode(0x50 + reg.lowIdx());
+            schedule();
+        }</span>
+
+        // Pops single GPR register from stack.
+<span style = "background-color:#dfd">        constexpr void pop(const Register reg) {
+            if (reg.isHigh()) {
+                encode(rex&lt;uint8_t&gt;(0, 0, 0, 1));</span>
+            }
+<span style = "background-color:#dfd">            encode(0x58 + reg.lowIdx());
+            schedule();
+        }</span>
+
+<span style = "background-color:#dfd">        constexpr void sub(const Register dst, const Register src) {
+            encode(rex&lt;uint8_t&gt;(1, dst.isHigh(), 0, src.isHigh()));
+            encode(0x2b);
+            encode(modregrm&lt;uint8_t&gt;(dst.lowIdx(), src.lowIdx()));
+            schedule();
+        }</span>
+
+<span style = "background-color:#dfd">        constexpr void add(const Register dst, const Register src) {
+            encode(rex&lt;uint8_t&gt;(1, dst.isHigh(), 0, src.isHigh()));
+            encode(0x03);
+            encode(modregrm&lt;uint8_t&gt;(dst.lowIdx(), src.lowIdx()));
+            schedule();
+        }</span>
+
+<span style = "background-color:#dfd">        constexpr void sub(const Register dst, const int32_t size) {
+            if (size &lt; std::numeric_limits&lt;int8_t&gt;::max()) {
+                rexw &lt; Opcode{ 0x83, 5 } &gt; (dst, static_cast&lt;int8_t&gt;(size));
+            } else {
+                rexw &lt; Opcode{ 0x81, 5 } &gt; (dst, size);</span>
+            }
+<span style = "background-color:#dfd">        }</span>
+
+<span style = "background-color:#dfd">        constexpr void add(const Register dst, const int32_t size) {
+            if (size &lt; std::numeric_limits&lt;int8_t&gt;::max()) {
+                rexw &lt; Opcode{ 0x83, 0 } &gt; (dst, static_cast&lt;int8_t&gt;(size));
+            } else {
+                rexw &lt; Opcode{ 0x81, 0 } &gt; (dst, size);</span>
+            }
+<span style = "background-color:#dfd">        }</span>
+
+        // Generates binary code for pushing registers on stack.
+        // For general purpose registers it uses PUSH instruction.
+        // For XMM registers it expands stack and copies register to stack.
+        // Example:
+        // context.push(RAX, R8, XMM1, XMM0) will generate:
+        //
+        // push rax
+        // push r8
+        // sub rsp, 0x20
+        // vmovqdu xmmword ptr [rsp], xmm1
+        // vmovqdu xmmword ptr [rsp + 0x10], xmm0
+        template&lt;typename... Reg&gt;
+        requires (std::is_same_v&lt;Reg, Register&gt; &amp;&amp; ...)
+<span style = "background-color:#dfd">        constexpr void push(Reg... regs) {</span>
+            static_assert(sizeof...(regs) &gt; 0);
+
+<span style = "background-color:#dfd">            std::array&lt;Register, sizeof...(regs)&gt; xmm_regs{};
+            int32_t xmm_regs_cnt{ 0 };</span>
+
+<span style = "background-color:#dfd">            for (const auto&amp; reg : { regs... }) {</span>
+                // General purpose registers are pushed on stack using PUSH instruction: 
+<span style = "background-color:#dfd">                if (reg.type == RegisterType::GPR) {
+                    push(reg);
+                }</span>
+                // XMM registers are pushed on stack by expanding stack and copying register to stack.
+                // Lets just count how many XMM registers was passed and push them at the end, because they may be between general purpose registers.
+<span style = "background-color:#dfd">                else if (reg.type == RegisterType::XMM) {
+                    xmm_regs[xmm_regs_cnt++] = reg;</span>
+                }
+            }
+
+<span style = "background-color:#dfd">            if (xmm_regs_cnt &gt; 0) {
+                const int32_t stack_size{ xmm_regs_cnt * Register::XMM(0).size() };
+                sub(registers::RSP, stack_size);</span>
+
+<span style = "background-color:#dfd">                for (int32_t i = xmm_regs_cnt - 1; i &gt;= 0; --i) {
+                    const auto&amp; reg{ xmm_regs[i] };
+                    const int32_t stack_offset{ (xmm_regs_cnt - 1 - i) * reg.size() };</span>
+
+<span style = "background-color:#dfd">                    vmovdqu(registers::RSP[stack_offset], reg);
+                }</span>
+            }
+<span style = "background-color:#dfd">        }</span>
+
+        // Generates binary code for poping registers from stack.
+        // For general purpose registers it uses POP instruction.
+        // For XMM registers it copies values from stack to registers.
+        // It is important to use this function with registers in reverse order of adequate push function.
+        // Example:
+        // context.pop(XMM0, XMM1, R8, RAX) will generate:
+        //
+        // vmovqdu xmm0, xmmword ptr [rsp + 0x10]
+        // vmovqdu xmm1, xmmword ptr [rsp]
+        // add rsp, 0x20
+        // pop r8
+        // pop rax
+        template&lt;typename... Reg&gt;
+        requires (std::is_same_v&lt;Reg, Register&gt; &amp;&amp; ...)
+<span style = "background-color:#dfd">        constexpr void pop(Reg... regs) {</span>
+            static_assert(sizeof...(regs) &gt; 0);
+
+<span style = "background-color:#dfd">            std::array&lt;Register, sizeof...(regs)&gt; xmm_regs{};
+            int32_t xmm_regs_cnt{ 0 };</span>
+
+<span style = "background-color:#dfd">            for (const auto&amp; reg : { regs... }) {</span>
+                // XMM registers are popped from stack by copying values from stack back to register and shrinking stack.
+                // Lets just count how many XMM registers was passed and pop them right after, when stack size reserved for them is known.
+<span style = "background-color:#dfd">                if (reg.type == RegisterType::XMM) {
+                    xmm_regs[xmm_regs_cnt++] = reg;</span>
+                }
+            }
+
+<span style = "background-color:#dfd">            if (xmm_regs_cnt &gt; 0) {
+                for (int32_t i = 0; i &lt; xmm_regs_cnt; ++i) {
+                    const auto&amp; reg{ xmm_regs[i] };
+                    const int32_t stack_offset{ i * reg.size() };</span>
+
+<span style = "background-color:#dfd">                    vmovdqu(reg, registers::RSP[stack_offset]);
+                }</span>
+
+<span style = "background-color:#dfd">                const int32_t stack_size{ xmm_regs_cnt * Register::XMM(0).size() };
+                add(registers::RSP, stack_size);</span>
+            }
+
+<span style = "background-color:#dfd">            for (const auto&amp; reg : { regs... }) {</span>
+                // General purpose registers are popped from stack using POP instruction: 
+<span style = "background-color:#dfd">                if (reg.type == RegisterType::GPR) {
+                    pop(reg);</span>
+                }
+            }
+<span style = "background-color:#dfd">        }</span>
+
+        // Generates nop instructions for given size in bytes.
+<span style = "background-color:#dfd">        constexpr void nop(const int32_t size) {
+            int s = size;
+            while (s &gt; 15) {</span>
+<span style = "background-color:#fdd">                code.append_range(std::vector&lt;uint8_t&gt;{ 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x2e, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00}); 
+                s -= 15;
+            }</span>
+<span style = "background-color:#dfd">            switch (s % 16) {
+            case 1: code.push_back(0x90); --s; break;
+            case 2: code.append_range(std::vector&lt;uint8_t&gt;{ 0x66, 0x90 }); s -= 2; break;
+            case 3: code.append_range(std::vector&lt;uint8_t&gt;{ 0x0f, 0x1f, 0x00 }); s -= 3; break;
+            case 4: code.append_range(std::vector&lt;uint8_t&gt;{ 0x0f, 0x1f, 0x40, 0x00 }); s -= 4; break;
+            case 5: code.append_range(std::vector&lt;uint8_t&gt;{ 0x0f, 0x1f, 0x44, 0x00, 0x00 }); s -= 5; break;
+            case 6: code.append_range(std::vector&lt;uint8_t&gt;{ 0x66, 0x0f, 0x1f, 0x44, 0x00, 0x00 }); s -= 6; break;</span>
+<span style = "background-color:#fdd">            case 7: code.append_range(std::vector&lt;uint8_t&gt;{ 0x0f, 0x1f, 0x80, 0x00, 0x00, 0x00, 0x00 }); s -= 7; break;
+            case 8: code.append_range(std::vector&lt;uint8_t&gt;{ 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00 }); s -= 8; break;
+            case 9: code.append_range(std::vector&lt;uint8_t&gt;{ 0x66, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00 }); s -= 9; break;
+            case 10: code.append_range(std::vector&lt;uint8_t&gt;{ 0x66, 0x2e, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00 }); s -= 10; break;
+            case 11: code.append_range(std::vector&lt;uint8_t&gt;{ 0x66, 0x66, 0x2e, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00 }); s -= 11; break;</span>
+<span style = "background-color:#dfd">            case 12: code.append_range(std::vector&lt;uint8_t&gt;{ 0x66, 0x66, 0x66, 0x2e, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00 }); s -= 12; break;</span>
+<span style = "background-color:#fdd">            case 13: code.append_range(std::vector&lt;uint8_t&gt;{ 0x66, 0x66, 0x66, 0x66, 0x2e, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00 }); s -= 13; break;
+            case 14: code.append_range(std::vector&lt;uint8_t&gt;{ 0x66, 0x66, 0x66, 0x66, 0x66, 0x2e, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00 }); s -= 14; break;
+            case 15: code.append_range(std::vector&lt;uint8_t&gt;{ 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x2e, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00}); s -= 15; break;
+            default: std::unreachable();</span>
+            }
+<span style = "background-color:#dfd">        }</span>
+
+        // Generates ret instruction if previous byte isnt ret opcode already.
+<span style = "background-color:#dfd">        constexpr void ret() {
+            if (code.back() == 0xc3) {</span>
+<span style = "background-color:#fdd">                return;</span>
+            }
+
+<span style = "background-color:#dfd">            encode(0xc3);
+            schedule();
+        }</span>
+
+        // Flushes generated code that results in giving away ownership of the buffer.
+<span style = "background-color:#dfd">        [[nodiscard]] constexpr std::vector&lt;uint8_t&gt; flushCode() noexcept {
+            return std::move(code);
+        }</span>
+
+        // Flushes generated data that results in giving away ownership of the buffer.
+        // Fills data pointers in code.
+<span style = "background-color:#dfd">        [[nodiscard]] constexpr data_vector flushData() noexcept {
+            for (const auto&amp; [code_pos, data_offset] : data_ptr_pos) {
+                const auto dp{ dataPtr() + data_offset };
+                std::memcpy(code.data() + code_pos, &amp;dp, sizeof(int64_t));
+            }</span>
+
+<span style = "background-color:#dfd">            return std::move(data);
+        }</span>
+
+<span style = "background-color:#dfd">        [[nodiscard]] constexpr const uint8_t* dataPtr() noexcept {
+            return data.data();
+        }</span>
+
+        [[nodiscard]] constexpr const int32_t dataSize() noexcept {
+            return static_cast&lt;int32_t&gt;(data.size());
+        }
+
+        std::vector&lt;std::pair&lt;size_t, size_t&gt;&gt; data_ptr_pos;
+        std::vector&lt;uint8_t&gt; code;
+        data_vector data;
+        std::vector&lt;uint8_t&gt; instruction;
+        std::unordered_map&lt;std::string, size_t&gt; labels;
+
+<span style = "background-color:#dfd">        constexpr void schedule(int force_align = 0) {
+            if (instruction.empty()) {
+                return;</span>
+            }
+
+<span style = "background-color:#dfd">            constexpr uint32_t align{ 4096 };
+            if (force_align == 0 &amp;&amp; (code.size() + instruction.size() != align) &amp;&amp; code.size() % align &gt; (code.size() + instruction.size()) % align) {
+                nop(align - (code.size() % align));</span>
+            }
+
+<span style = "background-color:#dfd">            code.insert(code.end(), instruction.begin(), instruction.end());
+            instruction.clear();</span>
+
+<span style = "background-color:#dfd">            if (force_align &gt; 0) {</span>
+<span style = "background-color:#fdd">                nop(force_align);</span>
+            }
+<span style = "background-color:#dfd">        }</span>
+
+<span style = "background-color:#dfd">        constexpr void encode(const uint8_t byte) {
+            instruction.push_back(byte);
+        }</span>
+
+        // Generates bytes for indirect addressing mode. 
+<span style = "background-color:#dfd">        constexpr void addr(const reg_idx_t dst, const reg_idx_t src, const int32_t offset) {</span>
+            // RIP relative addressing (displacement only).
+<span style = "background-color:#dfd">            if (src == registers::RBP.idx) {</span>
+<span style = "background-color:#fdd">                encode(modregrm&lt;uint8_t&gt;(0, registers::RBP.idx, MOD::MOD00)); // Indirect or SIB mode if RSP used.
+                encode((uint8_t)byte&lt;0&gt;(offset));
+                encode((uint8_t)byte&lt;1&gt;(offset));
+                encode((uint8_t)byte&lt;2&gt;(offset));
+                encode((uint8_t)byte&lt;3&gt;(offset));
+                return;</span>
+            }
+
+<span style = "background-color:#dfd">            if (offset == 0) {
+                encode(modregrm&lt;uint8_t&gt;(dst % 8, src % 8, MOD::MOD00)); // Indirect or SIB mode if RSP used.
+            } else if (offset &gt;= std::numeric_limits&lt;int8_t&gt;::min() &amp;&amp; offset &lt;= std::numeric_limits&lt;int8_t&gt;::max()) {
+                encode(modregrm&lt;uint8_t&gt;(dst % 8, src % 8, MOD::MOD01)); // Indirect + disp8 or SIB mode + disp8 if RSP used.
+            } else {
+                encode(modregrm&lt;uint8_t&gt;(dst % 8, src % 8, MOD::MOD10)); // Indirect + disp32 or SIB mode + disp32 if RSP used.</span>
+            }
+
+            // SIB byte.
+<span style = "background-color:#dfd">            if (src == registers::RSP.idx) {
+                encode(sib&lt;uint8_t&gt;(SCALE::SS1, registers::RSP, registers::RSP));</span>
+            }
+
+            // Disp8
+<span style = "background-color:#dfd">            if (offset != 0) {
+                encode((uint8_t)byte&lt;0&gt;(offset));</span>
+            }
+
+            // Disp32
+<span style = "background-color:#dfd">            if (offset &lt; std::numeric_limits&lt;int8_t&gt;::min() || offset &gt; std::numeric_limits&lt;int8_t&gt;::max()) {
+                encode((uint8_t)byte&lt;1&gt;(offset));
+                encode((uint8_t)byte&lt;2&gt;(offset));
+                encode((uint8_t)byte&lt;3&gt;(offset));</span>
+            }
+<span style = "background-color:#dfd">        }</span>
+
+        // Generates instruction with REX.W prefix and Register/IMM as operands.
+        template&lt;Opcode opcode, typename Imm&gt;
+        requires (std::is_same_v&lt;Imm, int8_t&gt; || std::is_same_v&lt;Imm, int32_t&gt; || std::is_same_v&lt;Imm, int64_t&gt;)
+<span style = "background-color:#dfd">        constexpr void rexw(const Register dst, const Imm imm) {
+            encode(rex&lt;uint8_t&gt;(1, 0, 0, dst.isHigh()));
+            encode(opcode.code);
+            encode(modregrm&lt;uint8_t&gt;(std::max&lt;reg_idx_t&gt;(opcode.mod, 0), dst.lowIdx()));</span>
+
+<span style = "background-color:#dfd">            encode((uint8_t)byte&lt;0&gt;(imm));</span>
+
+            if constexpr (std::is_same_v&lt;Imm, int32_t&gt;) {
+<span style = "background-color:#dfd">                encode((uint8_t)byte&lt;1&gt;(imm));
+                encode((uint8_t)byte&lt;2&gt;(imm));
+                encode((uint8_t)byte&lt;3&gt;(imm));</span>
+            }
+
+            if constexpr (std::is_same_v&lt;Imm, int64_t&gt;) {
+                encode((uint8_t)byte&lt;4&gt;(imm));
+                encode((uint8_t)byte&lt;5&gt;(imm));
+                encode((uint8_t)byte&lt;6&gt;(imm));
+                encode((uint8_t)byte&lt;7&gt;(imm));
+            }
+
+<span style = "background-color:#dfd">            schedule();
+        }</span>
+
+        // Generates instruction with VEX256 prefix and Register/Register as operands (eg. vpbroadcastq).
+        template&lt;PP pp, MM mm, Opcode opcode, uint8_t w = 0&gt;
+<span style = "background-color:#dfd">        constexpr void vex256(const Register dst, const Register src1) {</span>
+            if constexpr (mm == MM::MM0x0F) {
+<span style = "background-color:#dfd">                if (src1.isLow()) {</span>
+                    // INSTR ymmD, ymmS1, ymmS2: {vex.2B: 0xc5} {vex.0b1'ffff'1'66} {opcode.code /opcode.mod} {modrm: 0b11'ddd'ss@}
+<span style = "background-color:#dfd">                    encode(vex1&lt;uint8_t&gt;(false));
+                    encode(vex2&lt;uint8_t&gt;(0, pp, dst.isLow()));
+                } else {</span>
+                    // INSTR ymmD, ymmS1, ymmS2: {vex.3B: 0xc4} {vex.0bR0B'00001} {vex.0bW'ffff'1'66} {opcode.code /opcode.mod} {modrm: 0b11'ddd'ss@}
+<span style = "background-color:#fdd">                    encode(vex1&lt;uint8_t&gt;(true));
+                    encode(vex2&lt;uint8_t&gt;(MM::MM0x0F, dst.isLow(), 0, src1.isLow()));
+                    encode(vex3&lt;uint8_t&gt;(0, pp, w));</span>
+                }
+            } else {
+<span style = "background-color:#dfd">                encode(vex1&lt;uint8_t&gt;(true));
+                encode(vex2&lt;uint8_t&gt;(mm, dst.isLow(), 0, src1.isLow()));
+                encode(vex3&lt;uint8_t&gt;(0, pp, w));</span>
+            }
+
+<span style = "background-color:#dfd">            encode(opcode.code);
+            encode(modregrm&lt;uint8_t&gt;(dst.lowIdx(), src1.lowIdx()));
+            schedule();
+        }</span>
+
+        // Generates instruction with VEX128 prefix and Register/Register as operands (eg. vmovdqa).
+        template&lt;PP pp, MM mm, Opcode opcode, uint8_t w = 0&gt;
+<span style = "background-color:#fdd">        constexpr void vex128(const Register dst, const Register src1) {</span>
+            if constexpr (mm == MM::MM0x0F) {
+<span style = "background-color:#fdd">                if (src1.isLow()) {</span>
+                    // INSTR ymmD, ymmS1, ymmS2: {vex.2B: 0xc5} {vex.0b1'ffff'1'66} {opcode.code /opcode.mod} {modrm: 0b11'ddd'ss@}
+<span style = "background-color:#fdd">                    encode(vex1&lt;uint8_t&gt;(false));
+                    encode(vex2&lt;uint8_t&gt;(0, pp, dst.isLow(), 0));
+                } else {</span>
+                    // INSTR ymmD, ymmS1, ymmS2: {vex.3B: 0xc4} {vex.0bR0B'00001} {vex.0bW'ffff'1'66} {opcode.code /opcode.mod} {modrm: 0b11'ddd'ss@}
+<span style = "background-color:#fdd">                    encode(vex1&lt;uint8_t&gt;(true));
+                    encode(vex2&lt;uint8_t&gt;(MM::MM0x0F, dst.isLow(), 0, src1.isLow()));
+                    encode(vex3&lt;uint8_t&gt;(0, pp, w, 0));</span>
+                }
+            } else {
+                encode(vex1&lt;uint8_t&gt;(true));
+                encode(vex2&lt;uint8_t&gt;(mm, dst.isLow(), 0, src1.isLow()));
+                encode(vex3&lt;uint8_t&gt;(0, pp, w, 0));
+            }
+
+<span style = "background-color:#fdd">            encode(opcode.code);
+            encode(modregrm&lt;uint8_t&gt;(dst.lowIdx(), src1.lowIdx()));
+            schedule();
+        }</span>
+
+        // Generates instruction with VEX256 prefix and Register/Memory as operands (eg. vmovdqa).
+        template&lt;PP pp, MM mm, Opcode opcode, uint8_t w = 0&gt;
+<span style = "background-color:#dfd">        constexpr void vex256(const Register dst, const Memory src1) {</span>
+            if constexpr (mm == MM::MM0x0F) {
+<span style = "background-color:#dfd">                if (src1.isLow()) {</span>
+                    // INSTR ymmD, ymmS1, ymmS2: {vex.2B: 0xc5} {vex.0b1'ffff'1'66} {opcode.code /opcode.mod} {modrm: 0b11'ddd'ss@}
+<span style = "background-color:#dfd">                    encode(vex1&lt;uint8_t&gt;(false));
+                    encode(vex2&lt;uint8_t&gt;(0, pp, dst.isLow()));
+                } else {</span>
+                    // INSTR ymmD, ymmS1, ymmS2: {vex.3B: 0xc4} {vex.0bR0B'00001} {vex.0bW'ffff'1'66} {opcode.code /opcode.mod} {modrm: 0b11'ddd'ss@}
+<span style = "background-color:#dfd">                    encode(vex1&lt;uint8_t&gt;(true));
+                    encode(vex2&lt;uint8_t&gt;(MM::MM0x0F, dst.isLow(), 0, src1.isLow()));
+                    encode(vex3&lt;uint8_t&gt;(0, pp, w));</span>
+                }
+            } else {
+                encode(vex1&lt;uint8_t&gt;(true));
+                encode(vex2&lt;uint8_t&gt;(mm, dst.isLow(), 0, src1.isLow()));
+                encode(vex3&lt;uint8_t&gt;(0, pp, w));
+            }
+
+<span style = "background-color:#dfd">            encode(opcode.code);
+            addr(dst.idx, src1.reg, src1.offset);
+            schedule();
+        }</span>
+
+        // Generates instruction with VEX128 prefix and Register/Memory as operands (eg. vmovdqa).
+        template&lt;PP pp, MM mm, Opcode opcode, uint8_t w = 0&gt;
+<span style = "background-color:#dfd">        constexpr void vex128(const Register dst, const Memory src1) {</span>
+            if constexpr (mm == MM::MM0x0F) {
+<span style = "background-color:#dfd">                if (src1.isLow()) {</span>
+                    // INSTR ymmD, ymmS1, ymmS2: {vex.2B: 0xc5} {vex.0b1'ffff'1'66} {opcode.code /opcode.mod} {modrm: 0b11'ddd'ss@}
+<span style = "background-color:#dfd">                    encode(vex1&lt;uint8_t&gt;(false));
+                    encode(vex2&lt;uint8_t&gt;(0, pp, dst.isLow(), 0));
+                } else {</span>
+                    // INSTR ymmD, ymmS1, ymmS2: {vex.3B: 0xc4} {vex.0bR0B'00001} {vex.0bW'ffff'1'66} {opcode.code /opcode.mod} {modrm: 0b11'ddd'ss@}
+<span style = "background-color:#fdd">                    encode(vex1&lt;uint8_t&gt;(true));
+                    encode(vex2&lt;uint8_t&gt;(MM::MM0x0F, dst.isLow()));
+                    encode(vex3&lt;uint8_t&gt;(0, pp, w, 0));</span>
+                }
+            } else {
+                encode(vex1&lt;uint8_t&gt;(true));
+                encode(vex2&lt;uint8_t&gt;(mm, dst.isLow(), 0, src1.isLow()));
+                encode(vex3&lt;uint8_t&gt;(0, pp, w, 0));
+            }
+
+<span style = "background-color:#dfd">            encode(opcode.code);
+            addr(dst.idx, src1.reg, src1.offset);
+            schedule();
+        }</span>
+
+        // Generates instruction with VEX256 prefix and Register/Register/Register as operands (eg. vpxor).
+        template&lt;PP pp, MM mm, Opcode opcode, uint8_t w = 0&gt;
+<span style = "background-color:#dfd">        constexpr void vex256(const Register dst, const Register src1, const Register src2) {</span>
+            if constexpr (mm == MM::MM0x0F) {
+<span style = "background-color:#dfd">                if (src2.isLow() &amp;&amp; dst.isLow()) {</span>
+                    // INSTR ymmD, ymmS1, ymmS2: {vex.2B: 0xc5} {vex.0b1'sss!'1'66} {opcode.code /opcode.mod} {modrm: 0b11'ddd'ss@}
+<span style = "background-color:#dfd">                    encode(vex1&lt;uint8_t&gt;(false));
+                    encode(vex2&lt;uint8_t&gt;(src1.idx, pp, 1));
+                } else {</span>
+                    // INSTR ymmD, ymmS1, ymmS2: {vex.3B: 0xc4} {vex.0bR0B'00001} {vex.0bW'sss!'1'66} {opcode.code /opcode.mod} {modrm: 0b11'ddd'ss@}
+<span style = "background-color:#dfd">                    encode(vex1&lt;uint8_t&gt;(true));
+                    encode(vex2&lt;uint8_t&gt;(MM::MM0x0F, dst.isLow(), 0, src2.isLow()));
+                    encode(vex3&lt;uint8_t&gt;(src1.idx, pp, w));</span>
+                }
+            } else {
+<span style = "background-color:#dfd">                encode(vex1&lt;uint8_t&gt;(true));
+                encode(vex2&lt;uint8_t&gt;(mm, dst.isLow(), 0, src2.isLow()));
+                encode(vex3&lt;uint8_t&gt;(src1.idx, pp, w));</span>
+            }
+
+<span style = "background-color:#dfd">            encode(opcode.code);
+            encode(modregrm&lt;uint8_t&gt;(dst.lowIdx(), src2.lowIdx()));
+            schedule();
+        }</span>
+
+        // Generates instruction with VEX256 prefix and Register/Register/Register as operands (eg. vpxor).
+        template&lt;PP pp, MM mm, Opcode opcode, uint8_t w = 0&gt;
+<span style = "background-color:#dfd">        constexpr void vex256(const Register dst, const Register src1, const Memory src2) {</span>
+            if constexpr (mm == MM::MM0x0F) {
+<span style = "background-color:#dfd">                if (src2.isLow()) {</span>
+                    // INSTR ymmD, ymmS1, ymmS2: {vex.2B: 0xc5} {vex.0b1'sss!'1'66} {opcode.code /opcode.mod} {modrm: 0b11'ddd'ss@}
+<span style = "background-color:#dfd">                    encode(vex1&lt;uint8_t&gt;(false));
+                    encode(vex2&lt;uint8_t&gt;(src1.idx, pp, dst.isLow()));
+                } else {</span>
+                    // INSTR ymmD, ymmS1, ymmS2: {vex.3B: 0xc4} {vex.0bR0B'00001} {vex.0bW'sss!'1'66} {opcode.code /opcode.mod} {modrm: 0b11'ddd'ss@}
+<span style = "background-color:#dfd">                    encode(vex1&lt;uint8_t&gt;(true));
+                    encode(vex2&lt;uint8_t&gt;(MM::MM0x0F, dst.isLow(), 0, src2.isLow()));
+                    encode(vex3&lt;uint8_t&gt;(src1.idx, pp, w));</span>
+                }
+            } else {
+<span style = "background-color:#dfd">                encode(vex1&lt;uint8_t&gt;(true));
+                encode(vex2&lt;uint8_t&gt;(mm, dst.isLow(), 0, src2.isLow()));
+                encode(vex3&lt;uint8_t&gt;(src1.idx, pp, w));</span>
+            }
+
+<span style = "background-color:#dfd">            encode(opcode.code);
+            addr(dst.idx, src2.reg, src2.offset);
+            schedule();
+        }</span>
+
+        // Generates instruction with VEX256 prefix and Register/Register/Imm as operands (eg. vpsllq).
+        template&lt;PP pp, MM mm, Opcode opcode, uint8_t w = 0&gt;
+<span style = "background-color:#dfd">        constexpr void vex256(const Register dst, const Register src1, const int imm32) {
+            const reg_idx_t vvvv{ opcode.mod &gt; -1 ? dst.idx : uint8_t(0) };
+            const reg_idx_t reg{ opcode.mod &gt; -1 ? (uint8_t)opcode.mod : dst.lowIdx() };</span>
+
+            if constexpr (mm == MM::MM0x0F) {
+<span style = "background-color:#dfd">                if (src1.isLow()) {</span>
+                    // INSTR ymmD, ymmS1, imm8: {vex.2B: 0xc5} {vex.0b1'dddd'1'66} {opcode.code /opcode.mod} {modrm: 0b11'mod'ss!}
+<span style = "background-color:#dfd">                    encode(vex1&lt;uint8_t&gt;(false));
+                    encode(vex2&lt;uint8_t&gt;(vvvv, pp, 1));
+                } else {</span>
+                    // INSTR ymmD, ymmS1, imm8: {vex.3B: 0xc4} {vex.0b000'00001} {vex.0bW'dddd'1'66} {opcode.code /opcode.mod} {modrm: 0b11'mod'ss!}
+<span style = "background-color:#dfd">                    encode(vex1&lt;uint8_t&gt;(true));
+                    encode(vex2&lt;uint8_t&gt;(MM::MM0x0F, dst.isLow(), 0, src1.isLow()));
+                    encode(vex3&lt;uint8_t&gt;(vvvv, pp, w));</span>
+                }
+            } else {
+<span style = "background-color:#dfd">                encode(vex1&lt;uint8_t&gt;(true));
+                encode(vex2&lt;uint8_t&gt;(mm, dst.isLow(), 0, src1.isLow()));
+                encode(vex3&lt;uint8_t&gt;(vvvv, pp, w));</span>
+            }
+
+<span style = "background-color:#dfd">            encode(opcode.code);
+            encode(modregrm&lt;uint8_t&gt;(reg, src1.lowIdx()));
+            encode((uint8_t)byte&lt;0&gt;(imm32));
+            schedule();
+        }</span>
+
+        // Generates instruction with VEX256 prefix and Register/Register/Register/Imm as operands (eg. vperm2i128).
+        template&lt;PP pp, MM mm, Opcode opcode, uint8_t w = 0&gt;
+<span style = "background-color:#dfd">        constexpr void vex256(const Register dst, const Register src1, const Register src2, const int imm32) {
+            const reg_idx_t vvvv{ src1.idx };
+            const reg_idx_t reg{ opcode.mod &gt; -1 ? (uint8_t)opcode.mod : dst.lowIdx() };
+            const reg_idx_t rm{ src2.lowIdx() };</span>
+
+            if constexpr (mm == MM::MM0x0F) {
+                if (src1.isLow()) {
+                    // INSTR ymmD, ymmS1, imm8: {vex.2B: 0xc5} {vex.0b1'dddd'1'66} {opcode.code /opcode.mod} {modrm: 0b11'mod'ss!}
+                    encode(vex1&lt;uint8_t&gt;(false));
+                    encode(vex2&lt;uint8_t&gt;(vvvv, pp, 1));
+                } else {
+                    // INSTR ymmD, ymmS1, imm8: {vex.3B: 0xc4} {vex.0b000'00001} {vex.0bW'dddd'1'66} {opcode.code /opcode.mod} {modrm: 0b11'mod'ss!}
+                    encode(vex1&lt;uint8_t&gt;(true));
+                    encode(vex2&lt;uint8_t&gt;(MM::MM0x0F, dst.isLow(), 0, src2.isLow()));
+                    encode(vex3&lt;uint8_t&gt;(vvvv, pp, w));
+                }
+            } else {
+<span style = "background-color:#dfd">                encode(vex1&lt;uint8_t&gt;(true));
+                encode(vex2&lt;uint8_t&gt;(mm, dst.isLow(), 0, src2.isLow()));
+                encode(vex3&lt;uint8_t&gt;(vvvv, pp, w));</span>
+            }
+
+<span style = "background-color:#dfd">            encode(opcode.code);
+            encode(modregrm&lt;uint8_t&gt;(reg, rm));
+            encode((uint8_t)byte&lt;0&gt;(imm32));
+            schedule();
+        }</span>
+    };
+}</pre>
+        <hr />
+        <table width="100%">
+            <thead>
+                <tr>
+                    <th align="center">
+                        <small>Generated by</small>
+                        <a href="https://github.com/OpenCppCoverage/OpenCppCoverage/releases">
+                            <strong>OpenCppCoverage (Version: 0.9.9.0)</strong>
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+        </table>
+    </body>
+</html>

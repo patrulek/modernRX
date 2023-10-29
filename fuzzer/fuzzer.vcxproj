@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="ReleaseFuzzer|x64">
+      <Configuration>ReleaseFuzzer</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>17.0</VCProjectVersion>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{8e84774b-23f9-4158-82e8-bc322915de0f}</ProjectGuid>
+    <RootNamespace>fuzzer</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseFuzzer|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>MultiByte</CharacterSet>
+    <EnableFuzzer>true</EnableFuzzer>
+    <EnableASAN>true</EnableASAN>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+    <Import Project="$(VCTargetsPath)\BuildCustomizations\masm.props" />
+  </ImportGroup>
+  <ImportGroup Label="Shared">
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseFuzzer|x64'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseFuzzer|x64'">
+    <ClCompile>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;_MBCS;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
+      <AdditionalIncludeDirectories>..\modernRX;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <TreatWarningAsError>false</TreatWarningAsError>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
+    </Link>
+    <PreBuildEvent>
+      <Command>powershell -ExecutionPolicy Bypass -File .\h2inc.ps1 ..\src\configuration.h &gt; ..\src\asm\configuration.asm</Command>
+    </PreBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\modernRX\modernRX.vcxproj">
+      <Project>{6963b039-6585-4511-9d0e-478e6ecaacba}</Project>
+    </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="3rdparty\RandomX\src\aes_hash.cpp" />
+    <ClCompile Include="3rdparty\RandomX\src\allocator.cpp" />
+    <ClCompile Include="3rdparty\RandomX\src\argon2_avx2.c" />
+    <ClCompile Include="3rdparty\RandomX\src\argon2_core.c" />
+    <ClCompile Include="3rdparty\RandomX\src\argon2_ref.c" />
+    <ClCompile Include="3rdparty\RandomX\src\argon2_ssse3.c" />
+    <ClCompile Include="3rdparty\RandomX\src\assembly_generator_x86.cpp" />
+    <ClCompile Include="3rdparty\RandomX\src\blake2\blake2b.c" />
+    <ClCompile Include="3rdparty\RandomX\src\blake2_generator.cpp" />
+    <ClCompile Include="3rdparty\RandomX\src\bytecode_machine.cpp" />
+    <ClCompile Include="3rdparty\RandomX\src\cpu.cpp" />
+    <ClCompile Include="3rdparty\RandomX\src\dataset.cpp" />
+    <ClCompile Include="3rdparty\RandomX\src\instruction.cpp" />
+    <ClCompile Include="3rdparty\RandomX\src\instructions_portable.cpp" />
+    <ClCompile Include="3rdparty\RandomX\src\jit_compiler_x86.cpp" />
+    <ClCompile Include="3rdparty\RandomX\src\randomx.cpp" />
+    <ClCompile Include="3rdparty\RandomX\src\reciprocal.c" />
+    <ClCompile Include="3rdparty\RandomX\src\soft_aes.cpp" />
+    <ClCompile Include="3rdparty\RandomX\src\superscalar.cpp" />
+    <ClCompile Include="3rdparty\RandomX\src\virtual_machine.cpp" />
+    <ClCompile Include="3rdparty\RandomX\src\virtual_memory.c" />
+    <ClCompile Include="3rdparty\RandomX\src\vm_compiled.cpp" />
+    <ClCompile Include="3rdparty\RandomX\src\vm_compiled_light.cpp" />
+    <ClCompile Include="3rdparty\RandomX\src\vm_interpreted.cpp" />
+    <ClCompile Include="3rdparty\RandomX\src\vm_interpreted_light.cpp" />
+    <ClCompile Include="fuzzer.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="3rdparty\RandomX\src\asm\randomx_reciprocal.inc" />
+  </ItemGroup>
+  <ItemGroup>
+    <MASM Include="3rdparty\RandomX\src\jit_compiler_x86_static.asm" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+    <Import Project="$(VCTargetsPath)\BuildCustomizations\masm.targets" />
+  </ImportGroup>
+</Project>

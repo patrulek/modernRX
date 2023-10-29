@@ -1,0 +1,3 @@
+[submodule "fuzzer/3rdparty/RandomX"]
+	path = fuzzer/3rdparty/RandomX
+	url = https://github.com/tevador/RandomX

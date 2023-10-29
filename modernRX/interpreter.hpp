@@ -49,8 +49,8 @@ namespace modernRX {
         // Performs steps 5-12 defined by: https://github.com/tevador/RandomX/blob/master/doc/specs.md#462-loop-execution
         void finalizeRegisters(ProgramContext& ctx);
 
-        const_span<DatasetItem> dataset;
         std::array<std::byte, 64> seed;
+        const_span<DatasetItem> dataset;
         Scratchpad scratchpad;
     };
 }

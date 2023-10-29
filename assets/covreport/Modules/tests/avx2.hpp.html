@@ -1,0 +1,205 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+        <meta charset="utf-8"/>
+	    <title>avx2.hpp</title>
+	    <link href="../../third-party/google-code-prettify/prettify-CppCoverage.css" type="text/css" rel="stylesheet" />
+	    <script type="text/javascript" src="../../third-party/google-code-prettify/prettify.js"></script>
+	</head>
+    <body onload="prettyPrint()">
+        <h4></h4>
+        <pre class="prettyprint lang-cpp linenums">
+#pragma once
+
+/*
+* Wrapper over some AVX2 intrinsics for speeding up some RandomX algorithm parts.
+* Used, but not defined by RandomX algorithm.
+* Code may be a little bit messy and not fully documented as this will be further extended in unknown direction.
+*/
+
+#include &lt;array&gt;
+#include &lt;intrin.h&gt;
+
+#include "assertume.hpp"
+#include "cast.hpp"
+
+namespace modernRX::intrinsics::avx2 {
+    template&lt;typename T&gt;
+    struct ymm_wrapper {
+        using type = std::conditional_t&lt;std::is_integral_v&lt;T&gt;, __m256i,
+            std::conditional_t&lt;std::is_same_v&lt;T, double&gt;, __m256d,
+            std::conditional_t&lt;std::is_same_v&lt;T, float&gt;, __m256, void&gt;&gt;&gt;;
+
+        static_assert(!std::is_same_v&lt;type, void&gt;, "type can be one of integral types, double or float");
+    };
+
+    template&lt;typename T&gt;
+    using ymm = ymm_wrapper&lt;T&gt;::type;
+
+    template&lt;typename T, typename... Args&gt;
+<span style = "background-color:#dfd">    [[nodiscard]] constexpr ymm&lt;T&gt; vset(Args... args) noexcept {</span>
+        if constexpr (std::is_same_v&lt;T, uint64_t&gt;) {
+            if constexpr (sizeof...(Args) == 1) {
+                return _mm256_set1_epi64x(args...);
+            } else {
+<span style = "background-color:#dfd">                return _mm256_set_epi64x(args...);</span>
+            }
+        } else if constexpr (std::is_same_v&lt;T, uint32_t&gt;) {
+            return _mm256_set_epi32(args...);
+        } else {
+            static_assert(!sizeof(T), "the only supported types for this operation is uint64");
+        }
+<span style = "background-color:#dfd">    }</span>
+
+    template&lt;typename T&gt;
+<span style = "background-color:#dfd">    [[nodiscard]] constexpr ymm&lt;T&gt; vadd(const ymm&lt;T&gt; x, const ymm&lt;T&gt; y) noexcept {</span>
+        if constexpr (std::is_same_v&lt;T, uint64_t&gt;) {
+<span style = "background-color:#dfd">            return _mm256_add_epi64(x, y);</span>
+        } else {
+            static_assert(!sizeof(T), "the only supported type for this operation is: uint64");
+        }
+<span style = "background-color:#dfd">    }</span>
+
+    template&lt;typename T&gt;
+<span style = "background-color:#dfd">    [[nodiscard]] constexpr ymm&lt;T&gt; vmul(const ymm&lt;T&gt; x, const ymm&lt;T&gt; y) noexcept {</span>
+        if constexpr (std::is_same_v&lt;T, uint64_t&gt;) {
+<span style = "background-color:#dfd">            return _mm256_mul_epu32(x, y);</span>
+        } else {
+            static_assert(!sizeof(T), "the only supported type for this operation is: uint64");
+        }
+<span style = "background-color:#dfd">    }</span>
+
+    template&lt;typename T&gt;
+<span style = "background-color:#dfd">    [[nodiscard]] constexpr ymm&lt;T&gt; vxor(const ymm&lt;T&gt; x, const ymm&lt;T&gt; y) noexcept {</span>
+        if constexpr (std::is_same_v&lt;T, uint64_t&gt;) {
+<span style = "background-color:#dfd">            return _mm256_xor_si256(x, y);</span>
+        } else {
+            static_assert(!sizeof(T), "the only supported type for this operation is: uint64");
+        }
+<span style = "background-color:#dfd">    }</span>
+
+    template&lt;typename T&gt;
+<span style = "background-color:#dfd">    [[nodiscard]] constexpr ymm&lt;T&gt; vor(const ymm&lt;T&gt; x, const ymm&lt;T&gt; y) noexcept {</span>
+        if constexpr (std::is_same_v&lt;T, uint64_t&gt;) {
+<span style = "background-color:#dfd">            return _mm256_or_si256(x, y);</span>
+        } else {
+            static_assert(!sizeof(T), "the only supported type for this operation is: uint64");
+        }
+<span style = "background-color:#dfd">    }</span>
+
+    template&lt;typename T, int imm8&gt;
+<span style = "background-color:#dfd">    [[nodiscard]] constexpr ymm&lt;T&gt; vblendepi32(const ymm&lt;T&gt; x, const ymm&lt;T&gt; y) noexcept {</span>
+        if constexpr (std::is_same_v&lt;T, uint64_t&gt;) {
+<span style = "background-color:#dfd">            return _mm256_blend_epi32(x, y, imm8);</span>
+        } else {
+            static_assert(!sizeof(T), "the only supported type for this operation is: uint64");
+        }
+<span style = "background-color:#dfd">    }</span>
+
+    template&lt;typename T&gt;
+<span style = "background-color:#dfd">    [[nodiscard]] constexpr ymm&lt;T&gt; vunpackloepi64(const ymm&lt;T&gt; x, const ymm&lt;T&gt; y) noexcept {</span>
+        if constexpr (std::is_same_v&lt;T, uint64_t&gt;) {
+<span style = "background-color:#dfd">            return _mm256_unpacklo_epi64(x, y);</span>
+        } else {
+            static_assert(!sizeof(T), "the only supported type for this operation is: uint64");
+        }
+<span style = "background-color:#dfd">    }</span>
+
+    template&lt;typename T, int imm8&gt;
+<span style = "background-color:#dfd">    [[nodiscard]] constexpr ymm&lt;T&gt; valignrepi8(const ymm&lt;T&gt; x, const ymm&lt;T&gt; y) noexcept {</span>
+        if constexpr (std::is_same_v&lt;T, uint64_t&gt;) {
+<span style = "background-color:#dfd">            return _mm256_alignr_epi8(x, y, imm8);</span>
+        } else {
+            static_assert(!sizeof(T), "the only supported type for this operation is: uint64");
+        }
+<span style = "background-color:#dfd">    }</span>
+
+    template&lt;typename T&gt;
+<span style = "background-color:#dfd">    [[nodiscard]] constexpr ymm&lt;T&gt; vunpackhiepi64(const ymm&lt;T&gt; x, const ymm&lt;T&gt; y) noexcept {</span>
+        if constexpr (std::is_same_v&lt;T, uint64_t&gt;) {
+<span style = "background-color:#dfd">            return _mm256_unpackhi_epi64(x, y);</span>
+        } else {
+            static_assert(!sizeof(T), "the only supported type for this operation is: uint64");
+        }
+<span style = "background-color:#dfd">    }</span>
+
+    template&lt;typename T&gt;
+<span style = "background-color:#dfd">    [[nodiscard]] constexpr ymm&lt;T&gt; vbcasti128(const void* addr) noexcept {</span>
+        if constexpr (std::is_integral_v&lt;T&gt;) {
+<span style = "background-color:#dfd">            return _mm256_broadcastsi128_si256(_mm_loadu_si128(reinterpret_cast&lt;const __m128i *&gt;(addr)));</span>
+        } else {
+            static_assert(!sizeof(T), "the only supported type for this operation are integral types");
+        }
+<span style = "background-color:#dfd">    }</span>
+
+    template&lt;typename T, int imm8&gt;
+<span style = "background-color:#dfd">    [[nodiscard]] constexpr ymm&lt;T&gt; vshuffleepi32(const ymm&lt;T&gt; x) noexcept {</span>
+        if constexpr (std::is_integral_v&lt;T&gt;) {
+<span style = "background-color:#dfd">            return _mm256_shuffle_epi32(x, imm8);</span>
+        } else {
+            static_assert(!sizeof(T), "the only supported type for this operation are integral types");
+        }
+<span style = "background-color:#dfd">    }</span>
+
+    template&lt;typename T, typename... Args&gt;
+    requires (std::is_convertible_v&lt;Args, char&gt; &amp;&amp; ...)
+<span style = "background-color:#dfd">    [[nodiscard]] constexpr ymm&lt;T&gt; vsetrepi8(Args... args) noexcept {</span>
+        static_assert(sizeof...(Args) == 32, "Invalid number of arguments");
+
+        if constexpr (std::is_integral_v&lt;T&gt;) {
+<span style = "background-color:#dfd">            return _mm256_setr_epi8(static_cast&lt;char&gt;(args)...);</span>
+        } else {
+            static_assert(!sizeof(T), "the only supported type for this operation are integral types");
+        }
+<span style = "background-color:#dfd">    }</span>
+
+    template&lt;typename T&gt;
+<span style = "background-color:#dfd">    [[nodiscard]] constexpr ymm&lt;T&gt; vshuffleepi8(const ymm&lt;T&gt; x, const ymm&lt;T&gt; y) noexcept {</span>
+        if constexpr (std::is_integral_v&lt;T&gt;) {
+<span style = "background-color:#dfd">            return _mm256_shuffle_epi8(x, y);</span>
+        } else {
+            static_assert(!sizeof(T), "the only supported type for this operation are integral types");
+        }
+<span style = "background-color:#dfd">    }</span>
+
+    // Right rotate packed 64-bit integers.
+    // shift cannot be greater than 63.
+    template&lt;typename T, uint32_t Shift&gt;
+<span style = "background-color:#dfd">    [[nodiscard]] constexpr ymm&lt;T&gt; vrorpi64(const ymm&lt;T&gt; x) noexcept {</span>
+        static_assert(Shift &gt; 0 &amp;&amp; Shift &lt; 64, "Shift must be in range 1-63");
+
+        if constexpr (std::is_same_v&lt;T, uint64_t&gt;) {
+            // value &gt;&gt; shift | value &lt;&lt; (64 - shift);
+<span style = "background-color:#dfd">            return vor&lt;T&gt;(_mm256_srli_epi64(x, Shift), _mm256_slli_epi64(x, 64 - Shift));</span>
+        } else {
+            static_assert(!sizeof(T), "the only supported type for this operation is: uint64");
+        }
+<span style = "background-color:#dfd">    }</span>
+
+
+    template&lt;typename T, int imm8&gt;
+<span style = "background-color:#dfd">    [[nodiscard]] constexpr ymm&lt;T&gt; vpermuteepi64(const ymm&lt;T&gt; x) noexcept {</span>
+        static_assert(imm8 &gt;= 0 &amp;&amp; imm8 &lt;= 255, "imm8 must be in range 0-255");
+
+        if constexpr (std::is_same_v&lt;T, uint64_t&gt;) {
+<span style = "background-color:#dfd">            return _mm256_permute4x64_epi64(x, imm8);</span>
+        } else {
+            static_assert(!sizeof(T), "the only supported type for this operation is: uint64");
+        }
+<span style = "background-color:#dfd">    }</span>
+}</pre>
+        <hr />
+        <table width="100%">
+            <thead>
+                <tr>
+                    <th align="center">
+                        <small>Generated by</small>
+                        <a href="https://github.com/OpenCppCoverage/OpenCppCoverage/releases">
+                            <strong>OpenCppCoverage (Version: 0.9.9.0)</strong>
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+        </table>
+    </body>
+</html>

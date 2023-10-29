@@ -11,9 +11,9 @@
 
 #include <cstdint>
 #include <format>
-#include <stdexcept>
 
 #include "aliases.hpp"
+#include "exception.hpp"
 
 namespace modernRX {
     template<typename T>
@@ -21,6 +21,11 @@ namespace modernRX {
 
     template<typename T>
     inline constexpr bool is_spanable_v = std::is_constructible_v<const_span<typename T::value_type>, T>;
+
+    template<typename T>
+    [[nodiscard]] constexpr const_span<typename T::value_type> as_span(T t) noexcept {
+        return const_span<typename T::value_type>(t);
+    }
 
     // Allocates executable memory and returns a function pointer to it.
     // Type of the function pointer is specified by the template parameter.
@@ -31,13 +36,13 @@ namespace modernRX {
     // Somewhat hacky, would be nice to find a better solution.
     template<typename Fn, typename Code, typename Data>
     requires is_spanable_v<Code> && is_vector_v<Data>
-    jit_function_ptr<Fn> makeExecutable(Code code, Data&& data) {
-        const auto code_size{ const_span<typename Code::value_type>(code).size_bytes() };
+    [[nodiscard]] constexpr jit_function_ptr<Fn> makeExecutable(Code code, Data&& data) {
+        const auto code_size{ as_span(code).size_bytes() };
 
         // Alloc buffer for writing code.
         auto buffer{ VirtualAlloc(nullptr, code_size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE) };
         if (buffer == nullptr) {
-            throw std::runtime_error(std::format("Failed to allocate memory with error: {:d}", GetLastError()));
+            throw Exception(std::format("Failed to allocate memory with error: {:d}", GetLastError()));
         }
 
         std::memcpy(buffer, code.data(), code_size);
@@ -45,12 +50,13 @@ namespace modernRX {
         // Protect from writing, but make code executable.
         DWORD dummy{};
         if (!VirtualProtect(buffer, code_size, PAGE_EXECUTE_READ, &dummy)) {
-            VirtualFree(buffer, 0, MEM_RELEASE);
-            throw std::runtime_error(std::format("Failed to protect memory with error: {:d}", GetLastError()));
+            const auto err{ GetLastError() };
+            VirtualFree(buffer, 0, MEM_RELEASE); // Ignore error.
+            throw Exception(std::format("Failed to protect memory with error: {:d}", err));
         }
 
         return jit_function_ptr<Fn>(new Fn(reinterpret_cast<Fn>(buffer)), [moved_data = std::move(data)](Fn* ptr) noexcept {
-            VirtualFree(*ptr, 0, MEM_RELEASE); // TODO: What to do with error?
+            VirtualFree(*ptr, 0, MEM_RELEASE); // Ignore error.
             delete ptr;
             ptr = nullptr;
             // moved_data will be destroyed and release memory here automatically.

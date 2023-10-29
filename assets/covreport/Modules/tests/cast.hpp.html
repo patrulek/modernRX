@@ -1,0 +1,112 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+        <meta charset="utf-8"/>
+	    <title>cast.hpp</title>
+	    <link href="../../third-party/google-code-prettify/prettify-CppCoverage.css" type="text/css" rel="stylesheet" />
+	    <script type="text/javascript" src="../../third-party/google-code-prettify/prettify.js"></script>
+	</head>
+    <body onload="prettyPrint()">
+        <h4></h4>
+        <pre class="prettyprint lang-cpp linenums">
+#pragma once
+
+/*
+* Some utility functions used for casting between types.
+* Not a part of RandomX algorithm.
+*/
+
+#include &lt;bit&gt;
+#include &lt;concepts&gt;
+#include &lt;numeric&gt;
+#include &lt;span&gt;
+#include &lt;utility&gt;
+#include &lt;vector&gt;
+
+#include "aliases.hpp"
+
+// Casts one const_span to another with different type and proportionally different size.
+template&lt;typename T, size_t Size = std::numeric_limits&lt;size_t&gt;::max(), typename Val, size_t Input_Size = std::numeric_limits&lt;size_t&gt;::max()&gt;
+[[nodiscard]] constexpr const_span&lt;T, Size&gt; span_cast(const_span&lt;Val, Input_Size&gt; v) noexcept {
+    static_assert(Size * sizeof(T) == Input_Size * sizeof(Val));
+    return const_span&lt;T, Size&gt;(reinterpret_cast&lt;const T*&gt;(v.data()), Size);
+}
+
+// Casts a byte pointer to a span of given type and size.
+template&lt;typename T, size_t Size = std::numeric_limits&lt;size_t&gt;::max()&gt;
+<span style = "background-color:#dfd">[[nodiscard]] constexpr std::span&lt;T, Size&gt; span_cast(std::byte* ptr) noexcept {
+    return std::span&lt;T, Size&gt;(reinterpret_cast&lt;T*&gt;(ptr), Size);
+}</span>
+
+// Casts a const byte pointer to a const_span of given type and size.
+template&lt;typename T, size_t Size = std::numeric_limits&lt;size_t&gt;::max()&gt;
+<span style = "background-color:#dfd">[[nodiscard]] constexpr const_span&lt;T, Size&gt; span_cast(const std::byte* ptr) noexcept {
+    return const_span&lt;T, Size&gt;(reinterpret_cast&lt;const T*&gt;(ptr), Size);
+}</span>
+
+// Casts a const value of any type to a span of given type and size.
+template&lt;typename T, size_t Size = std::numeric_limits&lt;size_t&gt;::max(), typename Val&gt;
+<span style = "background-color:#dfd">[[nodiscard]] constexpr std::span&lt;T, Size&gt; span_cast(const Val&amp; v) noexcept {</span>
+    static_assert(Size == std::numeric_limits&lt;size_t&gt;::max() || Size * sizeof(T) &lt;= sizeof(Val));
+<span style = "background-color:#dfd">    constexpr size_t n{ std::min(Size, sizeof(Val) / sizeof(T)) };</span>
+
+<span style = "background-color:#dfd">    return const_span&lt;T, Size&gt;(reinterpret_cast&lt;const T*&gt;(&amp;v), n);
+}</span>
+
+// Casts a const value of any type to a span of given type and size.
+template&lt;typename T, size_t Size = std::numeric_limits&lt;size_t&gt;::max(), typename Val&gt;
+<span style = "background-color:#dfd">[[nodiscard]] constexpr std::span&lt;T, Size&gt; span_cast(Val&amp; v) noexcept {</span>
+    static_assert(Size == std::numeric_limits&lt;size_t&gt;::max() || Size * sizeof(T) &lt;= sizeof(Val));
+<span style = "background-color:#dfd">    constexpr size_t n{ std::min(Size, sizeof(Val) / sizeof(T)) };</span>
+
+<span style = "background-color:#dfd">    return std::span&lt;T, Size&gt;(reinterpret_cast&lt;T*&gt;(&amp;v), n);
+}</span>
+
+// Creates std::array of bytes from given arguments.
+// Arguments values must be in range of a single byte.
+template&lt;typename ...Args&gt;
+[[nodiscard]] consteval std::array&lt;std::byte, sizeof...(Args)&gt; byte_array(const Args&amp;&amp;... args) noexcept {
+    // Workaround over "fold expression did not evaluate to a constant" error
+    if (((args &gt; std::numeric_limits&lt;uint8_t&gt;::max()) || ... )) {
+        throw "byte_array requires all arguments to be in single byte value range";
+    }
+
+    return std::array&lt;std::byte, sizeof...(Args)&gt;{ static_cast&lt;const std::byte&gt;(args)... };
+}
+
+// Creates std::vector of bytes from given arguments.
+// Arguments values must be in range of a single byte.
+// This will check all arguments at runtime, not compile-time.
+template&lt;typename ...Args&gt;
+<span style = "background-color:#dfd">[[nodiscard]] constexpr std::vector&lt;std::byte&gt; byte_vector(const Args&amp;&amp;... args) {</span>
+    // Workaround over "fold expression did not evaluate to a constant" error
+<span style = "background-color:#dfd">    if (((args &gt; std::numeric_limits&lt;uint8_t&gt;::max()) || ...)) {</span>
+<span style = "background-color:#fdd">        throw "byte_vector requires all arguments to be in single byte value range";</span>
+    }
+
+<span style = "background-color:#dfd">    std::array&lt;std::byte, sizeof...(Args)&gt; arr{ static_cast&lt;const std::byte&gt;(args)... };
+    return std::vector&lt;std::byte&gt;{ arr.begin(), arr.end() };
+}</span>
+
+// Casts underlying bytes of a given value to a different type.
+// Basically just reinterpret_cast, but with static_assert for size.
+template&lt;typename T, typename Val&gt;
+<span style = "background-color:#dfd">[[nodiscard]] const T bytes_cast(const Val&amp; ref) noexcept {</span>
+    static_assert(sizeof(Val) &gt;= sizeof(T));
+<span style = "background-color:#dfd">    return *reinterpret_cast&lt;const T*&gt;(&amp;ref);
+}</span></pre>
+        <hr />
+        <table width="100%">
+            <thead>
+                <tr>
+                    <th align="center">
+                        <small>Generated by</small>
+                        <a href="https://github.com/OpenCppCoverage/OpenCppCoverage/releases">
+                            <strong>OpenCppCoverage (Version: 0.9.9.0)</strong>
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+        </table>
+    </body>
+</html>

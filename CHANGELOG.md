@@ -1,4 +1,36 @@
-## Changelog
+## modernRX - Changelog
+
+### v0.4.0 - 29.10.2023:
+
+Maintenance release.
+
+Improvements:
+* update benchmarks for RandomX 1.2.1 version
+* unify [MB/s] benchmarks to make it clear 1MB=1'048'576B
+* add benchmarks for additional setups
+* add project that utilizes libfuzzer
+* add project that utilizes profile-guided optimization
+* use AddressSanitizer in tests
+* add more test cases
+* add code coverage report
+* refactor and cleanup code
+* add CPU capabilities check
+
+Bug fixes:
+* fix bugs reported by AddressSanitizer
+* fix bugs in superscalar generator
+
+### 0.1.3 - 29.10.2023:
+
+Changes in current version:
+
+* fix bug in reciprocal calculation for random program
+* fix hasher bug in key append
+* fix bugs in superscalar generator
+* unify [MB/s] benchmarks to make it clear 1MB=1'048'576B
+* update benchmarks for RandomX 1.2.1 version
+* add new test case
+* cleanup code
 
 ### v0.3.12 - 23.10.2023:
 

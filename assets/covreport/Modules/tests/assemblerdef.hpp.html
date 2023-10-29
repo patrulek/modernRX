@@ -1,0 +1,260 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+        <meta charset="utf-8"/>
+	    <title>assemblerdef.hpp</title>
+	    <link href="../../third-party/google-code-prettify/prettify-CppCoverage.css" type="text/css" rel="stylesheet" />
+	    <script type="text/javascript" src="../../third-party/google-code-prettify/prettify.js"></script>
+	</head>
+    <body onload="prettyPrint()">
+        <h4></h4>
+        <pre class="prettyprint lang-cpp linenums">
+ï»¿#pragma once
+
+/*
+* Defines types, constants and helper functions used by assembler.
+* Code may be a little bit messy and not fully documented as this will be further extended in unknown direction.
+*/
+
+#include &lt;bit&gt;
+
+namespace modernRX::assembler {
+    using reg_idx_t = uint8_t;
+
+    enum class RegisterType : uint8_t {
+        GPR = 0, XMM = 1, YMM = 2, ZMM = 4,
+        DUMMY = 255
+    };
+
+    enum class PP : uint8_t {
+        PP0x00 = 0, PP0x66 = 1, PP0xF3 = 2, PP0xF2 = 3
+    };
+
+    enum class MOD : uint8_t {
+        MOD00 = 0, MOD01 = 1, MOD10 = 2, MOD11 = 3
+    };
+
+    enum class MM : uint8_t {
+        MM0x0F = 1, MM0x0F38 = 2, MM0x0F3A = 3
+    };
+
+    enum class SCALE : uint8_t {
+        SS1 = 0, SS2 = 1, SS4 = 2, SS8 = 3
+    };
+
+    struct Opcode {
+        uint8_t code;
+        int8_t mod{ -1 }; // -1 - no value; cannot be std::optional because of language limitations.
+    };
+
+    struct Memory {
+        reg_idx_t reg;
+        int32_t offset;
+
+<span style = "background-color:#dfd">        [[nodiscard]] constexpr bool isLow() const noexcept {
+            return reg &lt; 8;
+        }</span>
+
+<span style = "background-color:#dfd">        [[nodiscard]] constexpr bool isHigh() const noexcept {
+            return reg &gt;= 8;
+        }</span>
+
+        [[nodiscard]] constexpr reg_idx_t lowIdx() const noexcept {
+            return reg % 8;
+        }
+
+        [[nodiscard]] constexpr bool operator==(const Memory&amp; rhs) const noexcept {
+            return reg == rhs.reg &amp;&amp; offset == rhs.offset;
+        }
+    };
+
+    struct Register {
+        RegisterType type;
+        reg_idx_t idx;
+
+<span style = "background-color:#dfd">        [[nodiscard]] static constexpr Register YMM(const reg_idx_t idx) noexcept {
+            return Register{ RegisterType::YMM, idx };
+        }</span>
+
+<span style = "background-color:#dfd">        [[nodiscard]] static constexpr Register XMM(const reg_idx_t idx) noexcept {
+            return Register{ RegisterType::XMM, idx };
+        }</span>
+
+<span style = "background-color:#dfd">        [[nodiscard]] constexpr bool isLow() const noexcept {
+            return idx &lt; 8;
+        }</span>
+
+<span style = "background-color:#dfd">        [[nodiscard]] constexpr bool isHigh() const noexcept {
+            return idx &gt;= 8;
+        }</span>
+
+<span style = "background-color:#dfd">        [[nodiscard]] constexpr reg_idx_t lowIdx() const noexcept {
+            return idx % 8;
+        }</span>
+
+<span style = "background-color:#dfd">        [[nodiscard]] constexpr int32_t size() const noexcept {
+            if (type == RegisterType::GPR) {</span>
+<span style = "background-color:#fdd">                return 8;</span>
+<span style = "background-color:#dfd">            } else if (type == RegisterType::XMM) {
+                return 16;</span>
+<span style = "background-color:#fdd">            } else if (type == RegisterType::YMM) {
+                return 32;
+            } else if (type == RegisterType::ZMM) {
+                return 64;</span>
+            }
+
+<span style = "background-color:#fdd">            std::unreachable();</span>
+<span style = "background-color:#dfd">        }</span>
+
+        [[nodiscard]] constexpr bool operator==(const Register&amp; rhs) const noexcept {
+            return type == rhs.type &amp;&amp; idx == rhs.idx;
+        }
+
+<span style = "background-color:#dfd">        [[nodiscard]] constexpr const Memory operator[](const int32_t offset) const noexcept {
+            return Memory{ idx, offset };
+        }</span>
+    };
+
+    namespace registers {
+        inline constexpr Register DUMMY{ RegisterType::DUMMY, 0xff };
+
+        inline constexpr Register RAX{ RegisterType::GPR, 0 };
+        inline constexpr Register RCX{ RegisterType::GPR, 1 };
+        inline constexpr Register RDX{ RegisterType::GPR, 2 };
+        inline constexpr Register RBX{ RegisterType::GPR, 3 };
+        inline constexpr Register RSP{ RegisterType::GPR, 4 };
+        inline constexpr Register RBP{ RegisterType::GPR, 5 };
+        inline constexpr Register RSI{ RegisterType::GPR, 6 };
+        inline constexpr Register RDI{ RegisterType::GPR, 7 };
+        inline constexpr Register R08{ RegisterType::GPR, 8 };
+        inline constexpr Register R09{ RegisterType::GPR, 9 };
+        inline constexpr Register R10{ RegisterType::GPR, 10 };
+        inline constexpr Register R11{ RegisterType::GPR, 11 };
+        inline constexpr Register R12{ RegisterType::GPR, 12 };
+        inline constexpr Register R13{ RegisterType::GPR, 13 };
+        inline constexpr Register R14{ RegisterType::GPR, 14 };
+        inline constexpr Register R15{ RegisterType::GPR, 15 };
+
+        inline constexpr Register XMM0{ RegisterType::XMM, 0 };
+        inline constexpr Register XMM1{ RegisterType::XMM, 1 };
+        inline constexpr Register XMM2{ RegisterType::XMM, 2 };
+        inline constexpr Register XMM3{ RegisterType::XMM, 3 };
+        inline constexpr Register XMM4{ RegisterType::XMM, 4 };
+        inline constexpr Register XMM5{ RegisterType::XMM, 5 };
+        inline constexpr Register XMM6{ RegisterType::XMM, 6 };
+        inline constexpr Register XMM7{ RegisterType::XMM, 7 };
+        inline constexpr Register XMM8{ RegisterType::XMM, 8 };
+        inline constexpr Register XMM9{ RegisterType::XMM, 9 };
+        inline constexpr Register XMM10{ RegisterType::XMM, 10 };
+        inline constexpr Register XMM11{ RegisterType::XMM, 11 };
+        inline constexpr Register XMM12{ RegisterType::XMM, 12 };
+        inline constexpr Register XMM13{ RegisterType::XMM, 13 };
+        inline constexpr Register XMM14{ RegisterType::XMM, 14 };
+        inline constexpr Register XMM15{ RegisterType::XMM, 15 };
+
+        inline constexpr Register YMM0{ RegisterType::YMM, 0 };
+        inline constexpr Register YMM1{ RegisterType::YMM, 1 };
+        inline constexpr Register YMM2{ RegisterType::YMM, 2 };
+        inline constexpr Register YMM3{ RegisterType::YMM, 3 };
+        inline constexpr Register YMM4{ RegisterType::YMM, 4 };
+        inline constexpr Register YMM5{ RegisterType::YMM, 5 };
+        inline constexpr Register YMM6{ RegisterType::YMM, 6 };
+        inline constexpr Register YMM7{ RegisterType::YMM, 7 };
+        inline constexpr Register YMM8{ RegisterType::YMM, 8 };
+        inline constexpr Register YMM9{ RegisterType::YMM, 9 };
+        inline constexpr Register YMM10{ RegisterType::YMM, 10 };
+        inline constexpr Register YMM11{ RegisterType::YMM, 11 };
+        inline constexpr Register YMM12{ RegisterType::YMM, 12 };
+        inline constexpr Register YMM13{ RegisterType::YMM, 13 };
+        inline constexpr Register YMM14{ RegisterType::YMM, 14 };
+        inline constexpr Register YMM15{ RegisterType::YMM, 15 };
+    }
+
+
+    // generates 3rd byte of VEX prefix.
+    // Len = 1 - 256-bit instruction.
+    // Len = 0 - 128-bit instruction.
+    // In case when using 2-byte VEX prefix, this function may be used to generate 2nd byte.
+    // In such case, W is always ignored and the w param is in fact an R.
+    template&lt;typename Ret = std::byte&gt;
+<span style = "background-color:#dfd">    [[nodiscard]] constexpr Ret vex3(const reg_idx_t src1, const PP pp, const int w = 0, const uint8_t len = 1) noexcept {</span>
+        // bit        7    6    5    4    3    2    1    0
+        //            W/R    vÌ3 vÌ2 vÌ1 vÌ0 L    p1    p0
+<span style = "background-color:#dfd">        uint8_t src_val = ~src1; // 1's complement; 15 -&gt; ymm0, 14 -&gt; ymm1 ... 0 -&gt; ymm15
+        src_val &amp;= 0x0f; // zero out upper bits
+        return static_cast&lt;Ret&gt;((w &lt;&lt; 7) | (src_val &lt;&lt; 3) | (len &lt;&lt; 2) | static_cast&lt;uint8_t&gt;(pp));
+    }</span>
+
+    // generates 2rd byte of VEX prefix.
+    template&lt;typename Ret = std::byte&gt;
+<span style = "background-color:#dfd">    [[nodiscard]] constexpr Ret vex2(const MM mm, const int r = 0, const int x = 0, const int b = 0) noexcept {</span>
+        // bit        7    6    5    4    3    2    1    0
+        //            RÌ     XÌ     BÌ     m4     m3     m2     m1     m0
+
+<span style = "background-color:#dfd">        return static_cast&lt;Ret&gt;((r &lt;&lt; 7) | (x &lt;&lt; 6) | (b &lt;&lt; 5) | static_cast&lt;uint8_t&gt;(mm));
+    }</span>
+
+    // generates 2rd byte of VEX prefix.
+    template&lt;typename Ret = std::byte&gt;
+<span style = "background-color:#dfd">    [[nodiscard]] constexpr Ret vex2(const reg_idx_t src1, const PP pp, const int r = 0, const uint8_t len = 1) noexcept {</span>
+        // bit        7    6    5    4    3    2    1    0
+        //            R    vÌ3 vÌ2 vÌ1 vÌ0 L    p1    p0
+<span style = "background-color:#dfd">        uint8_t src_val = ~src1; // 1's complement; 15 -&gt; ymm0, 14 -&gt; ymm1 ... 0 -&gt; ymm15
+        src_val &amp;= 0x0f; // zero out upper bits
+        return static_cast&lt;Ret&gt;((r &lt;&lt; 7) | (src_val &lt;&lt; 3) | (len &lt;&lt; 2) | static_cast&lt;uint8_t&gt;(pp));
+    }</span>
+
+    // generates 1rd byte of VEX prefix.
+    template&lt;typename Ret = std::byte&gt;
+<span style = "background-color:#dfd">    [[nodiscard]] constexpr Ret vex1(const bool three_byte = true) noexcept {
+        return static_cast&lt;Ret&gt;(three_byte ? 0xc4 : 0xc5);
+    }</span>
+
+    // by default uses MOD11 (register addressing)
+    template&lt;typename Ret = std::byte&gt;
+<span style = "background-color:#dfd">    [[nodiscard]] constexpr Ret modregrm(const reg_idx_t reg, const reg_idx_t rm, const MOD mod = MOD::MOD11) noexcept {</span>
+        // MOD = 11 (register addressing), REG = dst_reg, R/M = src_reg
+<span style = "background-color:#dfd">        return static_cast&lt;Ret&gt;((static_cast&lt;uint8_t&gt;(mod) &lt;&lt; 6) | (reg &lt;&lt; 3) | rm);
+    }</span>
+
+
+
+    template&lt;typename Ret = std::byte&gt;
+<span style = "background-color:#dfd">    [[nodiscard]] constexpr Ret rex(const int w = 0, const int r = 0, const int x = 0, const int b = 0) noexcept {</span>
+        // bit        7    6    5    4    3    2    1    0
+        //            0   1   0   0   W   R   X   B
+<span style = "background-color:#dfd">        return static_cast&lt;Ret&gt;((0b0100 &lt;&lt; 4) | (w &lt;&lt; 3) | (r &lt;&lt; 2) | (x &lt;&lt; 1) | b);
+    }</span>
+
+
+    // Index cannot be 4.
+    template &lt;typename Ret = std::byte&gt;
+<span style = "background-color:#dfd">    [[nodiscard]] constexpr Ret sib(const SCALE scale, const Register index, const Register base) noexcept {</span>
+
+        // bit        7    6    5    4    3    2    1    0
+        //            S   S      I   I   I   B   B   B  ; S - scale; I - index; B - base
+<span style = "background-color:#dfd">        return static_cast&lt;Ret&gt;((static_cast&lt;uint8_t&gt;(scale) &lt;&lt; 6) | (index.lowIdx() &lt;&lt; 3) | base.lowIdx());
+    }</span>
+
+
+    template&lt;int Byte, typename Val&gt;
+<span style = "background-color:#dfd">    [[nodiscard]] constexpr std::byte byte(const Val&amp; v) noexcept {</span>
+        static_assert(Byte &lt; sizeof(Val));
+<span style = "background-color:#dfd">        return *(reinterpret_cast&lt;const std::byte*&gt;(&amp;v) + Byte);
+    }</span>
+}</pre>
+        <hr />
+        <table width="100%">
+            <thead>
+                <tr>
+                    <th align="center">
+                        <small>Generated by</small>
+                        <a href="https://github.com/OpenCppCoverage/OpenCppCoverage/releases">
+                            <strong>OpenCppCoverage (Version: 0.9.9.0)</strong>
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+        </table>
+    </body>
+</html>

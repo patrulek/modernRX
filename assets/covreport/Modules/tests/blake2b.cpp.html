@@ -1,0 +1,159 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+        <meta charset="utf-8"/>
+	    <title>blake2b.cpp</title>
+	    <link href="../../third-party/google-code-prettify/prettify-CppCoverage.css" type="text/css" rel="stylesheet" />
+	    <script type="text/javascript" src="../../third-party/google-code-prettify/prettify.js"></script>
+	</head>
+    <body onload="prettyPrint()">
+        <h4></h4>
+        <pre class="prettyprint lang-cpp linenums">
+#include &lt;bit&gt;
+#include &lt;format&gt;
+
+#include "assertume.hpp"
+#include "blake2b.hpp"
+#include "blake2bavx2.hpp"
+#include "cast.hpp"
+#include "randomxparams.hpp"
+
+namespace modernRX::blake2b {
+    namespace {
+        template&lt;bool Last&gt;
+        void compress(Context&amp; ctx) noexcept;
+    }
+
+<span style = "background-color:#dfd">    void hash(std::span&lt;std::byte&gt; output, const_span&lt;std::byte&gt; input) noexcept {</span>
+        // Some assumptions were made to optimize this function:
+        //   - This function is only called with input that size is between 1 and 256.
+        //   - This function is only called with output that size is equal to 32 or 64.
+        static_assert(Rx_Block_Template_Size &lt;= 256, "Below assumption can be made only if blockchain's block template size is lesser than VM's RegisterFile, which is 256 bytes long");
+<span style = "background-color:#dfd">        ASSERTUME(input.size() &gt; 0 &amp;&amp; input.size() &lt;= 256);
+        ASSERTUME(output.size() == Max_Digest_Size / 2 || output.size() == Max_Digest_Size);</span>
+
+<span style = "background-color:#dfd">        const uint32_t digest_size{ static_cast&lt;uint32_t&gt;(output.size()) };</span>
+
+        // Initialize context.
+<span style = "background-color:#dfd">        Context ctx{ digest_size };</span>
+
+        // Special case when input size is lesser-equal than block size.
+<span style = "background-color:#dfd">        if (input.size() &lt;= Block_Size) {
+            update(ctx, input);
+            final(output, ctx);
+            return;</span>
+        }
+        
+        // With above assumption its known that no more than two blocks will be compressed, so we can unroll loop.
+<span style = "background-color:#dfd">        update(ctx, input.subspan(0, Block_Size));
+        compress&lt;false&gt;(ctx);
+        update(ctx, input.subspan(Block_Size));
+        final(output, ctx);
+    }</span>
+
+    inline namespace internal {
+        Context::Context(const uint32_t digest_size) noexcept
+<span style = "background-color:#dfd">            : digest_size{ digest_size } {</span>
+            using namespace intrinsics;
+
+<span style = "background-color:#dfd">            const avx2::ymm&lt;uint64_t&gt; digest_size_ymm{ avx2::vset&lt;uint64_t&gt;(0, 0, 0, 0x01010000 ^ digest_size) };
+            state[0] = avx2::vxor&lt;uint64_t&gt;(state[0], digest_size_ymm);
+        }</span>
+
+        template void update&lt;true&gt;(Context&amp;, const_span&lt;std::byte&gt;) noexcept;
+        template void update&lt;false&gt;(Context&amp;, const_span&lt;std::byte&gt;) noexcept;
+
+        template&lt;bool Empty&gt;
+<span style = "background-color:#dfd">        void update(Context&amp; ctx, const_span&lt;std::byte&gt; input) noexcept {</span>
+            static_assert(Rx_Block_Template_Size + sizeof(Rx_Argon2d_Salt) + 40 &lt;= Block_Size, "Below assumption can be made only if blockchain's block template size + argon2d salt + 40 (size of argon2d params) is lesser than blake2b's single block size");
+            // This assumption can be made because it is never called with empty input and always with one that is lesser-equal than block size.
+<span style = "background-color:#dfd">            ASSERTUME(input.size() &gt; 0 &amp;&amp; input.size() &lt;= Block_Size);</span>
+
+            if constexpr (!Empty) {
+<span style = "background-color:#dfd">                std::memcpy(ctx.block.data() + (ctx.counter % Block_Size), input.data(), input.size());</span>
+            }
+
+<span style = "background-color:#dfd">            ctx.counter += input.size();
+        }</span>
+
+<span style = "background-color:#dfd">        void final(std::span&lt;std::byte&gt; hash, Context&amp; ctx) noexcept {</span>
+            // This assumption can be made because this function is only called by argon2d with 64 or 1024 bytes long hash buffer.
+<span style = "background-color:#dfd">            ASSERTUME(hash.size() == 32 || hash.size() == 64);</span>
+
+<span style = "background-color:#dfd">            compress&lt;true&gt;(ctx);</span>
+
+            // Copy state into output buffer.
+<span style = "background-color:#dfd">            std::memcpy(hash.data(), ctx.state.data(), hash.size());
+        }</span>
+    }
+
+    namespace {
+        // Compress does all the magic with compressing block buffer. Works differently for last and non-last block buffer.
+        // Optimized with AVX2 intrinsics.
+        template&lt;bool Last&gt;
+<span style = "background-color:#dfd">        void compress(Context&amp; ctx) noexcept {</span>
+            using namespace intrinsics;
+
+            // Prepare block for permutations.
+            alignas(64) const_array&lt;avx2::ymm&lt;uint64_t&gt;, 8&gt; msg{
+<span style = "background-color:#dfd">                avx2::vbcasti128&lt;uint64_t&gt;(ctx.block.data()),
+                avx2::vbcasti128&lt;uint64_t&gt;(ctx.block.data() + 16),
+                avx2::vbcasti128&lt;uint64_t&gt;(ctx.block.data() + 32),
+                avx2::vbcasti128&lt;uint64_t&gt;(ctx.block.data() + 48),
+                avx2::vbcasti128&lt;uint64_t&gt;(ctx.block.data() + 64),
+                avx2::vbcasti128&lt;uint64_t&gt;(ctx.block.data() + 80),
+                avx2::vbcasti128&lt;uint64_t&gt;(ctx.block.data() + 96),
+                avx2::vbcasti128&lt;uint64_t&gt;(ctx.block.data() + 112)</span>
+            };
+
+            // Used in ROUND macro.
+<span style = "background-color:#dfd">            auto m{ msgPermutation&lt;0, 0&gt;(msg) };</span>
+
+            // Initialize working vector.
+<span style = "background-color:#dfd">            auto v1{ ctx.state[0] }; // {h[0], h[1], h[2], h[3]}
+            auto v2{ ctx.state[1] }; // {h[4], h[5], h[6], h[7]}
+            auto v3{ IV1 }; // {IV[0], IV[1], IV[2], IV[3]}
+            auto v4{ IV2 }; // {IV[4] ^ ctx.count, IV[5], IV[6] ^ oneof(0xffffffff, 0), h[7]}
+            v4 = avx2::vxor&lt;uint64_t&gt;(v4, avx2::vset&lt;uint64_t&gt;(0, (Last ? std::numeric_limits&lt;uint64_t&gt;::max() : 0ULL), 0, ctx.counter));</span>
+
+            // Prepare rotation constants. Taken from: https://github.com/jedisct1/libsodium/blob/1.0.16/src/libsodium/crypto_generichash/blake2b/ref/blake2b-compress-avx2.h
+<span style = "background-color:#dfd">            const auto rot24{ avx2::vsetrepi8&lt;uint64_t&gt;(3, 4, 5, 6, 7, 0, 1, 2, 11, 12, 13, 14, 15, 8, 9, 10, 3, 4, 5, 6, 7, 0, 1, 2, 11, 12, 13, 14, 15, 8, 9, 10) };
+            const auto rot16{ avx2::vsetrepi8&lt;uint64_t&gt;(2, 3, 4, 5, 6, 7, 0, 1, 10, 11, 12, 13, 14, 15, 8, 9, 2, 3, 4, 5, 6, 7, 0, 1, 10, 11, 12, 13, 14, 15, 8, 9) };</span>
+
+            // Make cryptographic message mixing (12 rounds)
+<span style = "background-color:#dfd">            ROUND(0, msg, v1, v2, v3, v4, rot24, rot16);
+            ROUND(1, msg, v1, v2, v3, v4, rot24, rot16);
+            ROUND(2, msg, v1, v2, v3, v4, rot24, rot16);
+            ROUND(3, msg, v1, v2, v3, v4, rot24, rot16);
+            ROUND(4, msg, v1, v2, v3, v4, rot24, rot16);
+            ROUND(5, msg, v1, v2, v3, v4, rot24, rot16);
+            ROUND(6, msg, v1, v2, v3, v4, rot24, rot16);
+            ROUND(7, msg, v1, v2, v3, v4, rot24, rot16);
+            ROUND(8, msg, v1, v2, v3, v4, rot24, rot16);
+            ROUND(9, msg, v1, v2, v3, v4, rot24, rot16);</span>
+
+            // Round 10 is the same as round 0, and round 11 is the same as round 1
+<span style = "background-color:#dfd">            ROUND(0, msg, v1, v2, v3, v4, rot24, rot16);
+            ROUND(1, msg, v1, v2, v3, v4, rot24, rot16);</span>
+
+            // Finalize compression
+<span style = "background-color:#dfd">            ctx.state[0] = avx2::vxor&lt;uint64_t&gt;(ctx.state[0], avx2::vxor&lt;uint64_t&gt;(v1, v3));
+            ctx.state[1] = avx2::vxor&lt;uint64_t&gt;(ctx.state[1], avx2::vxor&lt;uint64_t&gt;(v2, v4));
+        }</span>
+    }
+};</pre>
+        <hr />
+        <table width="100%">
+            <thead>
+                <tr>
+                    <th align="center">
+                        <small>Generated by</small>
+                        <a href="https://github.com/OpenCppCoverage/OpenCppCoverage/releases">
+                            <strong>OpenCppCoverage (Version: 0.9.9.0)</strong>
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+        </table>
+    </body>
+</html>
