@@ -2,7 +2,6 @@
 
 #include "argon2d.hpp"
 #include "dataset.hpp"
-#include "logger.hpp"
 #include "superscalar.hpp"
 
 namespace modernRX {
@@ -11,7 +10,7 @@ namespace modernRX {
     }
 
     std::vector<DatasetItem> generateDataset(const_span<argon2d::Block> cache, const_span<SuperscalarProgram, Rx_Cache_Accesses> programs) {
-        static constexpr uint32_t Dataset_Items_Count{ (Rx_Dataset_Base_Size + Rx_Dataset_Extra_Size) / sizeof(DatasetItem) };
+        constexpr uint32_t Dataset_Items_Count{ (Rx_Dataset_Base_Size + Rx_Dataset_Extra_Size) / sizeof(DatasetItem) };
 
         std::vector<DatasetItem> memory;
         memory.reserve(Dataset_Items_Count);

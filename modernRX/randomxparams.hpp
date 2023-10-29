@@ -14,7 +14,7 @@ namespace modernRX {
 	inline constexpr uint32_t Rx_Argon2d_Parallelism{ 1 }; // The number of parallel lanes for cache initialization.
 	inline constexpr uint32_t Rx_Argon2d_Memory_Blocks{ 262144 }; // The number of 1KB blocks in the cache.
 	inline constexpr uint32_t Rx_Argon2d_Iterations{ 3 }; // The number of iterations for cache initialization.
-	inline constexpr uint32_t Rx_Argon2d_Max_Parallelism = 16'777'215; // Maximum number of lanes. 
+	inline constexpr uint32_t Rx_Argon2d_Max_Parallelism{ 16'777'215 }; // Maximum number of lanes. 
 
 	static_assert(Rx_Argon2d_Parallelism - 1 <= Rx_Argon2d_Max_Parallelism - 1, "Number of parallel lanes must be in range 1 - 16'777'215");
 	static_assert(Rx_Argon2d_Memory_Blocks >= 8 * Rx_Argon2d_Parallelism, "Number of memory blocks cannot be lesser than 8 * number of parallel lanes.");

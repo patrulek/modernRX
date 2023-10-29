@@ -14,7 +14,7 @@ namespace modernRX::blake2b {
 	}
 
 	void hash(std::span<std::byte> output, const_span<std::byte> input, const_span<std::byte> key) {
-		static constexpr uint32_t Max_Key_Size{ 64 };  // In bytes.
+		constexpr uint32_t Max_Key_Size{ 64 };  // In bytes.
 
 		if (input.size() == 0 || key.size() > Max_Key_Size) {
 			throw std::format("invalid data (size: {}) or key (size: {})", input.size(), key.size());
@@ -90,7 +90,7 @@ namespace modernRX::blake2b {
 
 	namespace {
 		void compress(Context& ctx, const bool last) noexcept {
-			static constexpr uint32_t Rounds{ 12 };
+			constexpr uint32_t Rounds{ 12 };
 			std::array<uint64_t, 16> v{};
 
 			for (size_t i = 0; i < 8; i++) {

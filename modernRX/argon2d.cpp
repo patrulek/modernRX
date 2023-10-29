@@ -46,15 +46,15 @@ namespace modernRX::argon2d {
 
 	namespace blake2b {
 		void gmixing(std::span<uint64_t, 16> v, const uint32_t a, const uint32_t block, const uint32_t block_idx, const uint32_t d) noexcept {
-			static constexpr uint64_t mask32 = 0xffffffff;
+			constexpr uint64_t Mask32{ 0xffffffff };
 
-			v[a] = v[a] + v[block] + 2 * (v[a] & mask32) * (v[block] & mask32);
+			v[a] = v[a] + v[block] + 2 * (v[a] & Mask32) * (v[block] & Mask32);
 			v[d] = std::rotr(v[d] ^ v[a], ::modernRX::blake2b::Rotation_Constants[0]);
-			v[block_idx] = v[block_idx] + v[d] + 2 * (v[block_idx] & mask32) * (v[d] & mask32);
+			v[block_idx] = v[block_idx] + v[d] + 2 * (v[block_idx] & Mask32) * (v[d] & Mask32);
 			v[block] = std::rotr(v[block] ^ v[block_idx], ::modernRX::blake2b::Rotation_Constants[1]);
-			v[a] = v[a] + v[block] + 2 * (v[a] & mask32) * (v[block] & mask32);
+			v[a] = v[a] + v[block] + 2 * (v[a] & Mask32) * (v[block] & Mask32);
 			v[d] = std::rotr(v[d] ^ v[a], ::modernRX::blake2b::Rotation_Constants[2]);
-			v[block_idx] = v[block_idx] + v[d] + 2 * (v[block_idx] & mask32) * (v[d] & mask32);
+			v[block_idx] = v[block_idx] + v[d] + 2 * (v[block_idx] & Mask32) * (v[d] & Mask32);
 			v[block] = std::rotr(v[block] ^ v[block_idx], ::modernRX::blake2b::Rotation_Constants[3]);
 		}
 
@@ -308,7 +308,7 @@ namespace modernRX::argon2d {
 		// If its first iteration xor_blocks should be false, otherwise should be true and will perform xor operation with overwritten block.
 		// The mixing function refers to https://github.com/P-H-C/phc-winner-argon2/blob/master/argon2-specs.pdf section 3.4.
 		void mixBlocks(Block& cur_block, const Block& prev_block, const Block& ref_block, const bool xor_blocks) {
-			static constexpr uint32_t Uint64_Per_Block{ Block_Size / sizeof(uint64_t) };
+			constexpr uint32_t Uint64_Per_Block{ Block_Size / sizeof(uint64_t) };
 			using Uint64Block = std::array<uint64_t, Uint64_Per_Block>;
 
 			const auto prev_block_64{ std::bit_cast<Uint64Block>(prev_block) };
@@ -337,12 +337,12 @@ namespace modernRX::argon2d {
 			// Apply blake2b "columnwise", ie. elements (0,1,16,17,...,112,113), then (2,3,18,19,...,114,115) ... finally (14,15,30,31,...,126,127).
 			for (uint32_t i = 0; i < 8; ++i) { 
 				// shuffle elements to form column
-				auto column = std::array<uint64_t, 16>{
+				auto column{ std::array<uint64_t, 16>{
 					tmp_block_64[2 * i], tmp_block_64[2 * i + 1], tmp_block_64[2 * i + 16], tmp_block_64[2 * i + 17],
 					tmp_block_64[2 * i + 32], tmp_block_64[2 * i + 33], tmp_block_64[2 * i + 48], tmp_block_64[2 * i + 49],
 					tmp_block_64[2 * i + 64], tmp_block_64[2 * i + 65], tmp_block_64[2 * i + 80], tmp_block_64[2 * i + 81],
 					tmp_block_64[2 * i + 96], tmp_block_64[2 * i + 97], tmp_block_64[2 * i + 112], tmp_block_64[2 * i + 113]
-				};
+				} };
 
 				blake2b::round(column);
 

@@ -31,8 +31,11 @@ void runBenchmarks(std::span<Benchmark> benchmarks) {
 	for (auto& bench : benchmarks) {
 		constexpr std::string_view fmt_header{ "{:40s}\n-----\n" };
         constexpr std::string_view fmt{ "Iterations\tElapsed time\tThroughput\n{:>10d}\t{:>11.3f}s\t{:>6.1f}{:s}\n" };
-		double total_microseconds{ 60'000'000.0 }; // Minimum number of microseconds to run benchmark for. Equal to 60sec.
-		double total_elapsed{ 0.0 };
+		constexpr double us_per_sec{ 1'000'000.0 }; // Number of microseconds in one second.}
+		constexpr double bytes_per_mb{ 1'048'576.0 }; // Number of bytes in one megabyte.
+		double total_microseconds{ 60 * us_per_sec }; // Minimum number of microseconds to run benchmark for. Equal to 60sec.
+		double total_elapsed{ 0.0 }; // Total elapsed time in microseconds.
+
 
 		std::print(fmt_header, bench.name);
 
@@ -70,17 +73,18 @@ void runBenchmarks(std::span<Benchmark> benchmarks) {
 			bench.result.iterations += iterations;
 		}
 
-		const auto sum_units{ static_cast<double>(bench.result.iterations * bench.units) };
+		const auto total_units{ static_cast<double>(bench.result.iterations * bench.units) };
+		const auto elapsed_seconds{ total_elapsed / us_per_sec };
 
 		bench.result.elapsed = total_elapsed;
-		bench.result.throughput = 1'000'000.0 * sum_units / total_elapsed;
+		bench.result.throughput = total_units / elapsed_seconds;
 
 		if (bench.unit == "B/s") {
-			bench.result.throughput /= 1'000'000.0;
+			bench.result.throughput /= bytes_per_mb;
 			bench.unit = "MB/s";
 		}
 
-		std::println(fmt, bench.result.iterations, bench.result.elapsed / 1'000'000.0, bench.result.throughput, bench.unit);
+		std::println(fmt, bench.result.iterations, elapsed_seconds, bench.result.throughput, bench.unit);
 	}
 }
 
@@ -96,20 +100,21 @@ void superscalarGenerateBenchmark();
 void datasetGenerateBenchmark();
 void hasherBenchmark();
 
-constexpr auto digest_size{ 64 };
 std::array<std::byte, 64> data;
-std::array<std::byte, digest_size> hash;
+std::array<std::byte, 72> data_long;
+std::array<std::byte, 64> hash;
 std::vector<std::byte> hash_long(1024, std::byte(0));
 std::vector<argon2d::Block> memory;
 std::vector<std::byte> aes_input;
 std::vector<std::byte> program_input;
-std::array<SuperscalarProgram, 8> programs;
+std::array<SuperscalarProgram, Rx_Cache_Accesses> programs;
 
 blake2b::Random gen{ hash, 0 };
 Superscalar superscalar{ gen };
 Hasher hasher;
 
 std::atomic<uint32_t> nonce{ 0 };
+uint32_t fill{ 0 };
 uint32_t seed{ 0 };
 
 std::array<std::byte, 76> block_template{ byte_array(
@@ -123,7 +128,7 @@ int main() {
 	std::println("Initializing benchmarks...");
 
 	memory.resize(Rx_Argon2d_Memory_Blocks);
-	aes_input.resize(2 * 1024 * 1024);
+	aes_input.resize(2'097'152);
 	program_input.resize(2176);
 
 	for (auto &program : programs) {
@@ -134,9 +139,9 @@ int main() {
 
 	std::vector<Benchmark> benchmarks{
 		{ "Blake2b::hash (64B input/output)", 1, "H/s", blake2bBenchmark },
-		{ "Argon2d::Blake2b::hash (64B input, 1 KB output)", 1, "H/s", blake2bLongBenchmark },
-		{ "Argon2d::fillMemory (256MB output)", 256 * 1024 * 1024, "B/s", argon2dFillMemoryBenchmark },
-		{ "Aes::fill1R (64B input, 2MB output)",  2 * 1024 * 1024, "B/s", aes1rFillBenchmark },
+		{ "Argon2d::Blake2b::hash (72B input, 1 KB output)", 1, "H/s", blake2bLongBenchmark },
+		{ "Argon2d::fillMemory (256MB output)", 268'435'456, "B/s", argon2dFillMemoryBenchmark },
+		{ "Aes::fill1R (64B input, 2MB output)",  2'097'152, "B/s", aes1rFillBenchmark },
 		{ "Aes::fill4R (64B input, 2176B output)", 2176, "B/s", aes4rFillBenchmark },
 		{ "Aes::hash1R (2MB input, 64B output)", 1, "H/s", aes1rHashBenchmark },
 		{ "Superscalar::generate (1 Program output)", 1, "Program/s", superscalarGenerateBenchmark },
@@ -157,11 +162,13 @@ void blake2bBenchmark() {
 }
 
 void blake2bLongBenchmark() {
-	argon2d::blake2b::hash(hash_long, data);
+	argon2d::blake2b::hash(hash_long, data_long);
 }
 
 void argon2dFillMemoryBenchmark() {
-	argon2d::fillMemory(memory, data, Rx_Argon2d_Salt);
+	auto block_template_copy{ block_template };
+	std::memcpy(block_template_copy.data() + 11, &(++fill), sizeof(uint32_t));
+	argon2d::fillMemory(memory, block_template, Rx_Argon2d_Salt);
 }
 
 void aes1rHashBenchmark() {
@@ -181,6 +188,10 @@ void superscalarGenerateBenchmark() {
 }
 
 void datasetGenerateBenchmark() {
+	for (auto& program : programs) {
+		program = superscalar.generate();
+	}
+
 	auto _ { generateDataset(memory, programs) };
 }
 

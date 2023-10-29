@@ -16,7 +16,7 @@
 
 // Casts one const_span to another with different type and proportionally different size.
 template<typename T, size_t Size = std::numeric_limits<size_t>::max(), typename Val, size_t Input_Size = std::numeric_limits<size_t>::max()>
-[[nodiscard]] constexpr const_span<T, Size> span_cast(const_span<Val, Input_Size>&& v) noexcept {
+[[nodiscard]] constexpr const_span<T, Size> span_cast(const_span<Val, Input_Size> v) noexcept {
 	static_assert(Size * sizeof(T) == Input_Size * sizeof(Val));
 	return const_span<T, Size>(reinterpret_cast<const T*>(v.data()), Size);
 }

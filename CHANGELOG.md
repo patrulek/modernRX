@@ -1,5 +1,17 @@
 ## Changelog
 
+### 0.1.3 - 29.10.2023:
+
+Changes in current version:
+
+* fix bug in reciprocal calculation for random program
+* fix hasher bug in key append
+* fix bugs in superscalar generator
+* unify [MB/s] benchmarks to make it clear 1MB=1'048'576B
+* update benchmarks for RandomX 1.2.1 version
+* add new test case
+* cleanup code
+
 ### 0.1.2 - 28.09.2023:
 
 Changes in current version:

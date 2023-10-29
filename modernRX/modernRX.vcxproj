@@ -267,7 +267,6 @@
     <ClInclude Include="hasher.hpp" />
     <ClInclude Include="instructionset.hpp" />
     <ClInclude Include="interpreter.hpp" />
-    <ClInclude Include="logger.hpp" />
     <ClInclude Include="randomxparams.hpp" />
     <ClInclude Include="reciprocal.hpp" />
     <ClInclude Include="intrinsics.hpp" />

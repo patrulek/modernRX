@@ -4,7 +4,7 @@
 
 namespace modernRX::blake2b {
 	Random::Random(const_span<std::byte> seed, const uint32_t nonce) {
-		static constexpr uint32_t Max_Seed_Size{ 60 };
+		constexpr uint32_t Max_Seed_Size{ 60 };
 		const auto size{ std::min<size_t>(Max_Seed_Size, seed.size()) };
 
 		std::memcpy(state.data(), seed.data(), size);

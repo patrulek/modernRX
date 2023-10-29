@@ -46,10 +46,8 @@ namespace modernRX {
 
 		// Returns current macro-op and increments macro-op index.
 		[[nodiscard]] std::pair<const MacroOp&, const uint8_t> nextOp() noexcept {
-			const std::pair<const MacroOp&, const uint8_t> res{ std::make_pair(info->ops[op_index], op_index) };
-			op_index++;
-
-			return res;
+			++op_index;
+			return std::make_pair(std::ref(info->ops[op_index - 1]), op_index - 1);
 		}
 
 		// Invalidates instruction by seting its template to INVALID type.

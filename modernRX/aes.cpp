@@ -286,12 +286,12 @@ namespace modernRX::aes {
 	}
 
 	template<int Byte, typename Val>
-	[[nodiscard]] constexpr uint8_t byte(const Val& v) {
+	[[nodiscard]] constexpr uint8_t byte(const Val& v) noexcept {
 		static_assert(Byte < sizeof(Val));
 		return *(reinterpret_cast<const uint8_t*>(&v) + Byte);
 	}
 
-	void encode(std::span<uint32_t, 4> state, const_span<uint32_t, 4> key) {
+	void encode(std::span<uint32_t, 4> state, const_span<uint32_t, 4> key) noexcept {
 		const auto s0{ state[3] };
 		const auto s1{ state[2] };
 		const auto s2{ state[1] };
@@ -310,7 +310,7 @@ namespace modernRX::aes {
 		state[0] = tmp_state[3] ^ key[0];
 	}
 
-	void decode(std::span<uint32_t, 4> state, const_span<uint32_t, 4> key) {
+	void decode(std::span<uint32_t, 4> state, const_span<uint32_t, 4> key) noexcept {
 		const auto s0{ state[3] };
 		const auto s1{ state[2] };
 		const auto s2{ state[1] };

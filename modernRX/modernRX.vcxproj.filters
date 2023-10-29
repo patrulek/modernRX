@@ -81,9 +81,6 @@
     <ClInclude Include="sse.hpp">
       <Filter>utils</Filter>
     </ClInclude>
-    <ClInclude Include="logger.hpp">
-      <Filter>utils</Filter>
-    </ClInclude>
     <ClInclude Include="hasher.hpp">
       <Filter>modernRX</Filter>
     </ClInclude>

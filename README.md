@@ -2,7 +2,7 @@
 
 ## Overview
 
-This project aims to provide minimal implementation of [RandomX algorithm](https://github.com/tevador/RandomX) using modern C++ language.
+This project aims to provide minimal implementation of [RandomX v1 algorithm](https://github.com/tevador/RandomX) using modern C++ language.
 
 Current state of this project does not provide sensible performance to use in mining, but you can still use this repository for educational purposes (or whatever that will make sense for you).
 
@@ -24,29 +24,29 @@ Current state of this project does not provide sensible performance to use in mi
 * [ ] Optimize hash calculation with multithreading.
 * [ ] Experiment with further JIT optimizations for faster hash calculation.
 * [ ] Experiment with system and architecture specific optimizations (Huge Pages, MSR etc.) for faster hash calculation.
+* [ ] Port library to Unix-based systems.
 * [ ] Implement RandomX light mode.
 * [ ] Implement RandomX GPU mode.
-* [ ] Port library to Unix-based systems.
 
 ## Build and run
 
 To build this repository you should download the most recent Visual Studio version (at least 17.7) with C++ tools.
 
-To run tests open solution, set `tests` project as the startup one and click "run". Currently tests will run for about an hour, because of unoptimized dataset generation.
+To run tests open solution, set `tests` project as the startup one and click "run". Please be aware that tests will run for about an hour, because of unoptimized dataset generation in this branch.
 Sample output:
 
 ```console
 [ 0] Blake2b::hash                            ... Passed (<1ms)
 [ 1] Argon2d::Blake2b::hash                   ... Passed (<1ms)
-[ 2] Argon2d::fillMemory                      ... Passed (1.389s)
+[ 2] Argon2d::fillMemory                      ... Passed (1.363s)
 [ 3] AesGenerator1R::fill                     ... Passed (<1ms)
 [ 4] AesGenerator4R::fill                     ... Passed (<1ms)
 [ 5] AesHash1R                                ... Passed (<1ms)
 [ 6] Blake2brandom::get                       ... Passed (<1ms)
 [ 7] Reciprocal                               ... Passed (<1ms)
 [ 8] Superscalar::generate                    ... Passed (0.001s)
-[ 9] Dataset::generate                        ... Passed (1314.973s)
-[10] Hasher::run                              ... Passed (1313.391s)
+[ 9] Dataset::generate                        ... Passed (1070.067s)
+[10] Hasher::run                              ... Passed (1069.176s)
 ```
 
 ### Portability
@@ -87,14 +87,15 @@ void calcHash() {
 Benchmarks were performed on Ryzen 5800H CPU with 32GB of RAM (Dual-channel, 3200 MT/s) and Windows 11.
 
 CPU frequency turbo boost was disabled (3.2GHz base frequency).
+CPU temperature limit was set to 95°C.
 
 Benchmarks compare modernRX implementation with fully optimized RandomX implementation and with RandomX implementation that match optimizations available in current modernRX version.
 
-|                                | Blake2b [H/s] | Blake2bLong [H/s] | Argon2d [MB/s] | Aes1R [MB/s] | Aes4R [MB/s] | AesHash1R [H/s] | Superscalar [Prog/s] | Dataset [MB/s] | Hash [H/s] | Efficiency [H/Watt/s] |
-| ------------------------------ | :-----------: | :---------------: | :------------: | :----------: | :----------: | :-------------: | :------------------: | :------------: | :--------: | :-------------------: |
-| RandomX (901f8ef7)             |        3.178M |           102.18K |          912.9 |      48987.6 |      12004.5 |           23510 |                 3997 |         ~812.2 |       4510 |                ~73.93 |
-| RandomX (901f8ef7)<sup>1</sup> |        3.178M |           102.18K |          400.6 |       2412.8 |        548.5 |            1153 |                 3997 |           ~2.1 |       19.9 |                 ~0.71 |
-| modernRX 0.1.2 (reference)     |        2.125M |            69.53K |          412.4 |       2906.7 |        758.9 |            1444 |                 8242 |            1.7 |       26.7 |                 ~0.92 |
+|                                      | Blake2b [H/s] | Blake2bLong [H/s] | Argon2d [MB/s] | Aes1R [MB/s] | Aes4R [MB/s] | AesHash1R [H/s] | Superscalar [Prog/s] | Dataset [MB/s] | Hash [H/s] | Efficiency [H/Watt/s] |
+| ------------------------------------ | :-----------: | :---------------: | :------------: | :----------: | :----------: | :-------------: | :------------------: | :------------: | :--------: | :-------------------: |
+| RandomX-1.2.1 (102f8acf)             |    **3.231M** |       **103.46K** |      **881.4** |  **47402.5** |  **11473.4** |       **23702** |                 2754 |     **~838.7** |   **4554** |            **~84.33** |
+| RandomX-1.2.1 (102f8acf)<sup>1</sup> |        3.231M |           103.46K |          386.7 |       2333.3 |        524.7 |            1166 |                 2754 |            1.9 |       18.6 |                 ~0.84 |
+| modernRX 0.1.3 (reference)           |        2.130M |            69.51K |          392.1 |       2761.9 |        724.7 |            1446 |             **8317** |            2.0 |       32.4 |                 ~1.32 |
 
  <sup>1)</sup> no avx argon2d, interpreted mode, software AES mode, small pages mode, no batch, single-threaded, full memory mode
 
@@ -103,7 +104,7 @@ Benchmarks compare modernRX implementation with fully optimized RandomX implemen
  Benchmarks description:
 
 * Blake2b - calculating 64-byte blake2b hash for 64 bytes of input data.
-* Blake2bLong - calculating 1024-byte blake2b hash for 64 bytes of input data.
+* Blake2bLong - calculating 1024-byte blake2b hash for 72 bytes of input data.
 * Argon2d - filling 256 MB of memory.
 * Aes1R - generating 2MB of output data with 64 bytes of input data.
 * Aes4R - generating 2176 bytes of output data with 64 bytes of input data.
@@ -111,7 +112,13 @@ Benchmarks compare modernRX implementation with fully optimized RandomX implemen
 * Superscalar - generating superscalar program.
 * Dataset - generating >2GB of dataset.
 * Hash - calculating final RandomX hash.
-* Efficiency - calculating final RandomX hash per watt per second. Power consumption was measured by wattmeter.
+* Efficiency - calculating final RandomX hash per watt per second. Power consumption was measured by wattmeter. 
+
+Units:
+* H/s - hashes per second
+* MB/s - megabytes (1'048'576 bytes) per second
+* Prog/s - programs per second
+* H/Watt/s - hashes per watt per second
 
 ## Coding guidelines
 
@@ -125,8 +132,7 @@ Code found in this repository follows guidelines listed below:
 * Describe all headers at the beginning of file, right before imports.
 * Document all functions and types in headers. If function is declared in .cpp prefer documentation close to the definition, not declaration.
 * Use forward declarations wherever possible.
-* If output parameter is chosen over returned one, it must be the first argument in function.
-* No more than single output parameter per function.
+* If output parameters are chosen over returned one, they must be the left-most arguments in function.
 * Use consteval/constexpr/const wherever possible.
 * Constexpr variables used only within single functions should be defined in that function.
 * Use inline for constexpr variables in headers. All exceptions from this rule must be documented.
@@ -151,6 +157,7 @@ Project follows [zero-based versioning](https://0ver.org/) with several specific
 
 ## Changelog
 
+* **v0.1.3 - 29.10.2023:** bugfixes, benchmarks corrections, code cleanup
 * **v0.1.2 - 28.09.2023:** bugfixes, renaming, documentation updates
 * **v0.1.1 - 07.09.2023:** cleanup some code and projects properties
 * **v0.1.0 - 03.09.2023:** reference implementation
@@ -165,11 +172,11 @@ $> gocloc /exclude-ext xml,json,txt .
 -------------------------------------------------------------------------------
 Language                     files          blank        comment           code
 -------------------------------------------------------------------------------
-C++                             14            470            259           2239
-C++ Header                      23            219            275           1043
-Markdown                         2             56              0            164
+C++                             14            477            263           2270
+C++ Header                      22            202            265           1001
+Markdown                         2             60              0            179
 -------------------------------------------------------------------------------
-TOTAL                           39            745            534           3446
+TOTAL                           38            739            528           3450
 -------------------------------------------------------------------------------
 ```
 

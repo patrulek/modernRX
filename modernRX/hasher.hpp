@@ -11,10 +11,10 @@ namespace modernRX {
     class Hasher {
     public:
         // Initialize with empty key (for later reset).
-        explicit Hasher() = default;
+        [[nodiscard]] explicit Hasher() = default;
         
         // Initialize with key to generate Dataset at creation
-        explicit Hasher(const_span<std::byte> key);
+        [[nodiscard]] explicit Hasher(const_span<std::byte> key);
 
         // Generate hash from input data.
         [[nodiscard]] std::array<std::byte, 32> run(const_span<std::byte> input);

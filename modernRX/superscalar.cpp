@@ -69,7 +69,7 @@ namespace modernRX {
 		[[nodiscard]] std::pair<ExecutionPort, std::optional<uint32_t>> scheduleUop(const PortsSchedule& ports, const ExecutionPort uop_port, const uint32_t cycle) noexcept;
 
 		void findAvailableRegisters(std::vector<reg_idx_t>& available_registers, const RegisterFile& registers, const uint32_t cycle) noexcept;
-		[[nodiscard]] bool needRegisterDisplacement(const_span<reg_idx_t> available_register) noexcept;
+		[[nodiscard]] bool needRegisterDisplacement(const_span<reg_idx_t> available_registers) noexcept;
 		void updateAsicContext(AsicContext& asic_ctx, const SuperscalarInstruction& instr) noexcept;
 	}
 
@@ -128,7 +128,7 @@ namespace modernRX {
 
 						if (ctx.throwaway_count < Max_Throwaway_Count) {
 							instruction.invalidate();
-							--decode_buffer_slot; // Instruction invalidated, but we dont want to skip current buffer slot.
+							--decode_buffer_slot; // SuperscalarInstruction invalidated, but we dont want to skip current buffer slot.
 							++ctx.throwaway_count;
 
 							// Try another instruction for this slot.
@@ -146,7 +146,7 @@ namespace modernRX {
 				// according to rules in: https://github.com/tevador/RandomX/blob/master/doc/specs.md#634-operand-assignment
 				if (op_index == instruction.srcOpIndex()) {
 					for (uint32_t forward = 0; !instruction.src_register.has_value() && forward < Rx_Superscalar_Op_Max_Latency; ++forward) {
-						findAvailableRegisters(available_registers, registers, schedule_cycle + forward);
+						findAvailableRegisters(available_registers, registers, schedule_cycle);
 
 						// No available registers, try next cycle.
 						if (available_registers.empty()) {
@@ -171,7 +171,8 @@ namespace modernRX {
 				// Find a destination register that will be ready when this instruction executes
 				// according to rules in: https://github.com/tevador/RandomX/blob/master/doc/specs.md#634-operand-assignment
 				if (op_index == instruction.dstOpIndex()) {
-					for (uint32_t forward = 0; forward < Rx_Superscalar_Op_Max_Latency; ++forward) {
+					uint32_t forward{ 0 };
+					for (; forward < Rx_Superscalar_Op_Max_Latency; ++forward) {
 						available_registers.clear();
 
 						for (reg_idx_t i = 0; i < registers.size(); ++i) {
@@ -212,6 +213,22 @@ namespace modernRX {
 						}
 
 						instruction.dst_register = selectRegister(available_registers);
+						break;
+					}
+
+					if (forward == Rx_Superscalar_Op_Max_Latency) {
+						if (ctx.throwaway_count < Max_Throwaway_Count) {
+							instruction.invalidate();
+							--decode_buffer_slot; // Instruction invalidated, but we dont want to skip current buffer slot.
+							++ctx.throwaway_count;
+
+							// Try another instruction for this slot.
+							continue;
+						}
+
+						// Max throwaway count reached for current slot.
+						// Abort this decode buffer completely and go to next decode cycle.
+						instruction.invalidate();
 						break;
 					}
 				}
@@ -283,12 +300,12 @@ namespace modernRX {
 	}
 
 	SuperscalarInstructionType Superscalar::selectInstructionTypeForDecodeBuffer(const DecodeBuffer& decode_buffer, const uint32_t buffer_index) {
-		static constexpr std::array<SuperscalarInstructionType, 4> slot_3{ SuperscalarInstructionType::ISUB_R, SuperscalarInstructionType::IXOR_R, 
-																		   SuperscalarInstructionType::IMULH_R, SuperscalarInstructionType::ISMULH_R };
-		static constexpr std::array<SuperscalarInstructionType, 2> slot_4{ SuperscalarInstructionType::IROR_C, SuperscalarInstructionType::IADD_RS };
-		static constexpr std::array<SuperscalarInstructionType, 2> slot_7{ SuperscalarInstructionType::IXOR_C7, SuperscalarInstructionType::IADD_C7 };
-		static constexpr std::array<SuperscalarInstructionType, 2> slot_8{ SuperscalarInstructionType::IXOR_C8, SuperscalarInstructionType::IADD_C8 };
-		static constexpr std::array<SuperscalarInstructionType, 2> slot_9{ SuperscalarInstructionType::IXOR_C9, SuperscalarInstructionType::IADD_C9 };
+		constexpr std::array<SuperscalarInstructionType, 4> slot_3{ SuperscalarInstructionType::ISUB_R, SuperscalarInstructionType::IXOR_R, 
+																	SuperscalarInstructionType::IMULH_R, SuperscalarInstructionType::ISMULH_R };
+		constexpr std::array<SuperscalarInstructionType, 2> slot_4{ SuperscalarInstructionType::IROR_C, SuperscalarInstructionType::IADD_RS };
+		constexpr std::array<SuperscalarInstructionType, 2> slot_7{ SuperscalarInstructionType::IXOR_C7, SuperscalarInstructionType::IADD_C7 };
+		constexpr std::array<SuperscalarInstructionType, 2> slot_8{ SuperscalarInstructionType::IXOR_C8, SuperscalarInstructionType::IADD_C8 };
+		constexpr std::array<SuperscalarInstructionType, 2> slot_9{ SuperscalarInstructionType::IXOR_C9, SuperscalarInstructionType::IADD_C9 };
 
 		// Not all decode buffer configurations contain 4 slots, but for simplicity it is implemented
 		// as an array of 4 elements, instead of vector with variable size, thus second condition is needed.
@@ -378,7 +395,7 @@ namespace modernRX {
 
 	void executeSuperscalar(std::span<uint64_t, Register_Count> registers, const SuperscalarProgram& program) noexcept {
 		for (uint32_t i = 0; i < program.size; ++i) {
-			const auto& instr = program.instructions[i];
+			const auto& instr{ program.instructions[i] };
 
 			switch (instr.type()) {
 			case SuperscalarInstructionType::ISUB_R:
