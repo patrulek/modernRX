@@ -272,14 +272,14 @@ namespace modernRX::argon2d {
         void mixBlocks(std::span<Block> memory, BlockContext& ctx) noexcept {
             using namespace intrinsics;
 
-            constexpr uint32_t YMM_Per_Block{ Block_Size / sizeof(avx2::ymm<uint64_t>) };
+            constexpr uint32_t YMM_Per_Block{ Block_Size / sizeof(ymm<uint64_t>) };
 
             // For some reason its faster to use C-array than std::array (at least for tmp_block_ymm).
             // It's already reported as a compiler bug: https://developercommunity.visualstudio.com/t/Performance-degradation-when-using-std::/10460894.
-            alignas(64) avx2::ymm<uint64_t> tmp_block_ymm[YMM_Per_Block];
-            avx2::ymm<uint64_t> (&cur_block_ymm)[YMM_Per_Block]{ reinterpret_cast<avx2::ymm<uint64_t>(&)[YMM_Per_Block]>(memory[ctx.cur_idx]) };
-            const avx2::ymm<uint64_t> (&prev_block_ymm)[YMM_Per_Block] { reinterpret_cast<const avx2::ymm<uint64_t>(&)[YMM_Per_Block]>(memory[ctx.prev_idx]) };
-            const avx2::ymm<uint64_t> (&ref_block_ymm)[YMM_Per_Block] { reinterpret_cast<const avx2::ymm<uint64_t>(&)[YMM_Per_Block]>(memory[ctx.ref_idx]) };
+            alignas(64) ymm<uint64_t> tmp_block_ymm[YMM_Per_Block];
+            ymm<uint64_t> (&cur_block_ymm)[YMM_Per_Block]{ reinterpret_cast<ymm<uint64_t>(&)[YMM_Per_Block]>(memory[ctx.cur_idx]) };
+            const ymm<uint64_t> (&prev_block_ymm)[YMM_Per_Block] { reinterpret_cast<const ymm<uint64_t>(&)[YMM_Per_Block]>(memory[ctx.prev_idx]) };
+            const ymm<uint64_t> (&ref_block_ymm)[YMM_Per_Block] { reinterpret_cast<const ymm<uint64_t>(&)[YMM_Per_Block]>(memory[ctx.ref_idx]) };
 
             // Initialize new block with previous and referenced ones.
             for (uint32_t i = 0; i < YMM_Per_Block; ++i) {
@@ -291,7 +291,7 @@ namespace modernRX::argon2d {
             const auto avx_rot16{ avx2::vsetrepi8<uint64_t>(2, 3, 4, 5, 6, 7, 0, 1, 10, 11, 12, 13, 14, 15, 8, 9, 2, 3, 4, 5, 6, 7, 0, 1, 10, 11, 12, 13, 14, 15, 8, 9) };
 
             // Used in macros.
-            avx2::ymm<uint64_t> ml, ml2;
+            ymm<uint64_t> ml, ml2;
 
             // Both rounding loops are crucial for performance, otherwise function would expand too much and compiler would not be willing to inline it.
 

@@ -384,7 +384,7 @@ namespace modernRX::assembler {
 
         // Can jump only backwards.
 <span style = "background-color:#dfd">        void jne(const std::string name) {
-            const auto rel32 = labels[name] - code.size() - 6;</span>
+            const auto rel32{ labels[name] - code.size() - 6 };</span>
 
 <span style = "background-color:#dfd">            encode(0x0f);
             encode(0x85);

@@ -28,7 +28,7 @@ namespace modernRX {
         // 1) Push registers to stack and align it to 64 bytes boundary.
 <span style = "background-color:#dfd">        asmb.push(RBX, RSI, RDI, R13, R14, R15, XMM6, XMM7, XMM8, XMM9, XMM10, XMM11, XMM12, XMM13, XMM14, XMM15);
         asmb.alignStack();</span>
-        // 2) Declare local variable (in order: cache_indexes, Cache_Item_Mask, vpmulhuq mask, vpmullq mask, v4q_add_consts, v4q_item_numbers_step).
+        // 2) Declare local variable (in order: cache_indexes, cache_item_mask, vpmulhuq mask, vpmullq mask, v4q_add_consts, v4q_item_numbers_step).
 <span style = "background-color:#dfd">        asmb.sub(RSP, 0xC0); // 6x ymm registers</span>
         // 3) Move data ptr to RBX.
 <span style = "background-color:#dfd">        asmb.movDataPtr(RBX);</span>
@@ -55,7 +55,7 @@ namespace modernRX {
         const auto&amp; cache_ptr_reg{ YMM6 };</span>
 
         // 9) Initialize local variables
-<span style = "background-color:#dfd">        const auto Cache_Item_Mask{ asmb.put4qVectorOnStack(R08, 32) };
+<span style = "background-color:#dfd">        const auto cache_item_mask{ asmb.put4qVectorOnStack(R08, 32) };
         asmb.put4qVectorOnStack(0x00000000ffffffff, 64); // vpmulhuq mask
         const auto v4q_mullq_mask{ asmb.put4qVectorOnStack(0xffffffff00000000, 96) };
         const auto v4q_add_consts{ asmb.put4qVectorOnStack(7009800821677620404ULL, 128) }; // This value is v4q_mul_consts multiplied by 4.
@@ -107,11 +107,11 @@ namespace modernRX {
 
             // 16) Set cache item indexes.
 <span style = "background-color:#dfd">            if (i == 0) {
-                asmb.vpand(YMM0, cache_indexes_reg, Cache_Item_Mask);
+                asmb.vpand(YMM0, cache_indexes_reg, cache_item_mask);
             } else {</span>
                 // For programs 1-7 address register of the previous program is used.
 <span style = "background-color:#dfd">                const auto cache_indexes_reg_tmp{ Register::YMM(8 | programs[i - 1].address_register) };
-                asmb.vpand(YMM0, cache_indexes_reg_tmp, Cache_Item_Mask);</span>
+                asmb.vpand(YMM0, cache_indexes_reg_tmp, cache_item_mask);</span>
             }
 
             // 17) Set cache item pointers.
@@ -233,7 +233,7 @@ namespace modernRX {
         asmb.jne("loop");</span>
 
         // IV. Epilogue
-        // 29) Destroy local variable (cache_indexes, Cache_Item_Mask, vpmulhuq mask, vpmullq mask, v4q_add_consts, v4q_item_numbers_step).
+        // 29) Destroy local variable (cache_indexes, cache_item_mask, vpmulhuq mask, vpmullq mask, v4q_add_consts, v4q_item_numbers_step).
 <span style = "background-color:#dfd">        asmb.add(RSP, 0xC0);</span>
 
         // 30) Unalign stack.

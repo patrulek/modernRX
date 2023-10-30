@@ -19,7 +19,7 @@ Current state of this project does not provide sensible performance to use in mi
 * [x] (03.09.2023) Polish tests and documentation, add benchmarks.
 * [x] (08.09.2023) Optimize dataset generation with multithreading and hardware specific instructions.
 * [x] (28.09.2023) Optimize dataset generation with JIT compiler for superscalar programs.
-* [ ] Optimize hash calculation with hardware specific instructions.
+* [x] (31.10.2023) Optimize hash calculation with hardware specific instructions.
 * [ ] Optimize hash calculation with JIT compiler for random programs.
 * [ ] Optimize hash calculation with multithreading.
 * [ ] Experiment with further JIT optimizations for faster hash calculation.
@@ -32,7 +32,7 @@ Current state of this project does not provide sensible performance to use in mi
 
 To build this repository you should download the most recent Visual Studio version (at least 17.7) with C++ tools.
 
-Library requires support for AVX2 instructions. In a case of lacking support, exception will be thrown at runtime.
+Library requires support for AVX2 and AES instructions. In a case of lacking support, exception will be thrown at runtime.
 
 ### Portability
 
@@ -41,7 +41,7 @@ No plans for support multi OSes, platforms or architectures in the nearest futur
 * System: Windows 11
 * CPU: Zen 3 (Ryzen 5800H)
 
-But it should work with Windows 7 and higher and any 64-bit little-endian CPU with AVX2 support.
+But it should work with Windows 7 and higher and any 64-bit little-endian CPU with AVX2/AES support.
 
 ## Quick start
 
@@ -84,15 +84,15 @@ Sample output:
 ```console
 [ 0] Blake2b::hash                            ... Passed (<1ms)
 [ 1] Argon2d::Blake2b::hash                   ... Passed (<1ms)
-[ 2] Argon2d::fillMemory                      ... Passed (19.750s)
+[ 2] Argon2d::fillMemory                      ... Passed (19.552s)
 [ 3] AesGenerator1R::fill                     ... Passed (<1ms)
 [ 4] AesGenerator4R::fill                     ... Passed (<1ms)
 [ 5] AesHash1R                                ... Passed (<1ms)
 [ 6] Blake2brandom::get                       ... Passed (<1ms)
 [ 7] Reciprocal                               ... Passed (<1ms)
 [ 8] Superscalar::generate                    ... Passed (0.010s)
-[ 9] Dataset::generate                        ... Passed (28.183s)
-[10] Hasher::run                              ... Passed (19.058s)
+[ 9] Dataset::generate                        ... Passed (25.627s)
+[10] Hasher::run                              ... Passed (19.033s)
 ```
 
 Ideally, tests should be run before every release in `Release` and `Debug` mode with `AddressSanitizer` enabled. `ReleaseAsan` and `DebugAsan` project configurations are provided for this purpose.
@@ -108,7 +108,7 @@ Ideally, fuzzing should be run before every release in `Release` mode with `Addr
 Options used for fuzzing:
 
 ```console
--max_len=76 -len_control=0 -rss_limit_mb=8192 -max_total_time=14400 -dict=.dict -artifact_prefix=c:/tmp/ -print_pcs=1 -print_final_stats=1
+-max_len=76 -len_control=0 -rss_limit_mb=8192 -max_total_time=14400 -dict=.dict -artifact_prefix=c:/tmp/ -print_pcs=1 -print_final_stats=1 -report_slow_units=120
 ```
 
 Be aware that fuzzing is very resource intensive and may take a lot of time to complete.
@@ -124,7 +124,7 @@ OpenCppCoverage.exe --sources \path\to\modernRX\ -- \path\to\modernRX\x64\Debug\
 
 Ideally, code coverage should be checked before every release in `Debug` mode.
 
-For a full report see [code coverage report](/assets/covreport/index.html){:target="_blank"}.
+For a full report see [code coverage report](https://rawcdn.githack.com/patrulek/modernRX/master/assets/covreport/index.html).
 
 ## Profile-guided optimization
 
@@ -142,8 +142,8 @@ CPU temperature limit was set to 95°C.
 
 |                                | Blake2b [H/s] | Blake2bLong [H/s] | Argon2d [MB/s] | Aes1R [MB/s] | Aes4R [MB/s] | AesHash1R [H/s] | Superscalar [Prog/s] | Dataset [MB/s] | Hash [H/s] | Efficiency [H/Watt/s] |
 | ------------------------------ | :-----------: | :---------------: | :------------: | :----------: | :----------: | :-------------: | :------------------: | :------------: | :--------: | :-------------------: |
-| RandomX-1.2.1 (102f8acf)       |        3.231M |           103.46K |          881.4 |  **47402.5** |  **11473.4** |       **23702** |                 2754 |         ~838.7 |   **4554** |            **~84.33** |
-| modernRX 0.4.0                 |    **5.450M** |       **170.25K** |     **1241.6** |       2781.1 |        728.6 |            1449 |             **9741** |     **1254.0** |       31.6 |                 ~1.31 |
+| RandomX-1.2.1 (102f8acf)       |        3.231M |           103.46K |          881.4 |  **47402.5** |      11473.4 |       **23702** |                 2754 |         ~838.7 |   **4554** |            **~84.33** |
+| modernRX 0.5.0                 |    **5.450M** |       **171.11K** |     **1228.6** |      47018.1 |  **11847.7** |           23682 |             **9637** |     **1236.4** |       33.3 |                 ~1.11 |
 
 Original RandomX provides benchmark only for calculating final hashes. All other values were estimated (based on information benchmark provides) or some custom benchmarks were written on top of RandomX implementation, thus values may not be 100% accurate.
 
@@ -186,7 +186,8 @@ Project follows [zero-based versioning](https://0ver.org/) with several specific
 
 ## Changelog
 
-* **v0.4.0 - 29.10.2023:** maintenance release (fuzzing, refactoring, fixing, documentation updates)
+* **v0.5.0 - 30.10.2023:** optimize hash calculation with AES instructions
+* ...
 * **v0.1.3 - 29.10.2023:** bugfixes, benchmarks corrections, code cleanup
 * ...
 * **v0.1.0 - 03.09.2023:** reference implementation
@@ -201,11 +202,11 @@ $> gocloc /exclude-ext "xml,json,txt,exp" /not-match-d "3rdparty/*|x64/*|assets/
 -------------------------------------------------------------------------------
 Language                     files          blank        comment           code
 -------------------------------------------------------------------------------
-C++ Header                      33            474            555           2705
-C++                             17            550            342           2544
-Markdown                         3            152              0            428
+C++ Header                      33            479            555           2731
+C++                             16            546            339           2275
+Markdown                         3            155              0            440
 -------------------------------------------------------------------------------
-TOTAL                           53           1176            897           5677
+TOTAL                           52           1180            894           5446
 -------------------------------------------------------------------------------
 ```
 

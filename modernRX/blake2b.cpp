@@ -45,7 +45,7 @@ namespace modernRX::blake2b {
             : digest_size{ digest_size } {
             using namespace intrinsics;
 
-            const avx2::ymm<uint64_t> digest_size_ymm{ avx2::vset<uint64_t>(0, 0, 0, 0x01010000 ^ digest_size) };
+            const ymm<uint64_t> digest_size_ymm{ avx2::vset<uint64_t>(0, 0, 0, 0x01010000 ^ digest_size) };
             state[0] = avx2::vxor<uint64_t>(state[0], digest_size_ymm);
         }
 
@@ -84,7 +84,7 @@ namespace modernRX::blake2b {
             using namespace intrinsics;
 
             // Prepare block for permutations.
-            alignas(64) const_array<avx2::ymm<uint64_t>, 8> msg{
+            alignas(64) const_array<ymm<uint64_t>, 8> msg{
                 avx2::vbcasti128<uint64_t>(ctx.block.data()),
                 avx2::vbcasti128<uint64_t>(ctx.block.data() + 16),
                 avx2::vbcasti128<uint64_t>(ctx.block.data() + 32),

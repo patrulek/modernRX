@@ -292,7 +292,7 @@ void testAesGenerator1RFill() {
     ) };
 
     std::array<std::byte, 64> actual;
-    aes::fill1R(actual, state);
+    aes::fill1R<false>(actual, state);
 
     testAssert(actual == expected);
 
@@ -316,7 +316,7 @@ void testAesGenerator1RFill() {
     ) };
 
     std::array<std::byte, 256> actual2;
-    aes::fill1R(actual2, state);
+    aes::fill1R<false>(actual2, state);
 
     testAssert(actual2 == expected2);
 }
@@ -340,7 +340,7 @@ void testAesGenerator4RFill() {
     ) };
 
     std::array<std::byte, 64> actual;
-    aes::fill4R(actual, state);
+    aes::fill4R<false>(actual, state);
 
     testAssert(actual == expected);
 
@@ -364,7 +364,7 @@ void testAesGenerator4RFill() {
     ) };
 
     std::array<std::byte, 256> actual2;
-    aes::fill4R(actual2, state);
+    aes::fill4R<false>(actual2, state);
 
     testAssert(actual2 == expected2);
 }
@@ -386,7 +386,7 @@ void testAesHash1R() {
     ) };
 
     std::array<std::byte, 64> actual{};
-    aes::hash1R(actual, input);
+    aes::hash1R<false>(actual, input);
 
     testAssert(actual == expected);
 
@@ -417,7 +417,7 @@ void testAesHash1R() {
         0x01, 0x6e, 0x2e, 0x2b, 0xdc, 0x50, 0xf8, 0xbd, 0x6f, 0x29, 0x71, 0xc0, 0x58, 0xe6, 0x14, 0x6e
     ) };
 
-    aes::hash1R(actual, input2);
+    aes::hash1R<false>(actual, input2);
 
     testAssert(actual == expected2);
 }

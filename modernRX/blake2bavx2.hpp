@@ -68,8 +68,8 @@ namespace modernRX::blake2b {
     // There's no way to force inlining, so it would be safier to use macro, but it seems that compiler is smart enough to inline it anyway.
     // Additional check for generated binary would also be nice to ensure that this function was in fact inlined.
     template <uint32_t N, uint32_t Round>
-    [[nodiscard]] constexpr intrinsics::avx2::ymm<uint64_t> msgPermutation(const_span<intrinsics::avx2::ymm<uint64_t>, 8> m) noexcept {
-        intrinsics::avx2::ymm<uint64_t> t0, t1;
+    [[nodiscard]] constexpr intrinsics::ymm<uint64_t> msgPermutation(const_span<intrinsics::ymm<uint64_t>, 8> m) noexcept {
+        intrinsics::ymm<uint64_t> t0, t1;
 
         if constexpr (N == 0) {
             if constexpr (Round == 0) {

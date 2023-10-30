@@ -19,7 +19,7 @@ namespace modernRX {
         constexpr uint64_t Cache_Line_Size{ sizeof(DatasetItem) };
         constexpr uint64_t Cache_Line_Align_Mask{ (Rx_Dataset_Base_Size - 1) & ~(Cache_Line_Size - 1) }; // Dataset 64-byte alignment mask.
 
-        using xmm128d_t = intrinsics::sse::xmm<double>;
+        using xmm128d_t = intrinsics::xmm<double>;
 
         // Holds representation of register file used by interpreter during program execution.
         // https://github.com/tevador/RandomX/blob/master/doc/specs.md#43-registers
@@ -85,6 +85,7 @@ namespace modernRX {
         std::array<uint64_t, 16> entropy{};
         std::array<RxInstruction, Rx_Program_Size> instructions{};
     };
+    static_assert(sizeof(RxProgram) == Rx_Program_Bytes_Size); // Size of random program is also used in different context. Make sure both values match.
 
     struct ProgramContext {
         [[nodiscard]] explicit ProgramContext(const RxProgram& program) noexcept;

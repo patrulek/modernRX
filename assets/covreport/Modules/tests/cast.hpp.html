@@ -34,9 +34,9 @@ template&lt;typename T, size_t Size = std::numeric_limits&lt;size_t&gt;::max(), 
 
 // Casts a byte pointer to a span of given type and size.
 template&lt;typename T, size_t Size = std::numeric_limits&lt;size_t&gt;::max()&gt;
-<span style = "background-color:#dfd">[[nodiscard]] constexpr std::span&lt;T, Size&gt; span_cast(std::byte* ptr) noexcept {
+[[nodiscard]] constexpr std::span&lt;T, Size&gt; span_cast(std::byte* ptr) noexcept {
     return std::span&lt;T, Size&gt;(reinterpret_cast&lt;T*&gt;(ptr), Size);
-}</span>
+}
 
 // Casts a const byte pointer to a const_span of given type and size.
 template&lt;typename T, size_t Size = std::numeric_limits&lt;size_t&gt;::max()&gt;

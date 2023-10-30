@@ -21,7 +21,8 @@
 #include &lt;array&gt;
 #include &lt;bit&gt;
 #include &lt;cfenv&gt;
-#include &lt;emmintrin.h&gt;
+
+#include "intrinsics.hpp"
 
 namespace modernRX::intrinsics::sse {
     inline constexpr uint32_t Rx_Mxcsr_Default{ 0x9FC0 }; //Flush to zero, denormals are zero, default rounding mode, all exceptions disabled.
@@ -53,14 +54,15 @@ namespace modernRX::intrinsics::sse {
     }</span>
 
     template&lt;typename T&gt;
-    struct xmm_wrapper {
-        using type = std::conditional_t&lt;std::is_same_v&lt;T, double&gt;, __m128d, void&gt;;
-
-        static_assert(!std::is_same_v&lt;type, void&gt;, "type must be double");
-    };
-
-    template&lt;typename T&gt;
-    using xmm = xmm_wrapper&lt;T&gt;::type;
+<span style = "background-color:#dfd">    [[nodiscard]] constexpr xmm&lt;T&gt; vload(const void* ptr) noexcept {</span>
+        if constexpr (std::is_same_v&lt;T, double&gt;) {
+            return _mm_load_pd(reinterpret_cast&lt;const double*&gt;(ptr));
+        } else if constexpr (std::is_integral_v&lt;T&gt;) {
+<span style = "background-color:#dfd">            return _mm_load_si128(reinterpret_cast&lt;const __m128i*&gt;(ptr));</span>
+        } else {
+            static_assert(!sizeof(T), "the only supported types for this operation are: integral and float64");
+        }
+<span style = "background-color:#dfd">    }</span>
 
     template&lt;typename T&gt;
 <span style = "background-color:#dfd">    [[nodiscard]] constexpr xmm&lt;T&gt; vxor(const xmm&lt;T&gt; x, const xmm&lt;T&gt; y) noexcept {</span>

@@ -28,6 +28,9 @@
     <Filter Include="utils\assembler">
       <UniqueIdentifier>{04bccb2b-a4f0-41c5-8044-4095eb2ecadf}</UniqueIdentifier>
     </Filter>
+    <Filter Include="utils\intrinsics">
+      <UniqueIdentifier>{5f92fa01-6edf-438c-8374-dd7bc05a3d26}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="blake2b.hpp">
@@ -39,16 +42,10 @@
     <ClInclude Include="argon2d.hpp">
       <Filter>argon2d</Filter>
     </ClInclude>
-    <ClInclude Include="aes.hpp">
-      <Filter>aes</Filter>
-    </ClInclude>
     <ClInclude Include="superscalar.hpp">
       <Filter>superscalar</Filter>
     </ClInclude>
     <ClInclude Include="cast.hpp">
-      <Filter>utils</Filter>
-    </ClInclude>
-    <ClInclude Include="intrinsics.hpp">
       <Filter>utils</Filter>
     </ClInclude>
     <ClInclude Include="reciprocal.hpp">
@@ -81,9 +78,6 @@
     <ClInclude Include="scratchpad.hpp">
       <Filter>interpreter</Filter>
     </ClInclude>
-    <ClInclude Include="sse.hpp">
-      <Filter>utils</Filter>
-    </ClInclude>
     <ClInclude Include="hasher.hpp">
       <Filter>modernRX</Filter>
     </ClInclude>
@@ -98,9 +92,6 @@
     </ClInclude>
     <ClInclude Include="argon2davx2.hpp">
       <Filter>argon2d</Filter>
-    </ClInclude>
-    <ClInclude Include="avx2.hpp">
-      <Filter>utils</Filter>
     </ClInclude>
     <ClInclude Include="virtualmem.hpp">
       <Filter>utils</Filter>
@@ -126,6 +117,18 @@
     <ClInclude Include="assemblerdef.hpp">
       <Filter>utils\assembler</Filter>
     </ClInclude>
+    <ClInclude Include="intrinsics.hpp">
+      <Filter>utils\intrinsics</Filter>
+    </ClInclude>
+    <ClInclude Include="sse.hpp">
+      <Filter>utils\intrinsics</Filter>
+    </ClInclude>
+    <ClInclude Include="avx2.hpp">
+      <Filter>utils\intrinsics</Filter>
+    </ClInclude>
+    <ClInclude Include="aes.hpp">
+      <Filter>utils\intrinsics</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="blake2b.cpp">
@@ -138,9 +141,6 @@
       <Filter>argon2d</Filter>
     </ClCompile>
     <ClCompile Include="aes1rrandom.cpp">
-      <Filter>aes</Filter>
-    </ClCompile>
-    <ClCompile Include="aes.cpp">
       <Filter>aes</Filter>
     </ClCompile>
     <ClCompile Include="aes4rrandom.cpp">

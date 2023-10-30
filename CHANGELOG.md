@@ -1,5 +1,14 @@
 ## modernRX - Changelog
 
+### v0.5.0 - 30.10.2023:
+
+Hash calculation optimization with AES instructions.
+All optimization decisions made in this version:
+* replace software AES calculation with hardware AES instructions
+
+Improvements:
+* documentation corrections
+
 ### v0.4.0 - 29.10.2023:
 
 Maintenance release.

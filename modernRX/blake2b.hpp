@@ -15,8 +15,8 @@ namespace modernRX::blake2b {
     inline constexpr uint32_t Block_Size{ 128 }; // In bytes. Not fully filled blocks are padded with zeros.
 
     // Initialization vector.
-    inline const alignas(32) intrinsics::avx2::ymm<uint64_t> IV1{ intrinsics::avx2::vset<uint64_t>(0xa54ff53a5f1d36f1, 0x3c6ef372fe94f82b, 0xbb67ae8584caa73b, 0x6a09e667f3bcc908) };
-    inline const alignas(32) intrinsics::avx2::ymm<uint64_t> IV2{ intrinsics::avx2::vset<uint64_t>(0x5be0cd19137e2179, 0x1f83d9abfb41bd6b, 0x9b05688c2b3e6c1f, 0x510e527fade682d1) };
+    inline const alignas(32) intrinsics::ymm<uint64_t> IV1{ intrinsics::avx2::vset<uint64_t>(0xa54ff53a5f1d36f1, 0x3c6ef372fe94f82b, 0xbb67ae8584caa73b, 0x6a09e667f3bcc908) };
+    inline const alignas(32) intrinsics::ymm<uint64_t> IV2{ intrinsics::avx2::vset<uint64_t>(0x5be0cd19137e2179, 0x1f83d9abfb41bd6b, 0x9b05688c2b3e6c1f, 0x510e527fade682d1) };
 
     inline constexpr uint32_t Max_Digest_Size{ 64 }; // In bytes. Must be equal to size of initialization vector.
     static_assert(Max_Digest_Size == sizeof(IV1) + sizeof(IV2));
@@ -43,7 +43,7 @@ namespace modernRX::blake2b {
             [[nodiscard]] explicit Context(const uint32_t digest_size) noexcept;
 
             std::array<std::byte, Block_Size> block{};                               // Block buffer to compress.
-            std::array<intrinsics::avx2::ymm<uint64_t>, 2> state{ IV1, IV2 };        // Chained state that will yield hash.
+            std::array<intrinsics::ymm<uint64_t>, 2> state{ IV1, IV2 };              // Chained state that will yield hash.
             uint64_t counter{ 0 };                                                   // Total number of processed bytes.
             size_t digest_size{ 0 };                                                 // Output size.
         };

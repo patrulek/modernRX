@@ -56,7 +56,7 @@ namespace modernRX::blake2b {
 <span style = "background-color:#dfd">            : digest_size{ digest_size } {</span>
             using namespace intrinsics;
 
-<span style = "background-color:#dfd">            const avx2::ymm&lt;uint64_t&gt; digest_size_ymm{ avx2::vset&lt;uint64_t&gt;(0, 0, 0, 0x01010000 ^ digest_size) };
+<span style = "background-color:#dfd">            const ymm&lt;uint64_t&gt; digest_size_ymm{ avx2::vset&lt;uint64_t&gt;(0, 0, 0, 0x01010000 ^ digest_size) };
             state[0] = avx2::vxor&lt;uint64_t&gt;(state[0], digest_size_ymm);
         }</span>
 
@@ -95,7 +95,7 @@ namespace modernRX::blake2b {
             using namespace intrinsics;
 
             // Prepare block for permutations.
-            alignas(64) const_array&lt;avx2::ymm&lt;uint64_t&gt;, 8&gt; msg{
+            alignas(64) const_array&lt;ymm&lt;uint64_t&gt;, 8&gt; msg{
 <span style = "background-color:#dfd">                avx2::vbcasti128&lt;uint64_t&gt;(ctx.block.data()),
                 avx2::vbcasti128&lt;uint64_t&gt;(ctx.block.data() + 16),
                 avx2::vbcasti128&lt;uint64_t&gt;(ctx.block.data() + 32),

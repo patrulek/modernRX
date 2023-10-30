@@ -18,24 +18,12 @@
 */
 
 #include &lt;array&gt;
-#include &lt;intrin.h&gt;
 
 #include "assertume.hpp"
 #include "cast.hpp"
+#include "intrinsics.hpp"
 
 namespace modernRX::intrinsics::avx2 {
-    template&lt;typename T&gt;
-    struct ymm_wrapper {
-        using type = std::conditional_t&lt;std::is_integral_v&lt;T&gt;, __m256i,
-            std::conditional_t&lt;std::is_same_v&lt;T, double&gt;, __m256d,
-            std::conditional_t&lt;std::is_same_v&lt;T, float&gt;, __m256, void&gt;&gt;&gt;;
-
-        static_assert(!std::is_same_v&lt;type, void&gt;, "type can be one of integral types, double or float");
-    };
-
-    template&lt;typename T&gt;
-    using ymm = ymm_wrapper&lt;T&gt;::type;
-
     template&lt;typename T, typename... Args&gt;
 <span style = "background-color:#dfd">    [[nodiscard]] constexpr ymm&lt;T&gt; vset(Args... args) noexcept {</span>
         if constexpr (std::is_same_v&lt;T, uint64_t&gt;) {

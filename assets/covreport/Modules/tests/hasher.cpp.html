@@ -35,6 +35,10 @@ namespace modernRX {
         if (!CPUInfo::AVX2()) {</span>
 <span style = "background-color:#fdd">            throw Exception{ "AVX2 instructions required but not supported on current CPU" };</span>
         }
+
+<span style = "background-color:#dfd">        if (!CPUInfo::AES()) {</span>
+<span style = "background-color:#fdd">            throw Exception{ "AES instructions required but not supported on current CPU" };</span>
+        }
 <span style = "background-color:#dfd">    }</span>
 
 <span style = "background-color:#dfd">    void Hasher::reset(const_span&lt;std::byte&gt; key) {

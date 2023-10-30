@@ -283,14 +283,14 @@ namespace modernRX::argon2d {
 <span style = "background-color:#dfd">        void mixBlocks(std::span&lt;Block&gt; memory, BlockContext&amp; ctx) noexcept {</span>
             using namespace intrinsics;
 
-<span style = "background-color:#dfd">            constexpr uint32_t YMM_Per_Block{ Block_Size / sizeof(avx2::ymm&lt;uint64_t&gt;) };</span>
+<span style = "background-color:#dfd">            constexpr uint32_t YMM_Per_Block{ Block_Size / sizeof(ymm&lt;uint64_t&gt;) };</span>
 
             // For some reason its faster to use C-array than std::array (at least for tmp_block_ymm).
             // It's already reported as a compiler bug: https://developercommunity.visualstudio.com/t/Performance-degradation-when-using-std::/10460894.
-            alignas(64) avx2::ymm&lt;uint64_t&gt; tmp_block_ymm[YMM_Per_Block];
-<span style = "background-color:#dfd">            avx2::ymm&lt;uint64_t&gt; (&amp;cur_block_ymm)[YMM_Per_Block]{ reinterpret_cast&lt;avx2::ymm&lt;uint64_t&gt;(&amp;)[YMM_Per_Block]&gt;(memory[ctx.cur_idx]) };
-            const avx2::ymm&lt;uint64_t&gt; (&amp;prev_block_ymm)[YMM_Per_Block] { reinterpret_cast&lt;const avx2::ymm&lt;uint64_t&gt;(&amp;)[YMM_Per_Block]&gt;(memory[ctx.prev_idx]) };
-            const avx2::ymm&lt;uint64_t&gt; (&amp;ref_block_ymm)[YMM_Per_Block] { reinterpret_cast&lt;const avx2::ymm&lt;uint64_t&gt;(&amp;)[YMM_Per_Block]&gt;(memory[ctx.ref_idx]) };</span>
+            alignas(64) ymm&lt;uint64_t&gt; tmp_block_ymm[YMM_Per_Block];
+<span style = "background-color:#dfd">            ymm&lt;uint64_t&gt; (&amp;cur_block_ymm)[YMM_Per_Block]{ reinterpret_cast&lt;ymm&lt;uint64_t&gt;(&amp;)[YMM_Per_Block]&gt;(memory[ctx.cur_idx]) };
+            const ymm&lt;uint64_t&gt; (&amp;prev_block_ymm)[YMM_Per_Block] { reinterpret_cast&lt;const ymm&lt;uint64_t&gt;(&amp;)[YMM_Per_Block]&gt;(memory[ctx.prev_idx]) };
+            const ymm&lt;uint64_t&gt; (&amp;ref_block_ymm)[YMM_Per_Block] { reinterpret_cast&lt;const ymm&lt;uint64_t&gt;(&amp;)[YMM_Per_Block]&gt;(memory[ctx.ref_idx]) };</span>
 
             // Initialize new block with previous and referenced ones.
 <span style = "background-color:#dfd">            for (uint32_t i = 0; i &lt; YMM_Per_Block; ++i) {
@@ -302,7 +302,7 @@ namespace modernRX::argon2d {
             const auto avx_rot16{ avx2::vsetrepi8&lt;uint64_t&gt;(2, 3, 4, 5, 6, 7, 0, 1, 10, 11, 12, 13, 14, 15, 8, 9, 2, 3, 4, 5, 6, 7, 0, 1, 10, 11, 12, 13, 14, 15, 8, 9) };</span>
 
             // Used in macros.
-            avx2::ymm&lt;uint64_t&gt; ml, ml2;
+            ymm&lt;uint64_t&gt; ml, ml2;
 
             // Both rounding loops are crucial for performance, otherwise function would expand too much and compiler would not be willing to inline it.
 

@@ -305,7 +305,6 @@
     <ClInclude Include="virtualmem.hpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="aes.cpp" />
     <ClCompile Include="aes1rhash.cpp" />
     <ClCompile Include="aes1rrandom.cpp" />
     <ClCompile Include="aes4rrandom.cpp" />

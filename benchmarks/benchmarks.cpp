@@ -126,7 +126,7 @@ std::array<std::byte, 76> block_template{ byte_array(
 int main() {
     std::println("Initializing benchmarks...");
 
-    aes_input.resize(2'097'152);
+    aes_input.resize(Rx_Scratchpad_L3_Size);
     program_input.resize(2176);
 
     for (auto &program : programs) {

@@ -6,7 +6,8 @@
 */
 
 #include <span>
-#include <vector>
+
+#include "heaparray.hpp"
 
 namespace modernRX {
     // Defines interpreter's cache memory for reading and writing operations.
@@ -25,6 +26,6 @@ namespace modernRX {
         // Returns address of scratchpad's memory.
         [[nodiscard]] const std::byte* data() const noexcept;
     private:
-        std::vector<std::byte> memory;
+        HeapArray<std::byte, 4096> memory;
     };
 }

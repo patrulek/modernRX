@@ -10,7 +10,8 @@
 #include <array>
 #include <bit>
 #include <cfenv>
-#include <emmintrin.h>
+
+#include "intrinsics.hpp"
 
 namespace modernRX::intrinsics::sse {
     inline constexpr uint32_t Rx_Mxcsr_Default{ 0x9FC0 }; //Flush to zero, denormals are zero, default rounding mode, all exceptions disabled.
@@ -42,14 +43,15 @@ namespace modernRX::intrinsics::sse {
     }
 
     template<typename T>
-    struct xmm_wrapper {
-        using type = std::conditional_t<std::is_same_v<T, double>, __m128d, void>;
-
-        static_assert(!std::is_same_v<type, void>, "type must be double");
-    };
-
-    template<typename T>
-    using xmm = xmm_wrapper<T>::type;
+    [[nodiscard]] constexpr xmm<T> vload(const void* ptr) noexcept {
+        if constexpr (std::is_same_v<T, double>) {
+            return _mm_load_pd(reinterpret_cast<const double*>(ptr));
+        } else if constexpr (std::is_integral_v<T>) {
+            return _mm_load_si128(reinterpret_cast<const __m128i*>(ptr));
+        } else {
+            static_assert(!sizeof(T), "the only supported types for this operation are: integral and float64");
+        }
+    }
 
     template<typename T>
     [[nodiscard]] constexpr xmm<T> vxor(const xmm<T> x, const xmm<T> y) noexcept {

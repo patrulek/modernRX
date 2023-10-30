@@ -66,6 +66,7 @@ namespace modernRX {
 
     // Program Parameters.
     inline constexpr uint32_t Rx_Program_Size{ 256 }; // The number of instructions in a RandomX program.
+    inline constexpr uint32_t Rx_Program_Bytes_Size{ 2176 }; // The size of RandomX program in bytes.
 
     inline constexpr uint32_t Rx_Program_Iterations{ 2048 }; // The number of iterations per program.
     inline constexpr uint32_t Rx_Program_Count{ 8 }; // The number of programs per hash.

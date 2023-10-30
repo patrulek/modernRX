@@ -19,6 +19,36 @@
 #include &lt;intrin.h&gt;
 
 namespace modernRX::intrinsics {
+    template&lt;typename T&gt;
+    struct xmm_wrapper {
+        using type = std::conditional_t&lt;std::is_integral_v&lt;T&gt;, __m128i,
+                     std::conditional_t&lt;std::is_same_v&lt;T, double&gt;, __m128d, void&gt;&gt;;
+
+        static_assert(!std::is_same_v&lt;type, void&gt;, "type can be one of integral types or double");
+    };
+
+    template&lt;typename T&gt;
+    using xmm = xmm_wrapper&lt;T&gt;::type;
+    using xmm128i_t = xmm&lt;int&gt;;
+
+    template&lt;typename... Args&gt;
+<span style = "background-color:#dfd">    [[nodiscard]] constexpr xmm128i_t fromChars(const Args&amp;&amp;... chars) noexcept {</span>
+        static_assert(sizeof...(chars) == 16, "must be 16 chars");
+<span style = "background-color:#dfd">        return xmm128i_t{ static_cast&lt;const char&gt;(chars)... };
+    }</span>
+
+    template&lt;typename T&gt;
+    struct ymm_wrapper {
+        using type = std::conditional_t&lt;std::is_integral_v&lt;T&gt;, __m256i,
+            std::conditional_t&lt;std::is_same_v&lt;T, double&gt;, __m256d,
+            std::conditional_t&lt;std::is_same_v&lt;T, float&gt;, __m256, void&gt;&gt;&gt;;
+
+        static_assert(!std::is_same_v&lt;type, void&gt;, "type can be one of integral types, double or float");
+    };
+
+    template&lt;typename T&gt;
+    using ymm = ymm_wrapper&lt;T&gt;::type;
+
 <span style = "background-color:#dfd">    [[nodiscard]] inline uint64_t smulh(const int64_t a, const int64_t b) noexcept {</span>
         int64_t hi;
 <span style = "background-color:#dfd">        _mul128(a, b, &amp;hi);

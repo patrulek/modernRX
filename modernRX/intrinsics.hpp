@@ -8,6 +8,36 @@
 #include <intrin.h>
 
 namespace modernRX::intrinsics {
+    template<typename T>
+    struct xmm_wrapper {
+        using type = std::conditional_t<std::is_integral_v<T>, __m128i,
+                     std::conditional_t<std::is_same_v<T, double>, __m128d, void>>;
+
+        static_assert(!std::is_same_v<type, void>, "type can be one of integral types or double");
+    };
+
+    template<typename T>
+    using xmm = xmm_wrapper<T>::type;
+    using xmm128i_t = xmm<int>;
+
+    template<typename... Args>
+    [[nodiscard]] constexpr xmm128i_t fromChars(const Args&&... chars) noexcept {
+        static_assert(sizeof...(chars) == 16, "must be 16 chars");
+        return xmm128i_t{ static_cast<const char>(chars)... };
+    }
+
+    template<typename T>
+    struct ymm_wrapper {
+        using type = std::conditional_t<std::is_integral_v<T>, __m256i,
+            std::conditional_t<std::is_same_v<T, double>, __m256d,
+            std::conditional_t<std::is_same_v<T, float>, __m256, void>>>;
+
+        static_assert(!std::is_same_v<type, void>, "type can be one of integral types, double or float");
+    };
+
+    template<typename T>
+    using ymm = ymm_wrapper<T>::type;
+
     [[nodiscard]] inline uint64_t smulh(const int64_t a, const int64_t b) noexcept {
         int64_t hi;
         _mul128(a, b, &hi);

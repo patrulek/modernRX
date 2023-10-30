@@ -14,23 +14,23 @@
 #include "scratchpad.hpp"
 
 namespace modernRX {
-<span style = "background-color:#dfd">    Scratchpad::Scratchpad(std::span&lt;std::byte, 64&gt; seed) {
-        memory.resize(Rx_Scratchpad_L3_Size);
-        aes::fill1R(memory, seed);</span>
+    Scratchpad::Scratchpad(std::span&lt;std::byte, 64&gt; seed) :
+<span style = "background-color:#dfd">        memory(Rx_Scratchpad_L3_Size) {
+        aes::fill1R(memory.buffer(), seed);</span>
 
         // Last 64 bytes of the scratchpad memory are now the new seed.
 <span style = "background-color:#dfd">    }</span>
 
 <span style = "background-color:#dfd">    uint64_t Scratchpad::read(const uint64_t offset) const noexcept {
-        return *reinterpret_cast&lt;const uint64_t*&gt;(memory.data() + offset);
+        return *reinterpret_cast&lt;const uint64_t*&gt;(&amp;memory[offset]);
     }</span>
 
 <span style = "background-color:#dfd">    void Scratchpad::write(const uint64_t offset, const uint64_t value) noexcept {
-        std::memcpy(memory.data() + offset, &amp;value, sizeof(uint64_t));
+        std::memcpy(&amp;memory[offset], &amp;value, sizeof(uint64_t));
     }</span>
 
 <span style = "background-color:#dfd">    const std::byte* Scratchpad::data() const noexcept {
-        return memory.data();
+        return memory.view().data();
     }</span>
 }</pre>
         <hr />

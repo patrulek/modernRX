@@ -38,7 +38,7 @@ public:
 <span style = "background-color:#dfd">    }</span>
 
     [[nodiscard]] constexpr explicit HeapArray(const HeapArray&amp;) = delete;
-    HeapArray&amp; operator=(const HeapArray&amp;) = delete;
+    constexpr HeapArray&amp; operator=(const HeapArray&amp;) = delete;
     [[nodiscard]] constexpr HeapArray(HeapArray&amp;&amp; other) noexcept {
         this-&gt;~HeapArray();
         data_ = other.data_;

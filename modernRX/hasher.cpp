@@ -24,6 +24,10 @@ namespace modernRX {
         if (!CPUInfo::AVX2()) {
             throw Exception{ "AVX2 instructions required but not supported on current CPU" };
         }
+
+        if (!CPUInfo::AES()) {
+            throw Exception{ "AES instructions required but not supported on current CPU" };
+        }
     }
 
     void Hasher::reset(const_span<std::byte> key) {
