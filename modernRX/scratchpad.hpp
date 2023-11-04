@@ -17,11 +17,13 @@ namespace modernRX {
         // After initialization seed is replaced with last 64 bytes of scratchpad.
         [[nodiscard]] explicit Scratchpad(std::span<std::byte, 64> seed);
 
-        // Reads a single 8-byte value from scratchpad at given offset.
-        [[nodiscard]] uint64_t read(const uint64_t offset) const noexcept;
+        // Reads a single value from scratchpad at given offset.
+        // T has to be uint64_t or intrinsics::xmm128d_t.
+        template<typename T>
+        [[nodiscard]] T read(const uint64_t offset) const noexcept;
 
-        // Writes a single 8-byte value to scratchpad at given offset.
-        void write(const uint64_t offset, const uint64_t value) noexcept;
+        // Writes a value to scratchpad at given offset.
+        void write(const uint64_t offset, const void* value, const size_t size) noexcept;
 
         // Returns address of scratchpad's memory.
         [[nodiscard]] const std::byte* data() const noexcept;

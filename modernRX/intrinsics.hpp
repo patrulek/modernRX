@@ -19,6 +19,7 @@ namespace modernRX::intrinsics {
     template<typename T>
     using xmm = xmm_wrapper<T>::type;
     using xmm128i_t = xmm<int>;
+    using xmm128d_t = xmm<double>;
 
     template<typename... Args>
     [[nodiscard]] constexpr xmm128i_t fromChars(const Args&&... chars) noexcept {

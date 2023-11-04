@@ -19,7 +19,7 @@ Current state of this project does not provide sensible performance to use in mi
 * [x] (03.09.2023) Polish tests and documentation, add benchmarks.
 * [x] (08.09.2023) Optimize dataset generation with multithreading and hardware specific instructions.
 * [x] (28.09.2023) Optimize dataset generation with JIT compiler for superscalar programs.
-* [x] (31.10.2023) Optimize hash calculation with hardware specific instructions.
+* [x] (30.10.2023) Optimize hash calculation with hardware specific instructions.
 * [ ] Optimize hash calculation with JIT compiler for random programs.
 * [ ] Optimize hash calculation with multithreading.
 * [ ] Experiment with further JIT optimizations for faster hash calculation.
@@ -84,15 +84,15 @@ Sample output:
 ```console
 [ 0] Blake2b::hash                            ... Passed (<1ms)
 [ 1] Argon2d::Blake2b::hash                   ... Passed (<1ms)
-[ 2] Argon2d::fillMemory                      ... Passed (19.552s)
+[ 2] Argon2d::fillMemory                      ... Passed (14.416s)
 [ 3] AesGenerator1R::fill                     ... Passed (<1ms)
 [ 4] AesGenerator4R::fill                     ... Passed (<1ms)
 [ 5] AesHash1R                                ... Passed (<1ms)
 [ 6] Blake2brandom::get                       ... Passed (<1ms)
 [ 7] Reciprocal                               ... Passed (<1ms)
-[ 8] Superscalar::generate                    ... Passed (0.010s)
-[ 9] Dataset::generate                        ... Passed (25.627s)
-[10] Hasher::run                              ... Passed (19.033s)
+[ 8] Superscalar::generate                    ... Passed (0.007s)
+[ 9] Dataset::generate                        ... Passed (24.333s)
+[10] Hasher::run                              ... Passed (17.032s)
 ```
 
 Ideally, tests should be run before every release in `Release` and `Debug` mode with `AddressSanitizer` enabled. `ReleaseAsan` and `DebugAsan` project configurations are provided for this purpose.
@@ -143,7 +143,7 @@ CPU temperature limit was set to 95°C.
 |                                | Blake2b [H/s] | Blake2bLong [H/s] | Argon2d [MB/s] | Aes1R [MB/s] | Aes4R [MB/s] | AesHash1R [H/s] | Superscalar [Prog/s] | Dataset [MB/s] | Hash [H/s] | Efficiency [H/Watt/s] |
 | ------------------------------ | :-----------: | :---------------: | :------------: | :----------: | :----------: | :-------------: | :------------------: | :------------: | :--------: | :-------------------: |
 | RandomX-1.2.1 (102f8acf)       |        3.231M |           103.46K |          881.4 |  **47402.5** |      11473.4 |       **23702** |                 2754 |         ~838.7 |   **4554** |            **~84.33** |
-| modernRX 0.5.0                 |    **5.450M** |       **171.11K** |     **1228.6** |      47018.1 |  **11847.7** |           23682 |             **9637** |     **1236.4** |       33.3 |                 ~1.11 |
+| modernRX 0.5.1                 |    **5.457M** |       **171.99K** |     **1210.8** |      47119.6 |  **11862.2** |           23640 |             **9640** |     **1253.2** |       69.1 |                 ~2.82 |
 
 Original RandomX provides benchmark only for calculating final hashes. All other values were estimated (based on information benchmark provides) or some custom benchmarks were written on top of RandomX implementation, thus values may not be 100% accurate.
 
@@ -186,7 +186,7 @@ Project follows [zero-based versioning](https://0ver.org/) with several specific
 
 ## Changelog
 
-* **v0.5.0 - 30.10.2023:** optimize hash calculation with AES instructions
+* **v0.5.1 - 05.11.2023:** optimize hash calculation with interpreter improvements
 * ...
 * **v0.1.3 - 29.10.2023:** bugfixes, benchmarks corrections, code cleanup
 * ...
@@ -202,11 +202,11 @@ $> gocloc /exclude-ext "xml,json,txt,exp" /not-match-d "3rdparty/*|x64/*|assets/
 -------------------------------------------------------------------------------
 Language                     files          blank        comment           code
 -------------------------------------------------------------------------------
-C++ Header                      33            479            555           2731
-C++                             16            546            339           2275
-Markdown                         3            155              0            440
+C++ Header                      33            478            555           2732
+C++                             16            581            352           2446
+Markdown                         3            157              0            448
 -------------------------------------------------------------------------------
-TOTAL                           52           1180            894           5446
+TOTAL                           52           1216            907           5626
 -------------------------------------------------------------------------------
 ```
 

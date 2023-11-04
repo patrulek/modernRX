@@ -1,6 +1,7 @@
 #include "aes1rrandom.hpp"
 #include "randomxparams.hpp"
 #include "scratchpad.hpp"
+#include "sse.hpp"
 
 namespace modernRX {
     Scratchpad::Scratchpad(std::span<std::byte, 64> seed) :
@@ -10,12 +11,22 @@ namespace modernRX {
         // Last 64 bytes of the scratchpad memory are now the new seed.
     }
 
-    uint64_t Scratchpad::read(const uint64_t offset) const noexcept {
-        return *reinterpret_cast<const uint64_t*>(&memory[offset]);
+    template uint64_t Scratchpad::read<uint64_t>(const uint64_t offset) const noexcept;
+    template intrinsics::xmm128d_t Scratchpad::read<intrinsics::xmm128d_t>(const uint64_t offset) const noexcept;
+
+    template<typename T>
+    T Scratchpad::read(const uint64_t offset) const noexcept {
+        if constexpr (std::is_same_v<T, uint64_t>) {
+            return *reinterpret_cast<const uint64_t*>(&memory[offset]);
+        } else if constexpr (std::is_same_v<T, intrinsics::xmm128d_t>) {
+            return intrinsics::sse::vcvtpi32<double>(&memory[offset]);
+        } else {
+            static_assert(!sizeof(T), "Ret must be either uint64_t or intrinsics::xmm128d_t");
+        }
     }
 
-    void Scratchpad::write(const uint64_t offset, const uint64_t value) noexcept {
-        std::memcpy(&memory[offset], &value, sizeof(uint64_t));
+    void Scratchpad::write(const uint64_t offset, const void* value, const size_t size) noexcept {
+        std::memcpy(&memory[offset], value, size);
     }
 
     const std::byte* Scratchpad::data() const noexcept {

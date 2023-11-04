@@ -42,9 +42,6 @@ namespace modernRX {
         // Performs step 4 defined by: https://github.com/tevador/RandomX/blob/master/doc/specs.md#462-loop-execution
         void executeProgram(ProgramContext& ctx, const RxProgram& program);
 
-        // Executes all instructions in RandomX program (performs single iteration of program).
-        void executeInstruction(ProgramContext& ctx, const RxInstruction& instr);
-
         // Finalizes registers after RandomX program execution.
         // Performs steps 5-12 defined by: https://github.com/tevador/RandomX/blob/master/doc/specs.md#462-loop-execution
         void finalizeRegisters(ProgramContext& ctx);

@@ -1,5 +1,13 @@
 ## modernRX - Changelog
 
+### v0.5.1 - 05.11.2023:
+
+Hash calculation optimization (interpreter improvement).
+All optimization decisions made in this version:
+* change switch-based to subroutine-based interpreter
+* prefetch dataset items
+* precalculate some instruction values
+
 ### v0.5.0 - 30.10.2023:
 
 Hash calculation optimization with AES instructions.

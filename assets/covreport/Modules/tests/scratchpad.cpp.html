@@ -12,6 +12,7 @@
 #include "aes1rrandom.hpp"
 #include "randomxparams.hpp"
 #include "scratchpad.hpp"
+#include "sse.hpp"
 
 namespace modernRX {
     Scratchpad::Scratchpad(std::span&lt;std::byte, 64&gt; seed) :
@@ -21,12 +22,22 @@ namespace modernRX {
         // Last 64 bytes of the scratchpad memory are now the new seed.
 <span style = "background-color:#dfd">    }</span>
 
-<span style = "background-color:#dfd">    uint64_t Scratchpad::read(const uint64_t offset) const noexcept {
-        return *reinterpret_cast&lt;const uint64_t*&gt;(&amp;memory[offset]);
-    }</span>
+    template uint64_t Scratchpad::read&lt;uint64_t&gt;(const uint64_t offset) const noexcept;
+    template intrinsics::xmm128d_t Scratchpad::read&lt;intrinsics::xmm128d_t&gt;(const uint64_t offset) const noexcept;
 
-<span style = "background-color:#dfd">    void Scratchpad::write(const uint64_t offset, const uint64_t value) noexcept {
-        std::memcpy(&amp;memory[offset], &amp;value, sizeof(uint64_t));
+    template&lt;typename T&gt;
+<span style = "background-color:#dfd">    T Scratchpad::read(const uint64_t offset) const noexcept {</span>
+        if constexpr (std::is_same_v&lt;T, uint64_t&gt;) {
+<span style = "background-color:#dfd">            return *reinterpret_cast&lt;const uint64_t*&gt;(&amp;memory[offset]);</span>
+        } else if constexpr (std::is_same_v&lt;T, intrinsics::xmm128d_t&gt;) {
+<span style = "background-color:#dfd">            return intrinsics::sse::vcvtpi32&lt;double&gt;(&amp;memory[offset]);</span>
+        } else {
+            static_assert(!sizeof(T), "Ret must be either uint64_t or intrinsics::xmm128d_t");
+        }
+<span style = "background-color:#dfd">    }</span>
+
+<span style = "background-color:#dfd">    void Scratchpad::write(const uint64_t offset, const void* value, const size_t size) noexcept {
+        std::memcpy(&amp;memory[offset], value, size);
     }</span>
 
 <span style = "background-color:#dfd">    const std::byte* Scratchpad::data() const noexcept {
