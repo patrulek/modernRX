@@ -1,14 +1,18 @@
+#include <algorithm>
 #include <array>
 #include <utility>
 
 #include "aes1rhash.hpp"
 #include "aes4rrandom.hpp"
+#include "assembler.hpp"
 #include "bytecode.hpp"
 #include "interpreter.hpp"
 #include "intrinsics.hpp"
 #include "randomxparams.hpp"
 #include "reciprocal.hpp"
+#include "virtualmem.hpp"
 
+#include <print>
 
 namespace modernRX {
     namespace {
@@ -17,12 +21,11 @@ namespace modernRX {
         constexpr uint32_t Scratchpad_L1_Mask{ (Rx_Scratchpad_L1_Size - 1) & ~7 }; // L1 cache 8-byte alignment mask.
         constexpr uint32_t Scratchpad_L2_Mask{ (Rx_Scratchpad_L2_Size - 1) & ~7 }; // L2 cache 8-byte alignment mask.
         constexpr uint32_t Scratchpad_L3_Mask{ (Rx_Scratchpad_L3_Size - 1) & ~7 }; // L3 cache 8-byte alignment mask.
+        constexpr uint32_t Scratchpad_L3_Mask64{ (Rx_Scratchpad_L3_Size - 1) & ~63 }; // L3 cache 64-byte alignment mask.
 
         constexpr uint64_t Mantissa_Size{ 52 };
         constexpr uint64_t Cache_Line_Size{ sizeof(DatasetItem) };
         constexpr uint64_t Cache_Line_Align_Mask{ (Rx_Dataset_Base_Size - 1) & ~(Cache_Line_Size - 1) }; // Dataset 64-byte alignment mask.
-
-        using OpImpl = void(*)(ProgramContext&, const RxInstruction&, Scratchpad&);
 
         // Holds representation of register file used by interpreter during program execution.
         // https://github.com/tevador/RandomX/blob/master/doc/specs.md#43-registers
@@ -93,20 +96,13 @@ namespace modernRX {
     // Holds RandomX program context: registers, memory addresses, configuration, etc.
     struct ProgramContext {
         // Initializes program context with given program.
-        // Updates program's instructions src and dst registers.
-        [[nodiscard]] explicit ProgramContext(RxProgram& program) noexcept;
+        [[nodiscard]] explicit ProgramContext(const RxProgram& program);
 
         RegisterFile rf{};
+        ProgramConfiguration cfg{};
         MemoryRegisters mem{};
         MemoryRegisters sp_addr{};
-        ProgramConfiguration cfg{};
-        std::array<int32_t, Int_Register_Count> reg_usage{};
-        uint32_t ic{ 0 };
         uint32_t iter{ 0 };
-        std::array<int16_t, Rx_Program_Size> branch_target{};
-        std::array<OpImpl, Rx_Program_Size> op_impl{};
-        std::array<uint64_t, Rx_Program_Size> rcp{};
-        std::array<uint32_t, Rx_Program_Size> extra{};
     };
 
     Interpreter::Interpreter(std::span<std::byte, 64> seed, const_span<DatasetItem> dataset)
@@ -121,14 +117,15 @@ namespace modernRX {
 
         for (uint32_t i = 0; i < Rx_Program_Count - 1; ++i) {
             auto [ctx, program] { generateProgram() };
+            compileProgram(program);
             executeProgram(ctx, program);
             blake2b::hash(seed, span_cast<std::byte, sizeof(ctx.rf)>(ctx.rf));
         }
 
         auto [ctx, program] { generateProgram() };
+        compileProgram(program);
         executeProgram(ctx, program);
         aes::hash1R(span_cast<std::byte, sizeof(ctx.rf.a)>(ctx.rf.a), span_cast<std::byte, Rx_Scratchpad_L3_Size>(scratchpad.data()));
-
         std::array<std::byte, 32> output{};
         blake2b::hash(output, span_cast<std::byte>(ctx.rf));
 
@@ -149,30 +146,20 @@ namespace modernRX {
 
         // https://github.com/tevador/RandomX/blob/master/doc/specs.md#462-loop-execution
         for (ctx.iter = 0; ctx.iter < Rx_Program_Iterations; ++ctx.iter) {
-            // This performs steps: 1-3
+            // Steps 2-3.
             initializeRegisters(ctx);
 
-            // This loop performs step: 4
-            for (ctx.ic = 0; ctx.ic < program.instructions.size(); ++ctx.ic) {
-                const auto& instr{ program.instructions[ctx.ic] };
-                ctx.op_impl[ctx.ic](ctx, instr, scratchpad);
-            }
+            // Step 4.
+            (*jit)(reinterpret_cast<uintptr_t>(&ctx.rf), reinterpret_cast<uintptr_t>(&ctx.cfg.e_mask), reinterpret_cast<uintptr_t>(scratchpad.data()));
 
-            // This performs steps: 5-12
+            // Steps 1 and 5-12.
             finalizeRegisters(ctx);
+
+            // Step 13. - increase iteration counter.
         }
     }
 
     void Interpreter::initializeRegisters(ProgramContext& ctx) {
-        constexpr uint32_t Scratchpad_L3_Mask64{ (Rx_Scratchpad_L3_Size - 1) & ~63 }; // L3 cache 64-byte alignment mask.
-
-        // Step 1.
-        const uint64_t spMix{ ctx.rf.r[ctx.cfg.read_reg[0]] ^ ctx.rf.r[ctx.cfg.read_reg[1]] };
-        ctx.sp_addr.mx ^= spMix;
-        ctx.sp_addr.mx &= Scratchpad_L3_Mask64;
-        ctx.sp_addr.ma ^= spMix >> 32;
-        ctx.sp_addr.ma &= Scratchpad_L3_Mask64;
-
         // Step 2.
         for (uint32_t i = 0; i < Int_Register_Count; ++i) {
             const auto offset{ ctx.sp_addr.mx + 8 * i };
@@ -196,266 +183,27 @@ namespace modernRX {
         }
     }
 
-    // Read scratchpad value.
-    template <typename T>
-    static T ReadScratchpadValue(const ProgramContext& ctx, const RxInstruction& instr, Scratchpad& scratchpad) {
-        const auto imm{ static_cast<int32_t>(instr.imm32) }; // Two's complement sign extension.
-
-        // L3 cache is used only for integer instructions.
-        if constexpr (std::is_same_v<T, uint64_t>) {
-            if (instr.src_register == instr.dst_register) {
-                return scratchpad.read<T>(static_cast<uint64_t>(imm) & Scratchpad_L3_Mask);
-            }
-        }
-
-        const auto mem_mask{ instr.modMask() ? Scratchpad_L1_Mask : Scratchpad_L2_Mask };
-        const auto src_value{ ctx.rf.r[instr.src_register] };
-
-        return scratchpad.read<T>((src_value + imm) & mem_mask);
-    };
-
-    static void nopImpl(ProgramContext& ctx, const RxInstruction& instr, Scratchpad& scratchpad) {
-        // Do nothing.
-    }
-
-    static void callnextImpl(ProgramContext& ctx, const RxInstruction& instr, Scratchpad& scratchpad) {
-        ++ctx.ic;
-        const auto& next_instr{ &instr + 1 };
-        ctx.op_impl[ctx.ic](ctx, *next_instr, scratchpad);
-    }
-
-    // Without shift, without imm
-    static void iaddrsImpl1(ProgramContext& ctx, const RxInstruction& instr, Scratchpad& scratchpad) {
-        const uint64_t r_src_value{ ctx.rf.r[instr.src_register] }; // Integer register source value.
-        ctx.rf.r[instr.dst_register] += r_src_value;
-    }
-
-    // Wihout shift, with imm
-    static void iaddrsImpl2(ProgramContext& ctx, const RxInstruction& instr, Scratchpad& scratchpad) {
-        const uint64_t r_src_value{ ctx.rf.r[instr.src_register] }; // Integer register source value.
-        ctx.rf.r[instr.dst_register] += r_src_value + static_cast<int32_t>(instr.imm32);
-    }
-
-    // With shift, without imm
-    static void iaddrsImpl3(ProgramContext& ctx, const RxInstruction& instr, Scratchpad& scratchpad) {
-        const uint64_t r_src_value{ ctx.rf.r[instr.src_register] }; // Integer register source value.
-        ctx.rf.r[instr.dst_register] += (r_src_value << instr.modShift());
-    }
-
-    // With shift, with imm
-    static void iaddrsImpl4(ProgramContext& ctx, const RxInstruction& instr, Scratchpad& scratchpad) {
-        const uint64_t r_src_value{ ctx.rf.r[instr.src_register] }; // Integer register source value.
-        ctx.rf.r[instr.dst_register] += (r_src_value << instr.modShift()) + static_cast<int32_t>(instr.imm32);
-    }
-
-    static void iaddmImpl(ProgramContext& ctx, const RxInstruction& instr, Scratchpad& scratchpad) {
-        ctx.rf.r[instr.dst_register] += ReadScratchpadValue<uint64_t>(ctx, instr, scratchpad);
-    } 
-
-    // with imm
-    static void isubrImpl1(ProgramContext& ctx, const RxInstruction& instr, Scratchpad& scratchpad) {
-        ctx.rf.r[instr.dst_register] -= static_cast<int32_t>(instr.imm32);
-    }
-
-    // with src
-    static void isubrImpl2(ProgramContext& ctx, const RxInstruction& instr, Scratchpad& scratchpad) {
-        const uint64_t r_src_value{ ctx.rf.r[instr.src_register] }; // Integer register source value.
-        ctx.rf.r[instr.dst_register] -= r_src_value;
-    }
-
-    static void isubmImpl(ProgramContext& ctx, const RxInstruction& instr, Scratchpad& scratchpad) {
-        ctx.rf.r[instr.dst_register] -= ReadScratchpadValue<uint64_t>(ctx, instr, scratchpad);
-    }
-
-    // with imm
-    static void imulrImpl1(ProgramContext& ctx, const RxInstruction& instr, Scratchpad& scratchpad) {
-        ctx.rf.r[instr.dst_register] *= static_cast<int32_t>(instr.imm32);
-    }
-
-    // with src
-    static void imulrImpl2(ProgramContext& ctx, const RxInstruction& instr, Scratchpad& scratchpad) {
-        const uint64_t r_src_value{ ctx.rf.r[instr.src_register] }; // Integer register source value.
-        ctx.rf.r[instr.dst_register] *= r_src_value;
-    }
-
-    static void imulmImpl(ProgramContext& ctx, const RxInstruction& instr, Scratchpad& scratchpad) {
-        ctx.rf.r[instr.dst_register] *= ReadScratchpadValue<uint64_t>(ctx, instr, scratchpad);
-    }
-
-    static void imulhrImpl(ProgramContext& ctx, const RxInstruction& instr, Scratchpad& scratchpad) {
-        const uint64_t r_src_value{ ctx.rf.r[instr.src_register] }; // Integer register source value.
-        ctx.rf.r[instr.dst_register] = intrinsics::umulh(ctx.rf.r[instr.dst_register], r_src_value);
-    }
-
-    static void imulhmImpl(ProgramContext& ctx, const RxInstruction& instr, Scratchpad& scratchpad) {
-        ctx.rf.r[instr.dst_register] = intrinsics::umulh(ctx.rf.r[instr.dst_register], ReadScratchpadValue<uint64_t>(ctx, instr, scratchpad));
-    }
-
-    static void ismulhrImpl(ProgramContext& ctx, const RxInstruction& instr, Scratchpad& scratchpad) {
-        const uint64_t r_src_value{ ctx.rf.r[instr.src_register] }; // Integer register source value.
-        ctx.rf.r[instr.dst_register] = intrinsics::smulh(ctx.rf.r[instr.dst_register], r_src_value);
-    }
-
-    static void ismulhmImpl(ProgramContext& ctx, const RxInstruction& instr, Scratchpad& scratchpad) {
-        ctx.rf.r[instr.dst_register] = intrinsics::smulh(ctx.rf.r[instr.dst_register], ReadScratchpadValue<uint64_t>(ctx, instr, scratchpad));
-    }
-
-    static void imulrcpImpl(ProgramContext& ctx, const RxInstruction& instr, Scratchpad& scratchpad) {
-        ctx.rf.r[instr.dst_register] *= ctx.rcp[ctx.ic];
-    }
-
-    static void inegrImpl(ProgramContext& ctx, const RxInstruction& instr, Scratchpad& scratchpad) {
-        ctx.rf.r[instr.dst_register] = ~(ctx.rf.r[instr.dst_register]) + 1; // Two's complement negative.
-    }
-
-    // with imm
-    static void ixorrImpl1(ProgramContext& ctx, const RxInstruction& instr, Scratchpad& scratchpad) {
-        ctx.rf.r[instr.dst_register] ^= static_cast<int32_t>(instr.imm32);
-    }
-
-    // with src
-    static void ixorrImpl2(ProgramContext& ctx, const RxInstruction& instr, Scratchpad& scratchpad) {
-        const uint64_t r_src_value{ ctx.rf.r[instr.src_register] }; // Integer register source value.
-        ctx.rf.r[instr.dst_register] ^= r_src_value;
-    }
-
-    static void ixormImpl(ProgramContext& ctx, const RxInstruction& instr, Scratchpad& scratchpad) {
-        ctx.rf.r[instr.dst_register] ^= ReadScratchpadValue<uint64_t>(ctx, instr, scratchpad);
-    }
-
-    // with imm
-    static void irorrImpl1(ProgramContext& ctx, const RxInstruction& instr, Scratchpad& scratchpad) {
-        ctx.rf.r[instr.dst_register] = std::rotr(ctx.rf.r[instr.dst_register], instr.imm32);
-    }
-
-    // with src
-    static void irorrImpl2(ProgramContext& ctx, const RxInstruction& instr, Scratchpad& scratchpad) {
-        const uint64_t r_src_value{ ctx.rf.r[instr.src_register] }; // Integer register source value.
-        ctx.rf.r[instr.dst_register] = std::rotr(ctx.rf.r[instr.dst_register], r_src_value % 64);
-    }
-
-    // with imm
-    static void irolrImpl1(ProgramContext& ctx, const RxInstruction& instr, Scratchpad& scratchpad) {
-        ctx.rf.r[instr.dst_register] = std::rotl(ctx.rf.r[instr.dst_register], instr.imm32);
-    }
-
-    // with src
-    static void irolrImpl2(ProgramContext& ctx, const RxInstruction& instr, Scratchpad& scratchpad) {
-        const uint64_t r_src_value{ ctx.rf.r[instr.src_register] }; // Integer register source value.
-        ctx.rf.r[instr.dst_register] = std::rotl(ctx.rf.r[instr.dst_register], r_src_value % 64);
-    }
-
-    static void iswaprImpl(ProgramContext& ctx, const RxInstruction& instr, Scratchpad& scratchpad) {
-        std::swap(ctx.rf.r[instr.src_register], ctx.rf.r[instr.dst_register]);
-    }
-
-    // swap f
-    static void fswaprImpl1(ProgramContext& ctx, const RxInstruction& instr, Scratchpad& scratchpad) {
-        const auto f_dst_register{ instr.dst_register % Float_Register_Count };
-        ctx.rf.f[f_dst_register] = intrinsics::sse::vswap<double>(ctx.rf.f[f_dst_register]);
-    }
-
-    // swap e
-    static void fswaprImpl2(ProgramContext& ctx, const RxInstruction& instr, Scratchpad& scratchpad) {
-        const auto f_dst_register{ instr.dst_register % Float_Register_Count };
-        ctx.rf.e[f_dst_register] = intrinsics::sse::vswap<double>(ctx.rf.e[f_dst_register]);
-    }
-
-    static void faddrImpl(ProgramContext& ctx, const RxInstruction& instr, Scratchpad& scratchpad) {
-        const auto f_src_register{ instr.src_register % Float_Register_Count };
-        const auto f_dst_register{ instr.dst_register % Float_Register_Count };
-        ctx.rf.f[f_dst_register] = intrinsics::sse::vadd<double>(ctx.rf.f[f_dst_register], ctx.rf.a[f_src_register]);
-    }
-
-    static void faddmImpl(ProgramContext& ctx, const RxInstruction& instr, Scratchpad& scratchpad) {
-        const auto f_dst_register{ instr.dst_register % Float_Register_Count };
-        ctx.rf.f[f_dst_register] = intrinsics::sse::vadd<double>(ctx.rf.f[f_dst_register], ReadScratchpadValue<intrinsics::xmm128d_t>(ctx, instr, scratchpad));
-    }
-
-    static void fsubrImpl(ProgramContext& ctx, const RxInstruction& instr, Scratchpad& scratchpad) {
-        const auto f_src_register{ instr.src_register % Float_Register_Count };
-        const auto f_dst_register{ instr.dst_register % Float_Register_Count };
-        ctx.rf.f[f_dst_register] = intrinsics::sse::vsub<double>(ctx.rf.f[f_dst_register], ctx.rf.a[f_src_register]);
-    }
-
-    static void fsubmImpl(ProgramContext& ctx, const RxInstruction& instr, Scratchpad& scratchpad) {
-        const auto f_dst_register{ instr.dst_register % Float_Register_Count };
-        ctx.rf.f[f_dst_register] = intrinsics::sse::vsub<double>(ctx.rf.f[f_dst_register], ReadScratchpadValue<intrinsics::xmm128d_t>(ctx, instr, scratchpad));
-    }
-
-    static void fscalrImpl(ProgramContext& ctx, const RxInstruction& instr, Scratchpad& scratchpad) {
-        const auto f_dst_register{ instr.dst_register % Float_Register_Count };
-        constexpr intrinsics::xmm128d_t Mask{
-            std::bit_cast<double>(0x80F0000000000000),
-            std::bit_cast<double>(0x80F0000000000000),
-        };
-        ctx.rf.f[f_dst_register] = intrinsics::sse::vxor<double>(ctx.rf.f[f_dst_register], Mask);
-    }
-
-    static void fmulrImpl(ProgramContext& ctx, const RxInstruction& instr, Scratchpad& scratchpad) {
-        const auto f_src_register{ instr.src_register % Float_Register_Count };
-        const auto f_dst_register{ instr.dst_register % Float_Register_Count };
-        ctx.rf.e[f_dst_register] = intrinsics::sse::vmul<double>(ctx.rf.e[f_dst_register], ctx.rf.a[f_src_register]);
-    }
-
-    static void fdivmImpl(ProgramContext& ctx, const RxInstruction& instr, Scratchpad& scratchpad) {
-        const auto f_src_register{ instr.src_register % Float_Register_Count };
-        const auto f_dst_register{ instr.dst_register % Float_Register_Count };
-        const auto f_src_value{ convertFloatRegister(ReadScratchpadValue<intrinsics::xmm128d_t>(ctx, instr, scratchpad), ctx.cfg.e_mask) };
-        ctx.rf.e[f_dst_register] = intrinsics::sse::vdiv<double>(ctx.rf.e[f_dst_register], f_src_value);
-    }
-
-    static void fsqrtrImpl(ProgramContext& ctx, const RxInstruction& instr, Scratchpad& scratchpad) {
-        const auto f_dst_register{ instr.dst_register % Float_Register_Count };
-        ctx.rf.e[f_dst_register] = intrinsics::sse::vsqrt<double>(ctx.rf.e[f_dst_register]);
-    }
-
-    static void cbranchImpl(ProgramContext& ctx, const RxInstruction& instr, Scratchpad& scratchpad) {
-        ctx.rf.r[instr.dst_register] += ctx.rcp[ctx.ic];
-        if ((ctx.rf.r[instr.dst_register] & ctx.extra[ctx.ic]) == 0) {
-            ctx.ic = ctx.branch_target[ctx.ic];
-        }
-    }
-
-    static void istoreImpl(ProgramContext& ctx, const RxInstruction& instr, Scratchpad& scratchpad) {
-        const uint64_t r_src_value{ ctx.rf.r[instr.src_register] }; // Integer register source value.
-        constexpr uint32_t L3_Store_Condition{ 14 };
-        const auto imm{ static_cast<int32_t>(instr.imm32) };
-
-        auto mem_mask{ Scratchpad_L3_Mask };
-        if (instr.modCond() < L3_Store_Condition) {
-            mem_mask = instr.modMask() ? Scratchpad_L1_Mask : Scratchpad_L2_Mask;
-        }
-
-        const auto store_offset{ (ctx.rf.r[instr.dst_register] + imm) & mem_mask };
-        scratchpad.write(store_offset, &r_src_value, sizeof(r_src_value));
-    }
-
-    static void cfroundImpl(ProgramContext& ctx, const RxInstruction& instr, Scratchpad& scratchpad) {
-        const auto f_dst_register{ instr.dst_register % Float_Register_Count };
-        const uint64_t r_src_value{ ctx.rf.r[instr.src_register] }; // Integer register source value.
-        intrinsics::sse::setFloatRoundingMode(std::rotr(r_src_value, instr.imm32) % intrinsics::sse::Floating_Round_Modes);
-    }
-
     void Interpreter::finalizeRegisters(ProgramContext& ctx) {
+        // Step 5.
         ctx.mem.mx ^= ctx.rf.r[ctx.cfg.read_reg[2]] ^ ctx.rf.r[ctx.cfg.read_reg[3]];
         ctx.mem.mx &= Cache_Line_Align_Mask;
+
+        // Step 6.
         intrinsics::prefetch<intrinsics::PrefetchMode::NTA, void>(dataset[(ctx.cfg.dataset_offset + ctx.mem.mx) / Cache_Line_Size].data());
+
+        // Step 7
         const auto dt_index{ (ctx.cfg.dataset_offset + ctx.mem.ma) / Cache_Line_Size };
         DatasetItem dt_item{ dataset[dt_index] };
-        // Step 5.
 
-        // Step 6. - omitted
-        // Step 7. and step 9.
         // Step 8.
         std::swap(ctx.mem.mx, ctx.mem.ma);
 
+        // Step 9.
         for (uint32_t i = 0; i < Int_Register_Count; ++i) {
             ctx.rf.r[i] ^= dt_item[i];
         }
 
         scratchpad.write(ctx.sp_addr.ma, &ctx.rf.r, sizeof(ctx.rf.r));
-
 
         // Step 10.
         for (uint32_t i = 0; i < Float_Register_Count; ++i) {
@@ -465,14 +213,17 @@ namespace modernRX {
         // Step 11.
         scratchpad.write(ctx.sp_addr.mx, &ctx.rf.f, sizeof(ctx.rf.f));
 
-        // Step 12.
-        ctx.sp_addr.mx = 0;
-        ctx.sp_addr.ma = 0;
+        // Step 12. - omitted.
+        // Step 1.
+        const uint64_t spMix{ ctx.rf.r[ctx.cfg.read_reg[0]] ^ ctx.rf.r[ctx.cfg.read_reg[1]] };
+        ctx.sp_addr.mx = static_cast<uint32_t>(spMix) & Scratchpad_L3_Mask64;
+        ctx.sp_addr.ma = static_cast<uint32_t>(spMix >> 32) & Scratchpad_L3_Mask64;
     }
 
-    ProgramContext::ProgramContext(RxProgram& program) noexcept {
+
+    ProgramContext::ProgramContext(const RxProgram& program) {
         constexpr uint64_t Dataset_Extra_Items{ Rx_Dataset_Extra_Size / sizeof(DatasetItem) };
-        const auto entropy{ program.entropy };
+        const auto& entropy{ program.entropy };
         
         // "A-group" register initialization: https://github.com/tevador/RandomX/blob/master/doc/specs.md#452-group-a-register-initialization
         rf.a[0] = { getSmallPositiveFloat(entropy[0]), getSmallPositiveFloat(entropy[1]) }; 
@@ -483,10 +234,6 @@ namespace modernRX {
         // Memory registers initialization: https://github.com/tevador/RandomX/blob/master/doc/specs.md#453-memory-registers
         mem.ma = static_cast<uint32_t>(entropy[8] & Cache_Line_Align_Mask);
         mem.mx = static_cast<uint32_t>(entropy[10]);
-
-        // Scratchpad address registers initialization: https://github.com/tevador/RandomX/blob/master/doc/specs.md#461-initialization
-        sp_addr.ma = mem.ma;
-        sp_addr.mx = mem.mx;
 
         // Address registers initialization: https://github.com/tevador/RandomX/blob/master/doc/specs.md#454-address-registers
         for (uint32_t i = 0; i < cfg.read_reg.size(); ++i) {
@@ -500,213 +247,414 @@ namespace modernRX {
         cfg.e_mask[0] = getFloatRegisterMask(entropy[14]);
         cfg.e_mask[1] = getFloatRegisterMask(entropy[15]);
 
+        // Scratchpad address registers initialization: https://github.com/tevador/RandomX/blob/master/doc/specs.md#461-initialization
+        const uint64_t spMix{ rf.r[cfg.read_reg[0]] ^ rf.r[cfg.read_reg[1]] };
+        sp_addr.ma = (mem.ma ^ static_cast<uint32_t>(spMix)) & Scratchpad_L3_Mask64;
+        sp_addr.mx = (mem.mx ^ static_cast<uint32_t>(spMix >> 32)) & Scratchpad_L3_Mask64;
+    }
+
+    void Interpreter::compileProgram(const RxProgram& program) {
+        using namespace assembler;
+        using namespace assembler::registers;
+
+        Context asmb(16 * 1024);
+
+        asmb.push(RBP, RSP, RBX, RSI, RDI, R12, R13, R14, R15, XMM6, XMM7, XMM8, XMM9, XMM10, XMM11, XMM12, XMM13, XMM14, XMM15);
+
+        // Scratchpad address passed in R8 register, move to RSI.
+        asmb.mov(RSI, R08);
+
+        // Regfile address passed in RCX register, move to RBX.
+        asmb.mov(RBX, RCX);
+
+        // e_mask address passed in RDX registerm move to RDI.
+        asmb.mov(RDI, RDX);
+
+        // Set Mantissa_Mask in XMM15 register.
+        constexpr uint64_t Mantissa_Mask{ 0x00FF'FFFF'FFFF'FFFF };
+        const auto mantissa_mask_reg{ XMM15 };
+        asmb.vpbroadcastq(mantissa_mask_reg, Mantissa_Mask);
+
+        // Set Scale_Mask in XMM14 register.
+        constexpr uint64_t Scale_Mask{ 0x80F0'0000'0000'0000 };
+        const auto scale_mask_reg{ XMM14 };
+        asmb.vpbroadcastq(scale_mask_reg, Scale_Mask);
+
+        std::array<int32_t, Int_Register_Count> reg_usage{};
         reg_usage.fill(-1);
-        
+
+        // Load all registers from ctx object.
+        for (int i = 0; i < 8; ++i) {
+            asmb.mov(Register::GPR(8 + i), RCX[i * 8]);
+
+            if (i < 4) {
+                asmb.vmovdqu(Register::XMM(i), RCX[64 + i * 16]); // 'f' registers.
+                asmb.vmovdqu(Register::XMM(i + 4), RCX[128 + i * 16]); // 'e' registers.
+                asmb.vmovdqu(Register::XMM(i + 8), RCX[192 + i * 16]); // 'a' registers.
+            }
+        }
+
+        const auto tmp_xmm_reg{ XMM12 };
+        const auto tmp_xmm_reg2{ XMM13 };
+
+        // Compile all instructions.
         for (uint32_t i = 0; i < program.instructions.size(); ++i) {
+            // Save current program counter to make it jumpable to any instruction.
+            asmb.label(std::to_string(i), false);
+
             // Getting registers indexes. Modulo is used to handle register overflow.
-            program.instructions[i].dst_register %= Int_Register_Count;
-            program.instructions[i].src_register %= Int_Register_Count;
+            const RxInstruction& instr{ program.instructions[i] };
 
-            const auto dst_register{ program.instructions[i].dst_register };
-            const auto src_register{ program.instructions[i].src_register };
+            const auto dst_register{ instr.dst_register % Int_Register_Count };
+            const auto src_register{ instr.src_register % Int_Register_Count };
+            const auto f_dst_register{ dst_register % Float_Register_Count };
+            const auto f_src_register{ src_register % Float_Register_Count };
 
-            switch (LUT_Opcode[program.instructions[i].opcode]) { using enum Bytecode;
+            // r8-r15: integer registers.
+            const auto asmb_dst_reg{ Register::GPR(dst_register | 8) };
+            const auto asmb_src_reg{ Register::GPR(src_register | 8) };
+
+            // xmm0-xmm3: float 'f' registers.
+            const auto f_asmb_dst_reg{ Register::XMM(f_dst_register) };
+            const auto f_asmb_src_reg{ Register::XMM(f_src_register) };
+
+            // xmm4-xmm7: float 'e' registers.
+            const auto e_asmb_dst_reg{ Register::XMM(f_dst_register + 4) };
+            const auto e_asmb_src_reg{ Register::XMM(f_src_register + 4) };
+
+            // xmm8-xmm11: float 'a' registers.
+            const auto a_asmb_dst_reg{ Register::XMM(f_dst_register | 8) };
+            const auto a_asmb_src_reg{ Register::XMM(f_src_register | 8) };
+
+            // Scratchpad memory mask.
+            auto mem_mask{ instr.modMask() ? Scratchpad_L1_Mask : Scratchpad_L2_Mask };
+                                    
+            switch (LUT_Opcode[instr.opcode]) { using enum Bytecode;
             case IADD_RS:
             {
                 constexpr uint8_t Displacement_Reg_Idx{ 5 };
-                reg_usage[dst_register] = i;
                 const bool with_imm{ dst_register == Displacement_Reg_Idx };
-                const bool with_shift{ program.instructions[i].modShift() != 0 };
+                const auto offset = with_imm ? instr.imm32 : 0;
 
-                if (!with_shift && !with_imm) {
-                    op_impl[i] = iaddrsImpl1;
-                } else if (!with_shift && with_imm) {
-                    op_impl[i] = iaddrsImpl2;
-                } else if (with_shift && !with_imm) {
-                    op_impl[i] = iaddrsImpl3;
-                } else {
-                    op_impl[i] = iaddrsImpl4;
-                }
+                reg_usage[dst_register] = i;
+                asmb.lea(asmb_dst_reg, asmb_dst_reg[asmb_src_reg[offset]], 1 << instr.modShift());
                 break;
             }
             case IADD_M:
+            {
                 reg_usage[dst_register] = i;
-                op_impl[i] = iaddmImpl;
+
+                if (dst_register == src_register) {
+                    const auto offset{ instr.imm32 & Scratchpad_L3_Mask };
+                    asmb.add(asmb_dst_reg, RSI[offset]);
+                } else {
+                    asmb.lea(RAX, asmb_src_reg[instr.imm32]);
+                    asmb.and_(RAX, mem_mask);
+                    asmb.add(asmb_dst_reg, RSI[RAX[0]]);
+                }
+
                 break;
+            }
             case ISUB_R:
             {
                 reg_usage[dst_register] = i;
-                const bool with_imm{ dst_register == src_register };
-                if (with_imm) {
-                    op_impl[i] = isubrImpl1;
+
+                if (dst_register == src_register) {
+                    asmb.sub(asmb_dst_reg, static_cast<int32_t>(instr.imm32));
                 } else {
-                    op_impl[i] = isubrImpl2;
+                    asmb.sub(asmb_dst_reg, asmb_src_reg);
                 }
+
                 break;
             }
             case ISUB_M:
+            {
                 reg_usage[dst_register] = i;
-                op_impl[i] = isubmImpl;
+
+                if (dst_register == src_register) {
+                    const auto offset{ instr.imm32 & Scratchpad_L3_Mask };
+                    asmb.sub(asmb_dst_reg, RSI[offset]);
+                } else {
+                    asmb.lea(RAX, asmb_src_reg[instr.imm32]);
+                    asmb.and_(RAX, mem_mask);
+                    asmb.sub(asmb_dst_reg, RSI[RAX[0]]);
+                }
+
                 break;
+            }
             case IMUL_R:
             {
                 reg_usage[dst_register] = i;
-                const bool with_imm{ dst_register == src_register };
-                if (with_imm) {
-                    op_impl[i] = imulrImpl1;
+
+                if (dst_register == src_register) {
+                    asmb.imul(asmb_dst_reg, static_cast<int32_t>(instr.imm32));
                 } else {
-                    op_impl[i] = imulrImpl2;
+                    asmb.imul(asmb_dst_reg, asmb_src_reg);
                 }
+
                 break;
             }
             case IMUL_M:
+            {
                 reg_usage[dst_register] = i;
-                op_impl[i] = imulmImpl;
+
+                if (dst_register == src_register) {
+                    const auto offset{ instr.imm32 & Scratchpad_L3_Mask };
+                    asmb.imul(asmb_dst_reg, RSI[offset]);
+                } else {
+                    asmb.lea(RCX, asmb_src_reg[instr.imm32]);
+                    asmb.and_(RCX, mem_mask);
+                    asmb.imul(asmb_dst_reg, RSI[RCX[0]]);
+                }
+
                 break;
+            }
             case IMULH_R:
+            {
                 reg_usage[dst_register] = i;
-                op_impl[i] = imulhrImpl;
+                asmb.mulh(asmb_dst_reg, asmb_src_reg);
+
                 break;
+            }
             case IMULH_M:
+            {
                 reg_usage[dst_register] = i;
-                op_impl[i] = imulhmImpl;
+
+                if (dst_register == src_register) {
+                    const auto offset{ instr.imm32 & Scratchpad_L3_Mask };
+                    asmb.mulh(asmb_dst_reg, RSI[offset]);
+                } else {
+                    asmb.lea(RCX, asmb_src_reg[instr.imm32]);
+                    asmb.and_(RCX, mem_mask);
+                    asmb.mulh(asmb_dst_reg, RSI[RCX[0]]);
+                }
+
                 break;
+            }
             case ISMULH_R:
+            {
                 reg_usage[dst_register] = i;
-                op_impl[i] = ismulhrImpl;
+                asmb.imulh(asmb_dst_reg, asmb_src_reg);
+
                 break;
+            }
             case ISMULH_M:
+            {
                 reg_usage[dst_register] = i;
-                op_impl[i] = ismulhmImpl;
+
+                if (dst_register == src_register) {
+                    const auto offset{ instr.imm32 & Scratchpad_L3_Mask };
+                    asmb.imulh(asmb_dst_reg, RSI[offset]);
+                } else {
+                    asmb.lea(RCX, asmb_src_reg[instr.imm32]);
+                    asmb.and_(RCX, mem_mask);
+                    asmb.imulh(asmb_dst_reg, RSI[RCX[0]]);
+                }
+
                 break;
+            }
             case INEG_R:
+            {
                 reg_usage[dst_register] = i;
-                op_impl[i] = inegrImpl;
+                asmb.neg(asmb_dst_reg);
+
                 break;
+            }
             case IXOR_R:
             {
                 reg_usage[dst_register] = i;
-                const bool with_imm{ dst_register == src_register };
-                if (with_imm) {
-                    op_impl[i] = ixorrImpl1;
+
+                if (dst_register == src_register) {
+                    asmb.xor_(asmb_dst_reg, static_cast<int32_t>(instr.imm32));
                 } else {
-                    op_impl[i] = ixorrImpl2;
+                    asmb.xor_(asmb_dst_reg, asmb_src_reg);
                 }
+
                 break;
             }
             case IXOR_M:
+            {
                 reg_usage[dst_register] = i;
-                op_impl[i] = ixormImpl;
+
+                if (dst_register == src_register) {
+                    const auto offset{ instr.imm32 & Scratchpad_L3_Mask };
+                    asmb.xor_(asmb_dst_reg, RSI[offset]);
+                } else {
+                    asmb.lea(RAX, asmb_src_reg[instr.imm32]);
+                    asmb.and_(RAX, mem_mask);
+                    asmb.xor_(asmb_dst_reg, RSI[RAX[0]]);
+                }
+
                 break;
+            }
             case IROR_R:
             {
-                program.instructions[i].imm32 %= 64;
                 reg_usage[dst_register] = i;
-                const bool with_imm{ dst_register == src_register };
-                if (with_imm) {
-                    op_impl[i] = irorrImpl1;
+
+                if (dst_register == src_register) {
+                    asmb.ror(asmb_dst_reg, instr.imm32 % 64);    
                 } else {
-                    op_impl[i] = irorrImpl2;
+                    asmb.ror(asmb_dst_reg, asmb_src_reg);
                 }
+
                 break;
             }
             case IROL_R:
             {
-                program.instructions[i].imm32 %= 64;
                 reg_usage[dst_register] = i;
-                const bool with_imm{ dst_register == src_register };
-                if (with_imm) {
-                    op_impl[i] = irolrImpl1;
+                
+                if (dst_register == src_register) {
+                    asmb.rol(asmb_dst_reg, instr.imm32 % 64);
                 } else {
-                    op_impl[i] = irolrImpl2;
+                    asmb.rol(asmb_dst_reg, asmb_src_reg);
                 }
+
                 break;
             }
             case IMUL_RCP:
-                if (program.instructions[i].imm32 != 0 && !std::has_single_bit(program.instructions[i].imm32)) {
+            {
+                if (instr.imm32 != 0 && !std::has_single_bit(instr.imm32)) {
                     reg_usage[dst_register] = i;
-                    rcp[i] = reciprocal(program.instructions[i].imm32);
-                    op_impl[i] = imulrcpImpl;
-                } else {
-                    op_impl[i] = (i == Rx_Program_Size - 1) ? nopImpl : callnextImpl;
+                    asmb.mov(RAX, reciprocal(instr.imm32));
+                    asmb.imul(asmb_dst_reg, RAX);
                 }
-                
+
                 break;
+            }
             case ISWAP_R:
                 if (src_register != dst_register) {
                     reg_usage[dst_register] = i;
                     reg_usage[src_register] = i;
-                    op_impl[i] = iswaprImpl;
-                } else {
-                    op_impl[i] = (i == Rx_Program_Size - 1) ? nopImpl : callnextImpl;
+                    asmb.xchg(asmb_dst_reg, asmb_src_reg);
                 }
-                
+
                 break;
             case CBRANCH:
             {
                 constexpr uint32_t Condition_Mask{ (1 << Rx_Jump_Bits) - 1 };
-
-                const auto shift{ program.instructions[i].modCond() + Rx_Jump_Offset};
+                const auto shift{ instr.modCond() + Rx_Jump_Offset };
                 const auto mem_mask{ Condition_Mask << shift };
 
-                uint64_t imm{ static_cast<int32_t>(program.instructions[i].imm32) | (1ULL << shift)};
                 static_assert(Rx_Jump_Offset > 0, "Below simplification requires this assertion");
+                uint64_t imm{ static_cast<int32_t>(instr.imm32) | (1ULL << shift) };
                 imm &= ~(1ULL << (shift - 1)); // Clear the bit below the condition mask - this limits the number of successive jumps to 2.
-                rcp[i] = imm;
-                extra[i] = mem_mask;
 
-                op_impl[i] = cbranchImpl;
-                branch_target[i] = reg_usage[dst_register];
-                for (auto& reg : reg_usage) { reg = i; } // Set all registers as used.
+                asmb.add(asmb_dst_reg, static_cast<int32_t>(imm));
+                asmb.test(asmb_dst_reg, mem_mask);
+                asmb.jz(std::to_string(reg_usage[dst_register] + 1));
+                
+                reg_usage.fill(i); // Set all registers as used.
+
                 break;
             }
             case FSWAP_R:
             {
-                const bool swapf{ dst_register < Float_Register_Count };
-                if (swapf) {
-                    op_impl[i] = fswaprImpl1;
-                } else {
-                    op_impl[i] = fswaprImpl2;
-                }
+                const auto& swapreg{ dst_register < Float_Register_Count ? f_asmb_dst_reg : e_asmb_dst_reg };
+                asmb.vshufpd(swapreg, swapreg, swapreg, 0b0000'0001);
                 break;
             }
             case FADD_R:
-                op_impl[i] = faddrImpl;
+            {
+                asmb.vaddpd(f_asmb_dst_reg, a_asmb_src_reg);
                 break;
+            }
             case FADD_M:
-                op_impl[i] = faddmImpl;
+            {
+                asmb.lea(RAX, asmb_src_reg[instr.imm32]);
+                asmb.and_(RAX, mem_mask);
+                asmb.vcvtdq2pd(tmp_xmm_reg, RSI[RAX[0]]);
+                asmb.vaddpd(f_asmb_dst_reg, tmp_xmm_reg);
+                
                 break;
+            }
             case FSUB_R:
-                op_impl[i] = fsubrImpl;
+            {
+                asmb.vsubpd(f_asmb_dst_reg, a_asmb_src_reg);
                 break;
+            }
             case FSUB_M:
-                op_impl[i] = fsubmImpl;
+            {
+                asmb.lea(RAX, asmb_src_reg[instr.imm32]);
+                asmb.and_(RAX, mem_mask);
+                asmb.vcvtdq2pd(tmp_xmm_reg, RSI[RAX[0]]);
+                asmb.vsubpd(f_asmb_dst_reg, tmp_xmm_reg);
+
                 break;
+            }
             case FSCAL_R:
-                op_impl[i] = fscalrImpl;
+            {
+                asmb.vpxor(f_asmb_dst_reg, f_asmb_dst_reg, scale_mask_reg);
                 break;
+            }
             case FMUL_R:
-                op_impl[i] = fmulrImpl;
+            {
+                asmb.vmulpd(e_asmb_dst_reg, a_asmb_src_reg);
                 break;
+            }
             case FDIV_M:
-                op_impl[i] = fdivmImpl;
+            {
+                asmb.vmovdqu(tmp_xmm_reg2, RDI[0]); // Load e_mask.
+                asmb.lea(RAX, asmb_src_reg[instr.imm32]);
+                asmb.and_(RAX, mem_mask);
+                asmb.vcvtdq2pd(tmp_xmm_reg, RSI[RAX[0]]);
+                asmb.vpand(tmp_xmm_reg, tmp_xmm_reg, mantissa_mask_reg);
+                asmb.vpor(tmp_xmm_reg, tmp_xmm_reg, tmp_xmm_reg2);
+                asmb.vdivpd(e_asmb_dst_reg, tmp_xmm_reg);
+
                 break;
+            }
             case FSQRT_R:
-                op_impl[i] = fsqrtrImpl;
+            {
+                asmb.vsqrtpd(e_asmb_dst_reg);
                 break;
+            }
             case CFROUND:
             {
-                program.instructions[i].imm32 %= 64;
-                op_impl[i] = cfroundImpl;
+                asmb.mov(RAX, asmb_src_reg);
+                asmb.ror(RAX, static_cast<int32_t>(instr.imm32 % 64));
+                asmb.and_(RAX, 3);
+                asmb.rol(RAX, 13);
+                asmb.or_(RAX, intrinsics::sse::Rx_Mxcsr_Default);
+                asmb.push(RAX);
+                asmb.ldmxcsr(RSP[0]);
+                asmb.pop(RAX);
+                
                 break;
             }
             case ISTORE:
-                op_impl[i] = istoreImpl;
+            {
+                constexpr uint32_t L3_Store_Condition{ 14 };
+
+                if (instr.modCond() >= L3_Store_Condition) {
+                    mem_mask = Scratchpad_L3_Mask;
+                }
+
+                asmb.lea(RAX, asmb_dst_reg[static_cast<int32_t>(instr.imm32)]);
+                asmb.and_(RAX, mem_mask);
+                asmb.mov(RSI[RAX[0]], asmb_src_reg);
+
                 break;
+            }
             default:
                 std::unreachable();
             }
         }
+
+        // Save registers in ctx object.
+        for (int i = 0; i < 8; ++i) {
+            asmb.mov(RBX[i * 8], Register::GPR(8 + i));
+
+            if (i < 4) {
+                asmb.vmovdqu(RBX[64 + i * 16], Register::XMM(i)); // 'f' registers.
+                asmb.vmovdqu(RBX[128 + i * 16], Register::XMM(i + 4)); // 'e' registers.
+                asmb.vmovdqu(RBX[192 + i * 16], Register::XMM(i + 8)); // 'a' registers.
+            }
+        }
+
+        asmb.pop(XMM15, XMM14, XMM13, XMM12, XMM11, XMM10, XMM9, XMM8, XMM7, XMM6, R15, R14, R13, R12, RDI, RSI, RBX, RSP, RBP);
+        asmb.ret();
+
+        jit = makeExecutable<RxProgramJIT>(asmb.flushCode(), asmb.flushData());
     }
 
     namespace {

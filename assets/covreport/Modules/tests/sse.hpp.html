@@ -49,9 +49,9 @@ namespace modernRX::intrinsics::sse {
 
     // Modifies environment's rounding mode.
     // Mode limited to 4 values with modulo operation.
-<span style = "background-color:#dfd">    inline void setFloatRoundingMode(const uint32_t mode, const uint32_t csr = Rx_Mxcsr_Default) noexcept {
+    inline void setFloatRoundingMode(const uint32_t mode, const uint32_t csr = Rx_Mxcsr_Default) noexcept {
         _mm_setcsr(csr | (mode &lt;&lt; 13));
-    }</span>
+    }
 
     template&lt;typename T&gt;
 <span style = "background-color:#dfd">    [[nodiscard]] constexpr xmm&lt;T&gt; vload(const void* ptr) noexcept {</span>
@@ -93,58 +93,58 @@ namespace modernRX::intrinsics::sse {
 <span style = "background-color:#dfd">    }</span>
 
     template&lt;typename T&gt;
-<span style = "background-color:#dfd">    [[nodiscard]] constexpr xmm&lt;T&gt; vadd(const xmm&lt;T&gt; x, const xmm&lt;T&gt; y) noexcept {</span>
+    [[nodiscard]] constexpr xmm&lt;T&gt; vadd(const xmm&lt;T&gt; x, const xmm&lt;T&gt; y) noexcept {
         if constexpr (std::is_same_v&lt;T, double&gt;) {
-<span style = "background-color:#dfd">            return _mm_add_pd(x, y);</span>
+            return _mm_add_pd(x, y);
         } else {
             static_assert(!sizeof(T), "the only supported type for this operation is: float64");
         }
-<span style = "background-color:#dfd">    }</span>
+    }
 
     template&lt;typename T&gt;
-<span style = "background-color:#dfd">    [[nodiscard]] constexpr xmm&lt;T&gt; vsub(const xmm&lt;T&gt; x, const xmm&lt;T&gt; y) noexcept {</span>
+    [[nodiscard]] constexpr xmm&lt;T&gt; vsub(const xmm&lt;T&gt; x, const xmm&lt;T&gt; y) noexcept {
         if constexpr (std::is_same_v&lt;T, double&gt;) {
-<span style = "background-color:#dfd">            return _mm_sub_pd(x, y);</span>
+            return _mm_sub_pd(x, y);
         } else {
             static_assert(!sizeof(T), "the only supported type for this operation is: float64");
         }
-<span style = "background-color:#dfd">    }</span>
+    }
 
     template&lt;typename T&gt;
-<span style = "background-color:#dfd">    [[nodiscard]] constexpr xmm&lt;T&gt; vmul(const xmm&lt;T&gt; x, const xmm&lt;T&gt; y) noexcept {</span>
+    [[nodiscard]] constexpr xmm&lt;T&gt; vmul(const xmm&lt;T&gt; x, const xmm&lt;T&gt; y) noexcept {
         if constexpr (std::is_same_v&lt;T, double&gt;) {
-<span style = "background-color:#dfd">            return _mm_mul_pd(x, y);</span>
+            return _mm_mul_pd(x, y);
         } else {
             static_assert(!sizeof(T), "the only supported type for this operation is: float64");
         }
-<span style = "background-color:#dfd">    }</span>
+    }
 
     template&lt;typename T&gt;
-<span style = "background-color:#dfd">    [[nodiscard]] constexpr xmm&lt;T&gt; vdiv(const xmm&lt;T&gt; x, const xmm&lt;T&gt; y) noexcept {</span>
+    [[nodiscard]] constexpr xmm&lt;T&gt; vdiv(const xmm&lt;T&gt; x, const xmm&lt;T&gt; y) noexcept {
         if constexpr (std::is_same_v&lt;T, double&gt;) {
-<span style = "background-color:#dfd">            return _mm_div_pd(x, y);</span>
+            return _mm_div_pd(x, y);
         } else {
             static_assert(!sizeof(T), "the only supported type for this operation is: float64");
         }
-<span style = "background-color:#dfd">    }</span>
+    }
 
     template&lt;typename T&gt;
-<span style = "background-color:#dfd">    [[nodiscard]] constexpr xmm&lt;T&gt; vsqrt(const xmm&lt;T&gt; x) noexcept {</span>
+    [[nodiscard]] constexpr xmm&lt;T&gt; vsqrt(const xmm&lt;T&gt; x) noexcept {
         if constexpr (std::is_same_v&lt;T, double&gt;) {
-<span style = "background-color:#dfd">            return _mm_sqrt_pd(x);</span>
+            return _mm_sqrt_pd(x);
         } else {
             static_assert(!sizeof(T), "the only supported type for this operation is: float64");
         }
-<span style = "background-color:#dfd">    }</span>
+    }
 
     template&lt;typename T&gt;
-<span style = "background-color:#dfd">    [[nodiscard]] constexpr xmm&lt;T&gt; vswap(const xmm&lt;T&gt; x) noexcept {</span>
+    [[nodiscard]] constexpr xmm&lt;T&gt; vswap(const xmm&lt;T&gt; x) noexcept {
         if constexpr (std::is_same_v&lt;T, double&gt;) {
-<span style = "background-color:#dfd">            return _mm_shuffle_pd(x, x, 1);</span>
+            return _mm_shuffle_pd(x, x, 1);
         } else {
             static_assert(!sizeof(T), "the only supported type for this operation is: float64");
         }
-<span style = "background-color:#dfd">    }</span>
+    }
 
     template&lt;typename T1, typename T2&gt;
     concept equal_greater_size = sizeof(T1) &gt;= sizeof(T2);

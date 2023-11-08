@@ -20,9 +20,11 @@ namespace modernRX::assembler {
 
     class Context {
     public:
-        [[nodiscard]] explicit Context(const size_t code_size, const size_t data_size) {
+        [[nodiscard]] explicit Context(const size_t code_size, const size_t data_size = 0) {
             code.reserve(code_size);
             data.reserve(data_size);
+            labels.reserve(256);
+            instruction.reserve(32);
         }
 
         // Broadcasts 4x immediate 64-bit or value from GPR register into registers::RSP[offset] memory.
@@ -78,7 +80,7 @@ namespace modernRX::assembler {
             }
 
             if constexpr (reg.type != RegisterType::DUMMY) {
-                return Memory{ static_cast<reg_idx_t>(reg.idx), static_cast<int32_t>(data.size() - Bytes) };
+                return Memory{ static_cast<reg_idx_t>(reg.idx), registers::DUMMY.idx, static_cast<int32_t>(data.size() - Bytes) };
             }
         }
 
@@ -125,7 +127,7 @@ namespace modernRX::assembler {
 
 
             if constexpr (reg.type != RegisterType::DUMMY) {
-                return Memory{ static_cast<reg_idx_t>(reg.idx), static_cast<int32_t>(data.size() - 32) };
+                return Memory{ static_cast<reg_idx_t>(reg.idx), registers::DUMMY.idx, static_cast<int32_t>(data.size() - 32) };
             }
         }
 
@@ -136,7 +138,7 @@ namespace modernRX::assembler {
 
             encode(0x0F);
             encode(0x18);
-            addr(0, src_reg.reg % 8, src_reg.offset);
+            addr(0, src_reg);
             schedule();
         }
 
@@ -144,10 +146,79 @@ namespace modernRX::assembler {
         constexpr void vpmuludq(const Register dst_reg, const Register src_reg1, const Operand src_reg2) {
             vex256<PP::PP0x66, MM::MM0x0F, Opcode{ 0xf4, -1 }>(dst_reg, src_reg1, src_reg2);
         }
-        
+
+        constexpr void ldmxcsr(const Memory src_reg) {
+            encode(0x0f);
+            encode(0xae);
+            addr(2, src_reg);
+            schedule();
+        }
+
         template<typename Operand, typename Control>
         constexpr void vpshufd(const Register dst_reg, const Operand src_reg, const Control control) {
-            vex256<PP::PP0x66, MM::MM0x0F, Opcode{ 0x70, -1 }>(dst_reg, src_reg, control);
+            if (dst_reg.type == RegisterType::YMM) {
+                vex256<PP::PP0x66, MM::MM0x0F, Opcode{ 0x70, -1 }>(dst_reg, src_reg, control);
+            } else {
+                vex128<PP::PP0x66, MM::MM0x0F, Opcode{ 0x70, -1 }>(dst_reg, src_reg, control);
+            }
+        }
+
+        template<typename Operand, typename Control>
+        constexpr void vshufpd(const Register dst_reg, const Register src_reg1, const Operand src_reg2, const Control control) {
+            if (dst_reg.type == RegisterType::YMM) {
+                vex256 < PP::PP0x66, MM::MM0x0F, Opcode{ 0xC6, -1 } > (dst_reg, src_reg1, src_reg2, control);
+            } else {
+                vex128 < PP::PP0x66, MM::MM0x0F, Opcode{ 0xC6, -1 } > (dst_reg, src_reg1, src_reg2, control);
+            }
+        }
+
+        template<typename Operand>
+        constexpr void vcvtdq2pd(const Register dst_reg, const Operand src_reg) {
+            if (dst_reg.type == RegisterType::YMM) {
+                vex256 < PP::PP0xF3, MM::MM0x0F, Opcode{ 0xE6, -1 } > (dst_reg, src_reg);
+            } else {
+                vex128 < PP::PP0xF3, MM::MM0x0F, Opcode{ 0xE6, -1 } > (dst_reg, src_reg);
+            }
+        }
+
+        constexpr void vaddpd(const Register dst_reg, const Register src_reg) {
+            if (dst_reg.type == RegisterType::YMM) {
+                vex256 < PP::PP0x66, MM::MM0x0F, Opcode{ 0x58, -1 } > (dst_reg, dst_reg, src_reg);
+            } else {
+                vex128 < PP::PP0x66, MM::MM0x0F, Opcode{ 0x58, -1 } > (dst_reg, dst_reg, src_reg);
+            }
+        }
+
+        constexpr void vsubpd(const Register dst_reg, const Register src_reg) {
+            if (dst_reg.type == RegisterType::YMM) {
+                vex256 < PP::PP0x66, MM::MM0x0F, Opcode{ 0x5C, -1 } > (dst_reg, dst_reg, src_reg);
+            } else {
+                vex128 < PP::PP0x66, MM::MM0x0F, Opcode{ 0x5C, -1 } > (dst_reg, dst_reg, src_reg);
+            }
+        }
+
+        constexpr void vmulpd(const Register dst_reg, const Register src_reg) {
+            if (dst_reg.type == RegisterType::YMM) {
+                vex256 < PP::PP0x66, MM::MM0x0F, Opcode{ 0x59, -1 } > (dst_reg, dst_reg, src_reg);
+            } else {
+                vex128 < PP::PP0x66, MM::MM0x0F, Opcode{ 0x59, -1 } > (dst_reg, dst_reg, src_reg);
+            }
+        }
+
+        constexpr void vdivpd(const Register dst_reg, const Register src_reg) {
+            if (dst_reg.type == RegisterType::YMM) {
+                vex256 < PP::PP0x66, MM::MM0x0F, Opcode{ 0x5E, -1 } > (dst_reg, dst_reg, src_reg);
+            } else {
+                vex128 < PP::PP0x66, MM::MM0x0F, Opcode{ 0x5E, -1 } > (dst_reg, dst_reg, src_reg);
+            }
+        }
+
+        constexpr void vsqrtpd(const Register dst_reg) {
+            if (dst_reg.type == RegisterType::YMM) {
+                vex256 < PP::PP0x66, MM::MM0x0F, Opcode{ 0x51, -1 } > (dst_reg, dst_reg);
+            } else {
+                vex128 < PP::PP0x66, MM::MM0x0F, Opcode{ 0x51, -1 } > (dst_reg, dst_reg);
+            }
         }
 
         template<typename Operand>
@@ -231,6 +302,103 @@ namespace modernRX::assembler {
             encode((uint8_t)byte<1>(imm));
             encode((uint8_t)byte<2>(imm));
             encode((uint8_t)byte<3>(imm));
+        }
+
+        constexpr void or_(const Register dst_reg, const int32_t imm) {
+            encode(rex<uint8_t>(1, 0, 0, dst_reg.isHigh()));
+            encode(0x81);
+            encode(modregrm<uint8_t>(1, dst_reg.lowIdx()));
+            encode((uint8_t)byte<0>(imm));
+            encode((uint8_t)byte<1>(imm));
+            encode((uint8_t)byte<2>(imm));
+            encode((uint8_t)byte<3>(imm));
+            schedule();
+        }
+
+        constexpr void xor_(const Register dst, const Register src) {
+            encode(rex<uint8_t>(1, dst.isHigh(), 0, src.isHigh()));
+            encode(0x33);
+            encode(modregrm<uint8_t>(dst.lowIdx(), src.lowIdx()));
+            schedule();
+        }
+
+        constexpr void xor_(const Register dst, const int32_t imm) {
+            encode(rex<uint8_t>(1, 0, 0, dst.isHigh()));
+            encode(0x81);
+            encode(modregrm<uint8_t>(6, dst.lowIdx()));
+            encode((uint8_t)byte<0>(imm));
+            encode((uint8_t)byte<1>(imm));
+            encode((uint8_t)byte<2>(imm));
+            encode((uint8_t)byte<3>(imm));
+            schedule();
+        }
+
+        constexpr void ror(const Register dst, const Register src) {
+            mov(registers::RCX, src);
+            encode(rex<uint8_t>(1, 0, 0, dst.isHigh()));
+            encode(0xd3);
+            encode(modregrm<uint8_t>(1, dst.lowIdx()));
+            schedule();
+        }
+
+        constexpr void ror(const Register dst, const int32_t imm) {
+            encode(rex<uint8_t>(1, 0, 0, dst.isHigh()));
+            encode(0xc1);
+            encode(modregrm<uint8_t>(1, dst.lowIdx()));
+            encode((uint8_t)byte<0>(imm));
+            schedule();
+        }
+
+        constexpr void xchg(const Register dst, const Register src) {
+            encode(rex<uint8_t>(1, dst.isHigh(), 0, src.isHigh()));
+            encode(0x87);
+            encode(modregrm<uint8_t>(dst.lowIdx(), src.lowIdx()));
+            schedule();
+        }
+
+        constexpr void rol(const Register dst, const Register src) {
+            mov(registers::RCX, src);
+            encode(rex<uint8_t>(1, 0, 0, dst.isHigh()));
+            encode(0xd3);
+            encode(modregrm<uint8_t>(0, dst.lowIdx()));
+            schedule();
+        }
+
+        constexpr void rol(const Register dst, const int32_t imm) {
+            encode(rex<uint8_t>(1, 0, 0, dst.isHigh()));
+            encode(0xc1);
+            encode(modregrm<uint8_t>(0, dst.lowIdx()));
+            encode((uint8_t)byte<0>(imm));
+            schedule();
+        }
+
+        constexpr void test(const Register dst, const int32_t imm) {
+            encode(rex<uint8_t>(1, 0, 0, dst.isHigh()));
+            encode(0xf7);
+            encode(modregrm<uint8_t>(0, dst.lowIdx()));
+            encode((uint8_t)byte<0>(imm));
+            encode((uint8_t)byte<1>(imm));
+            encode((uint8_t)byte<2>(imm));
+            encode((uint8_t)byte<3>(imm));
+            schedule();
+        }
+
+        void jz(const std::string name) {
+            const auto rel32{ labels[name] - code.size() - 6 };
+
+            encode(0x0f);
+            encode(0x84);
+            encode((uint8_t)byte<0>(rel32));
+            encode((uint8_t)byte<1>(rel32));
+            encode((uint8_t)byte<2>(rel32));
+            encode((uint8_t)byte<3>(rel32));
+            schedule();
+        }
+
+        constexpr void xor_(const Register dst, const Memory src) {
+            encode(rex<uint8_t>(1, dst.isHigh(), 0, src.isHigh()));
+            encode(0x33);
+            addr(dst.lowIdx(), src);
             schedule();
         }
 
@@ -266,17 +434,33 @@ namespace modernRX::assembler {
 
         // Broadcasts 64-bit value from XMM register into YMM register.
         // In a case when src is a GPR register, it is first moved to XMM register.
+        // In a case when src is an immediate value, it is first moved to RAX register.
         template<typename Operand>
         constexpr void vpbroadcastq(const Register ymm, const Operand src) {
             if constexpr (std::is_same_v<Operand, Register>) {
                 if (src.type == RegisterType::GPR) {
                     vmovq(Register::XMM(ymm.idx), src);
-                    vex256 < PP::PP0x66, MM::MM0x0F38, Opcode{ 0x59, -1 } > (ymm, Register::XMM(ymm.idx));
+                    if (ymm.type == RegisterType::XMM) {
+                        vex128 < PP::PP0x66, MM::MM0x0F38, Opcode{ 0x59, -1 } > (ymm, ymm);
+                    } else {
+                        vex256 < PP::PP0x66, MM::MM0x0F38, Opcode{ 0x59, -1 } > (ymm, Register::XMM(ymm.idx));
+                    }
                 } else {
-                    vex256 < PP::PP0x66, MM::MM0x0F38, Opcode{ 0x59, -1 } > (ymm, src);
+                    if (ymm.type == RegisterType::XMM) {
+                        vex128 < PP::PP0x66, MM::MM0x0F38, Opcode{ 0x59, -1 } > (ymm, src);
+                    } else {
+                        vex256 < PP::PP0x66, MM::MM0x0F38, Opcode{ 0x59, -1 } > (ymm, src);
+                    }
                 }
             } else {
-                vex256 < PP::PP0x66, MM::MM0x0F38, Opcode{ 0x59, -1 } > (ymm, src);
+                mov(registers::RAX, src);
+                vmovq(ymm, registers::RAX);
+
+                if (ymm.type == RegisterType::XMM) {
+                    vex128 < PP::PP0x66, MM::MM0x0F38, Opcode{ 0x59, -1 } > (ymm, ymm);
+                } else {
+                    vex256 < PP::PP0x66, MM::MM0x0F38, Opcode{ 0x59, -1 } > (ymm, ymm);
+                }
             }        
         }
 
@@ -327,7 +511,15 @@ namespace modernRX::assembler {
         constexpr void mov(const Register gpr, const Memory m64) {
             encode(rex<uint8_t>(1, gpr.isHigh(), 0, m64.isHigh()));
             encode(0x8b);
-            addr(gpr.lowIdx(), m64.reg % 8, m64.offset);
+            addr(gpr.lowIdx(), m64);
+            schedule();
+        }
+
+        // Moves 64-bit value from Register to memory.
+        constexpr void mov(const Memory m64, const Register src) {
+            encode(rex<uint8_t>(1, src.isHigh(), m64.index_reg >= 8 && m64.index_reg != registers::DUMMY.idx, m64.isHigh()));
+            encode(0x89);
+            addr(src.lowIdx(), m64);
             schedule();
         }
 
@@ -343,22 +535,22 @@ namespace modernRX::assembler {
         constexpr void mov(const Register gpr, const uint64_t imm64) {
             // mov gpr, imm32/64: [rex.w] {opcode: 0xb8+ rd io} {imm64}
             if (imm64 > std::numeric_limits<uint32_t>::max()) {
-                code.push_back(rex<uint8_t>(1, 0, 0, gpr.isHigh()));
+                encode(rex<uint8_t>(1, 0, 0, gpr.isHigh()));
             } else {
-                code.push_back(rex<uint8_t>(0, 0, 0, gpr.isHigh()));
+                encode(rex<uint8_t>(0, 0, 0, gpr.isHigh()));
             }
 
-            code.push_back(0xb8 + gpr.lowIdx());
-            code.push_back((uint8_t)byte<0>(imm64));
-            code.push_back((uint8_t)byte<1>(imm64));
-            code.push_back((uint8_t)byte<2>(imm64));
-            code.push_back((uint8_t)byte<3>(imm64));
+            encode(0xb8 + gpr.lowIdx());
+            encode((uint8_t)byte<0>(imm64));
+            encode((uint8_t)byte<1>(imm64));
+            encode((uint8_t)byte<2>(imm64));
+            encode((uint8_t)byte<3>(imm64));
 
             if (imm64 > std::numeric_limits<uint32_t>::max()) {
-                code.push_back((uint8_t)byte<4>(imm64));
-                code.push_back((uint8_t)byte<5>(imm64));
-                code.push_back((uint8_t)byte<6>(imm64));
-                code.push_back((uint8_t)byte<7>(imm64));
+                encode((uint8_t)byte<4>(imm64));
+                encode((uint8_t)byte<5>(imm64));
+                encode((uint8_t)byte<6>(imm64));
+                encode((uint8_t)byte<7>(imm64));
             }
             schedule();
         }
@@ -391,8 +583,8 @@ namespace modernRX::assembler {
         }
 
         // Align to 32 bytes and store label.
-        void label(const std::string name) {
-            if (code.size() % 32 != 0) {
+        void label(const std::string name, const bool align = true) {
+            if (align && code.size() % 32 != 0) {
                 nop(32 - (code.size() % 32));
             }
             labels[name] = code.size();
@@ -475,7 +667,11 @@ namespace modernRX::assembler {
 
         template<typename Operand>
         constexpr void vpxor(const Register dst_reg, const Register src_reg1, const Operand src_reg2) {
-            vex256< PP::PP0x66, MM::MM0x0F, Opcode{ 0xef, -1 }>(dst_reg, src_reg1, src_reg2);
+            if (dst_reg.type == RegisterType::XMM) {
+                vex128 < PP::PP0x66, MM::MM0x0F, Opcode{ 0xef, -1 } > (dst_reg, src_reg1, src_reg2);
+            } else {
+                vex256 < PP::PP0x66, MM::MM0x0F, Opcode{ 0xef, -1 } > (dst_reg, src_reg1, src_reg2);
+            }
         }
 
         // Convenient function for zeroing YMM register.
@@ -492,12 +688,20 @@ namespace modernRX::assembler {
 
         template<typename Operand>
         constexpr void vpand(const Register dst_reg, const Register src_reg1, const Operand src_reg2) {
-            vex256< PP::PP0x66, MM::MM0x0F, Opcode{ 0xdb, -1 }>(dst_reg, src_reg1, src_reg2);
+            if (dst_reg.type == RegisterType::YMM) {
+                vex256 < PP::PP0x66, MM::MM0x0F, Opcode{ 0xdb, -1 } > (dst_reg, src_reg1, src_reg2);
+            } else {
+                vex128 < PP::PP0x66, MM::MM0x0F, Opcode{ 0xdb, -1 } > (dst_reg, src_reg1, src_reg2);
+            }
         }
 
         template<typename Operand>
         constexpr void vpor(const Register dst_reg, const Register src_reg1, const Operand src_reg2) {
-            vex256 < PP::PP0x66, MM::MM0x0F, Opcode{ 0xeb, -1 } > (dst_reg, src_reg1, src_reg2);
+            if (dst_reg.type == RegisterType::YMM) {
+                vex256 < PP::PP0x66, MM::MM0x0F, Opcode{ 0xeb, -1 } > (dst_reg, src_reg1, src_reg2);
+            } else {
+                vex128 < PP::PP0x66, MM::MM0x0F, Opcode{ 0xeb, -1 } > (dst_reg, src_reg1, src_reg2);
+            }
         }
 
         // Pushes single GPR register on stack.
@@ -533,19 +737,157 @@ namespace modernRX::assembler {
         }
 
         constexpr void sub(const Register dst, const int32_t size) {
-            if (size < std::numeric_limits<int8_t>::max()) {
+            if (size >= std::numeric_limits<int8_t>::min() && size <= std::numeric_limits<int8_t>::max()) {
                 rexw < Opcode{ 0x83, 5 } > (dst, static_cast<int8_t>(size));
             } else {
                 rexw < Opcode{ 0x81, 5 } > (dst, size);
             }
         }
 
+        constexpr void sub(const Register dst, const Memory mem) {
+            encode(rex<uint8_t>(1, dst.isHigh(), 0, mem.isHigh()));
+            encode(0x2b);
+            addr(dst.lowIdx(), mem);
+            schedule();
+        }
+
+        constexpr void add(const Register dst, const Memory mem) {
+            encode(rex<uint8_t>(1, dst.isHigh(), 0, mem.isHigh()));
+            encode(0x03);
+            addr(dst.lowIdx(), mem);
+            schedule();
+        }
+
+        constexpr void imul(const Register dst, const Register src) {
+            encode(rex<uint8_t>(1, dst.isHigh(), 0, src.isHigh()));
+            encode(0x0f);
+            encode(0xaf);
+            encode(modregrm<uint8_t>(dst.lowIdx(), src.lowIdx()));
+            schedule();
+        }
+
+        constexpr void imul(const Register dst, const Memory src) {
+            encode(rex<uint8_t>(1, dst.isHigh(), 0, src.isHigh()));
+            encode(0x0f);
+            encode(0xaf);
+            addr(dst.lowIdx(), src);
+            schedule();
+        }
+
+        constexpr void mulh(const Register dst, const Register src) {
+            mov(registers::RAX, dst);
+            encode(rex<uint8_t>(1, 0, 0, src.isHigh()));
+            encode(0xf7);
+            encode(modregrm<uint8_t>(4, src.lowIdx()));
+            mov(dst, registers::RDX);
+            schedule();
+        }
+
+        constexpr void mulh(const Register dst, const Memory src) {
+            mov(registers::RAX, dst);
+            encode(rex<uint8_t>(1, 0, 0, src.isHigh()));
+            encode(0xf7);
+            addr(4, src);
+            mov(dst, registers::RDX);
+            schedule();
+        }
+
+        constexpr void imulh(const Register dst, const Register src) {
+            mov(registers::RAX, dst);
+            encode(rex<uint8_t>(1, 0, 0, src.isHigh()));
+            encode(0xf7);
+            encode(modregrm<uint8_t>(5, src.lowIdx()));
+            mov(dst, registers::RDX);
+            schedule();
+        }
+
+        constexpr void imulh(const Register dst, const Memory src) {
+            mov(registers::RAX, dst);
+            encode(rex<uint8_t>(1, 0, 0, src.isHigh()));
+            encode(0xf7);
+            addr(5, src);
+            mov(dst, registers::RDX);
+            schedule();
+        }
+
+        constexpr void imul(const Register dst, const int32_t imm) {
+            encode(rex<uint8_t>(1, dst.isHigh(), 0, dst.isHigh()));
+            encode(0x69);
+            encode(modregrm<uint8_t>(dst.lowIdx(), dst.lowIdx()));
+            encode((uint8_t)byte<0>(imm));
+            encode((uint8_t)byte<1>(imm));
+            encode((uint8_t)byte<2>(imm));
+            encode((uint8_t)byte<3>(imm));
+            schedule();
+        }
+
         constexpr void add(const Register dst, const int32_t size) {
-            if (size < std::numeric_limits<int8_t>::max()) {
+            if (size >= std::numeric_limits<int8_t>::min() && size <= std::numeric_limits<int8_t>::max()) {
                 rexw < Opcode{ 0x83, 0 } > (dst, static_cast<int8_t>(size));
             } else {
                 rexw < Opcode{ 0x81, 0 } > (dst, size);
             }
+        }
+
+        constexpr void neg(const Register dst) {
+            encode(rex<uint8_t>(1, 0, 0, dst.isHigh()));
+            encode(0xf7);
+            encode(modregrm<uint8_t>(3, dst.lowIdx()));
+            schedule();
+        }
+
+        constexpr void lea(const Register dst, const Memory mem, const uint32_t scale = 1) {
+            const auto is_sib{ mem.index_reg != registers::DUMMY.idx };
+            const auto index_high{ is_sib ? mem.index_reg >= 8 : 0 };
+
+            encode(rex<uint8_t>(1, dst.isHigh(), index_high, mem.isHigh()));
+            encode(0x8d);
+
+            // is it sib?
+            const auto srcreg{ is_sib ? registers::RSP.idx : mem.lowIdx() };
+
+            if (mem.offset == 0) {
+                encode(modregrm<uint8_t>(dst.lowIdx(), srcreg, MOD::MOD00)); // Indirect or SIB mode if RSP used.
+            } else if (mem.offset >= std::numeric_limits<int8_t>::min() && mem.offset <= std::numeric_limits<int8_t>::max()) {
+                encode(modregrm<uint8_t>(dst.lowIdx(), srcreg, MOD::MOD01)); // Indirect + disp8 or SIB mode + disp8 if RSP used.
+            } else {
+                encode(modregrm<uint8_t>(dst.lowIdx(), srcreg, MOD::MOD10)); // Indirect + disp32 or SIB mode + disp32 if RSP used.
+            }
+
+            // SIB byte.
+            if (is_sib || srcreg == registers::RSP.idx) {
+                const auto indexreg{ is_sib ? mem.index_reg % 8 : registers::RSP.idx };
+
+                switch (scale) {
+                case 1:
+                    encode(sib<uint8_t>(SCALE::SS1, Register::GPR(indexreg), Register::GPR(mem.lowIdx())));
+                    break;
+                case 2:
+                    encode(sib<uint8_t>(SCALE::SS2, Register::GPR(indexreg), Register::GPR(mem.lowIdx())));
+                    break;
+                case 4:
+                    encode(sib<uint8_t>(SCALE::SS4, Register::GPR(indexreg), Register::GPR(mem.lowIdx())));
+                    break;
+                case 8:
+                    encode(sib<uint8_t>(SCALE::SS8, Register::GPR(indexreg), Register::GPR(mem.lowIdx())));
+                    break;
+                default:
+                    std::unreachable();
+                }
+            }
+
+            // Disp8
+            if (mem.offset != 0) {
+                encode((uint8_t)byte<0>(mem.offset));
+            }
+
+            // Disp32
+            if (mem.offset < std::numeric_limits<int8_t>::min() || mem.offset > std::numeric_limits<int8_t>::max()) {
+                encode((uint8_t)byte<1>(mem.offset));
+                encode((uint8_t)byte<2>(mem.offset));
+                encode((uint8_t)byte<3>(mem.offset));
+            }
+            schedule();
         }
 
         // Generates binary code for pushing registers on stack.
@@ -729,41 +1071,63 @@ namespace modernRX::assembler {
             instruction.push_back(byte);
         }
 
-        // Generates bytes for indirect addressing mode. 
-        constexpr void addr(const reg_idx_t dst, const reg_idx_t src, const int32_t offset) {
+
+
+        constexpr void addr(const reg_idx_t dst, const Memory& src, const uint32_t scale = 1) {
             // RIP relative addressing (displacement only).
-            if (src == registers::RBP.idx) {
+            if (src.lowIdx() == registers::RBP.idx && src.index_reg == registers::DUMMY.idx) {
                 encode(modregrm<uint8_t>(0, registers::RBP.idx, MOD::MOD00)); // Indirect or SIB mode if RSP used.
-                encode((uint8_t)byte<0>(offset));
-                encode((uint8_t)byte<1>(offset));
-                encode((uint8_t)byte<2>(offset));
-                encode((uint8_t)byte<3>(offset));
+                encode((uint8_t)byte<0>(src.offset));
+                encode((uint8_t)byte<1>(src.offset));
+                encode((uint8_t)byte<2>(src.offset));
+                encode((uint8_t)byte<3>(src.offset));
                 return;
             }
 
-            if (offset == 0) {
-                encode(modregrm<uint8_t>(dst % 8, src % 8, MOD::MOD00)); // Indirect or SIB mode if RSP used.
-            } else if (offset >= std::numeric_limits<int8_t>::min() && offset <= std::numeric_limits<int8_t>::max()) {
-                encode(modregrm<uint8_t>(dst % 8, src % 8, MOD::MOD01)); // Indirect + disp8 or SIB mode + disp8 if RSP used.
+            // its sib here
+            const auto is_sib{ src.index_reg != registers::DUMMY.idx };
+            const auto srcreg{ is_sib ? registers::RSP.idx : src.lowIdx() };
+
+            if (src.offset == 0) {
+                encode(modregrm<uint8_t>(dst % 8, srcreg, MOD::MOD00)); // Indirect or SIB mode if RSP used.
+            } else if (src.offset >= std::numeric_limits<int8_t>::min() && src.offset <= std::numeric_limits<int8_t>::max()) {
+                encode(modregrm<uint8_t>(dst % 8, srcreg, MOD::MOD01)); // Indirect + disp8 or SIB mode + disp8 if RSP used.
             } else {
-                encode(modregrm<uint8_t>(dst % 8, src % 8, MOD::MOD10)); // Indirect + disp32 or SIB mode + disp32 if RSP used.
+                encode(modregrm<uint8_t>(dst % 8, srcreg, MOD::MOD10)); // Indirect + disp32 or SIB mode + disp32 if RSP used.
             }
 
             // SIB byte.
-            if (src == registers::RSP.idx) {
-                encode(sib<uint8_t>(SCALE::SS1, registers::RSP, registers::RSP));
+            if (is_sib || srcreg == registers::RSP.idx) {
+                const auto indexreg{ is_sib ? src.index_reg % 8 : registers::RSP.idx };
+
+                switch (scale) {
+                case 1:
+                    encode(sib<uint8_t>(SCALE::SS1, Register::GPR(indexreg), Register::GPR(src.lowIdx())));
+                    break;
+                case 2:
+                    encode(sib<uint8_t>(SCALE::SS2, Register::GPR(indexreg), Register::GPR(src.lowIdx())));
+                    break;
+                case 4:
+                    encode(sib<uint8_t>(SCALE::SS4, Register::GPR(indexreg), Register::GPR(src.lowIdx())));
+                    break;
+                case 8:
+                    encode(sib<uint8_t>(SCALE::SS8, Register::GPR(indexreg), Register::GPR(src.lowIdx())));
+                    break;
+                default:
+                    std::unreachable();
+                }
             }
 
             // Disp8
-            if (offset != 0) {
-                encode((uint8_t)byte<0>(offset));
+            if (src.offset != 0) {
+                encode((uint8_t)byte<0>(src.offset));
             }
 
             // Disp32
-            if (offset < std::numeric_limits<int8_t>::min() || offset > std::numeric_limits<int8_t>::max()) {
-                encode((uint8_t)byte<1>(offset));
-                encode((uint8_t)byte<2>(offset));
-                encode((uint8_t)byte<3>(offset));
+            if (src.offset < std::numeric_limits<int8_t>::min() || src.offset > std::numeric_limits<int8_t>::max()) {
+                encode((uint8_t)byte<1>(src.offset));
+                encode((uint8_t)byte<2>(src.offset));
+                encode((uint8_t)byte<3>(src.offset));
             }
         }
 
@@ -821,25 +1185,55 @@ namespace modernRX::assembler {
         // Generates instruction with VEX128 prefix and Register/Register as operands (eg. vmovdqa).
         template<PP pp, MM mm, Opcode opcode, uint8_t w = 0>
         constexpr void vex128(const Register dst, const Register src1) {
+            const reg_idx_t vvvv{ 0 };
+
             if constexpr (mm == MM::MM0x0F) {
                 if (src1.isLow()) {
                     // INSTR ymmD, ymmS1, ymmS2: {vex.2B: 0xc5} {vex.0b1'ffff'1'66} {opcode.code /opcode.mod} {modrm: 0b11'ddd'ss@}
                     encode(vex1<uint8_t>(false));
-                    encode(vex2<uint8_t>(0, pp, dst.isLow(), 0));
+                    encode(vex2<uint8_t>(vvvv, pp, dst.isLow(), 0));
                 } else {
                     // INSTR ymmD, ymmS1, ymmS2: {vex.3B: 0xc4} {vex.0bR0B'00001} {vex.0bW'ffff'1'66} {opcode.code /opcode.mod} {modrm: 0b11'ddd'ss@}
                     encode(vex1<uint8_t>(true));
                     encode(vex2<uint8_t>(MM::MM0x0F, dst.isLow(), 0, src1.isLow()));
-                    encode(vex3<uint8_t>(0, pp, w, 0));
+                    encode(vex3<uint8_t>(vvvv, pp, w, 0));
                 }
             } else {
                 encode(vex1<uint8_t>(true));
                 encode(vex2<uint8_t>(mm, dst.isLow(), 0, src1.isLow()));
-                encode(vex3<uint8_t>(0, pp, w, 0));
+                encode(vex3<uint8_t>(vvvv, pp, w, 0));
             }
 
             encode(opcode.code);
             encode(modregrm<uint8_t>(dst.lowIdx(), src1.lowIdx()));
+            schedule();
+        }
+
+        template<PP pp, MM mm, Opcode opcode, uint8_t w = 0>
+        constexpr void vex128(const Register dst, const Register src1, const int imm32) {
+            const reg_idx_t vvvv{ opcode.mod > -1 ? dst.idx : uint8_t(0) };
+            const reg_idx_t reg{ opcode.mod > -1 ? (uint8_t)opcode.mod : dst.lowIdx() };
+
+            if constexpr (mm == MM::MM0x0F) {
+                if (src1.isLow()) {
+                    // INSTR ymmD, ymmS1, imm8: {vex.2B: 0xc5} {vex.0b1'dddd'1'66} {opcode.code /opcode.mod} {modrm: 0b11'mod'ss!}
+                    encode(vex1<uint8_t>(false));
+                    encode(vex2<uint8_t>(vvvv, pp, dst.isLow(), 0));
+                } else {
+                    // INSTR ymmD, ymmS1, imm8: {vex.3B: 0xc4} {vex.0b000'00001} {vex.0bW'dddd'1'66} {opcode.code /opcode.mod} {modrm: 0b11'mod'ss!}
+                    encode(vex1<uint8_t>(true));
+                    encode(vex2<uint8_t>(MM::MM0x0F, dst.isLow(), 0, src1.isLow()));
+                    encode(vex3<uint8_t>(vvvv, pp, w, 0));
+                }
+            } else {
+                encode(vex1<uint8_t>(true));
+                encode(vex2<uint8_t>(mm, dst.isLow(), 0, src1.isLow()));
+                encode(vex3<uint8_t>(vvvv, pp, w, 0));
+            }
+
+            encode(opcode.code);
+            encode(modregrm<uint8_t>(reg, src1.lowIdx()));
+            encode((uint8_t)byte<0>(imm32));
             schedule();
         }
 
@@ -864,7 +1258,7 @@ namespace modernRX::assembler {
             }
 
             encode(opcode.code);
-            addr(dst.idx, src1.reg, src1.offset);
+            addr(dst.idx, src1);
             schedule();
         }
 
@@ -889,7 +1283,7 @@ namespace modernRX::assembler {
             }
 
             encode(opcode.code);
-            addr(dst.idx, src1.reg, src1.offset);
+            addr(dst.idx, src1);
             schedule();
         }
 
@@ -920,6 +1314,31 @@ namespace modernRX::assembler {
 
         // Generates instruction with VEX256 prefix and Register/Register/Register as operands (eg. vpxor).
         template<PP pp, MM mm, Opcode opcode, uint8_t w = 0>
+        constexpr void vex128(const Register dst, const Register src1, const Register src2) {
+            if constexpr (mm == MM::MM0x0F) {
+                if (src2.isLow() && dst.isLow()) {
+                    // INSTR ymmD, ymmS1, ymmS2: {vex.2B: 0xc5} {vex.0b1'sss!'1'66} {opcode.code /opcode.mod} {modrm: 0b11'ddd'ss@}
+                    encode(vex1<uint8_t>(false));
+                    encode(vex2<uint8_t>(src1.idx, pp, 1, 0));
+                } else {
+                    // INSTR ymmD, ymmS1, ymmS2: {vex.3B: 0xc4} {vex.0bR0B'00001} {vex.0bW'sss!'1'66} {opcode.code /opcode.mod} {modrm: 0b11'ddd'ss@}
+                    encode(vex1<uint8_t>(true));
+                    encode(vex2<uint8_t>(MM::MM0x0F, dst.isLow(), 0, src2.isLow()));
+                    encode(vex3<uint8_t>(src1.idx, pp, w, 0));
+                }
+            } else {
+                encode(vex1<uint8_t>(true));
+                encode(vex2<uint8_t>(mm, dst.isLow(), 0, src2.isLow()));
+                encode(vex3<uint8_t>(src1.idx, pp, w, 0));
+            }
+
+            encode(opcode.code);
+            encode(modregrm<uint8_t>(dst.lowIdx(), src2.lowIdx()));
+            schedule();
+        }
+
+        // Generates instruction with VEX256 prefix and Register/Register/Register as operands (eg. vpxor).
+        template<PP pp, MM mm, Opcode opcode, uint8_t w = 0>
         constexpr void vex256(const Register dst, const Register src1, const Memory src2) {
             if constexpr (mm == MM::MM0x0F) {
                 if (src2.isLow()) {
@@ -939,7 +1358,32 @@ namespace modernRX::assembler {
             }
 
             encode(opcode.code);
-            addr(dst.idx, src2.reg, src2.offset);
+            addr(dst.idx, src2);
+            schedule();
+        }
+
+        // Generates instruction with VEX256 prefix and Register/Register/Register as operands (eg. vpxor).
+        template<PP pp, MM mm, Opcode opcode, uint8_t w = 0>
+        constexpr void vex128(const Register dst, const Register src1, const Memory src2) {
+            if constexpr (mm == MM::MM0x0F) {
+                if (src2.isLow()) {
+                    // INSTR ymmD, ymmS1, ymmS2: {vex.2B: 0xc5} {vex.0b1'sss!'1'66} {opcode.code /opcode.mod} {modrm: 0b11'ddd'ss@}
+                    encode(vex1<uint8_t>(false));
+                    encode(vex2<uint8_t>(src1.idx, pp, dst.isLow(), 0));
+                } else {
+                    // INSTR ymmD, ymmS1, ymmS2: {vex.3B: 0xc4} {vex.0bR0B'00001} {vex.0bW'sss!'1'66} {opcode.code /opcode.mod} {modrm: 0b11'ddd'ss@}
+                    encode(vex1<uint8_t>(true));
+                    encode(vex2<uint8_t>(MM::MM0x0F, dst.isLow(), 0, src2.isLow()));
+                    encode(vex3<uint8_t>(src1.idx, pp, w, 0));
+                }
+            } else {
+                encode(vex1<uint8_t>(true));
+                encode(vex2<uint8_t>(mm, dst.isLow(), 0, src2.isLow()));
+                encode(vex3<uint8_t>(src1.idx, pp, w, 0));
+            }
+
+            encode(opcode.code);
+            addr(dst.idx, src2);
             schedule();
         }
 
@@ -994,6 +1438,36 @@ namespace modernRX::assembler {
                 encode(vex1<uint8_t>(true));
                 encode(vex2<uint8_t>(mm, dst.isLow(), 0, src2.isLow()));
                 encode(vex3<uint8_t>(vvvv, pp, w));
+            }
+
+            encode(opcode.code);
+            encode(modregrm<uint8_t>(reg, rm));
+            encode((uint8_t)byte<0>(imm32));
+            schedule();
+        }
+
+        // Generates instruction with VEX256 prefix and Register/Register/Register/Imm as operands (eg. vperm2i128).
+        template<PP pp, MM mm, Opcode opcode, uint8_t w = 0>
+        constexpr void vex128(const Register dst, const Register src1, const Register src2, const int imm32) {
+            const reg_idx_t vvvv{ src1.idx };
+            const reg_idx_t reg{ opcode.mod > -1 ? (uint8_t)opcode.mod : dst.lowIdx() };
+            const reg_idx_t rm{ src2.lowIdx() };
+
+            if constexpr (mm == MM::MM0x0F) {
+                if (src1.isLow()) {
+                    // INSTR ymmD, ymmS1, imm8: {vex.2B: 0xc5} {vex.0b1'dddd'1'66} {opcode.code /opcode.mod} {modrm: 0b11'mod'ss!}
+                    encode(vex1<uint8_t>(false));
+                    encode(vex2<uint8_t>(vvvv, pp, 1, 0));
+                } else {
+                    // INSTR ymmD, ymmS1, imm8: {vex.3B: 0xc4} {vex.0b000'00001} {vex.0bW'dddd'1'66} {opcode.code /opcode.mod} {modrm: 0b11'mod'ss!}
+                    encode(vex1<uint8_t>(true));
+                    encode(vex2<uint8_t>(MM::MM0x0F, dst.isLow(), 0, src2.isLow()));
+                    encode(vex3<uint8_t>(vvvv, pp, w, 0));
+                }
+            } else {
+                encode(vex1<uint8_t>(true));
+                encode(vex2<uint8_t>(mm, dst.isLow(), 0, src2.isLow()));
+                encode(vex3<uint8_t>(vvvv, pp, w, 0));
             }
 
             encode(opcode.code);

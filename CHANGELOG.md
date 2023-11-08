@@ -1,5 +1,11 @@
 ## modernRX - Changelog
 
+### v0.6.0 - 08.11.2023:
+
+Random programs JIT-compiler.
+All optimization decisions made in this version:
+* add JIT-compilation of random programs in place of interpreted execution 
+
 ### v0.5.1 - 05.11.2023:
 
 Hash calculation optimization (interpreter improvement).

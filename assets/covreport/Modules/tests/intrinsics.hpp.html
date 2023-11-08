@@ -50,15 +50,15 @@ namespace modernRX::intrinsics {
     template&lt;typename T&gt;
     using ymm = ymm_wrapper&lt;T&gt;::type;
 
-<span style = "background-color:#dfd">    [[nodiscard]] inline uint64_t smulh(const int64_t a, const int64_t b) noexcept {</span>
+    [[nodiscard]] inline uint64_t smulh(const int64_t a, const int64_t b) noexcept {
         int64_t hi;
-<span style = "background-color:#dfd">        _mul128(a, b, &amp;hi);
+        _mul128(a, b, &amp;hi);
         return hi;
-    }</span>
+    }
 
-<span style = "background-color:#dfd">    [[nodiscard]] inline uint64_t umulh(const uint64_t a, const uint64_t b) noexcept {
+    [[nodiscard]] inline uint64_t umulh(const uint64_t a, const uint64_t b) noexcept {
         return __umulh(a, b);
-    }</span>
+    }
 
     enum class PrefetchMode : uint8_t {
         T0 = _MM_HINT_T0,

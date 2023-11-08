@@ -1,9 +1,11 @@
 #pragma once
 
 /*
-* Single-threaded RandomX program interpreter: https://github.com/tevador/RandomX/blob/master/doc/specs.md#2-algorithm-description
+* Single-threaded RandomX program interpreter with JIT-compiler:
+* https://github.com/tevador/RandomX/blob/master/doc/specs.md#2-algorithm-description
 * https://github.com/tevador/RandomX/blob/master/doc/specs.md#4-virtual-machine
 * https://github.com/tevador/RandomX/blob/master/doc/specs.md#5-instruction-set
+* 
 * This is used to execute RandomX programs and return single RandomX hash.
 */
 
@@ -15,6 +17,12 @@
 
 
 namespace modernRX {
+    // RandomX program JIT-compiled function.
+    // rf - pointer to RegisterFile.
+    // emask - pointer to pregenerated mask used in some instructions.
+    // scratchpad - pointer to Scratchpad.
+    using RxProgramJIT = void(*)(const uintptr_t rf, const uintptr_t emask, const uintptr_t scratchpad);
+
     // Forward declarations.
     struct ProgramContext;
     struct RxInstruction;
@@ -34,8 +42,11 @@ namespace modernRX {
         // Generates program based on current seed value.
         [[nodiscard]] std::pair<ProgramContext, RxProgram> generateProgram();
 
+        // JIT-compile RandomX program.
+        void compileProgram(const RxProgram& program);
+
         // Initializes registers before RandomX program execution.
-        // Performs steps 1-3 defined by: https://github.com/tevador/RandomX/blob/master/doc/specs.md#462-loop-execution
+        // Performs steps 2-3 defined by: https://github.com/tevador/RandomX/blob/master/doc/specs.md#462-loop-execution
         void initializeRegisters(ProgramContext& ctx);
 
         // Generates, executes single RandomX program and returns RegisterFile after execution.
@@ -43,11 +54,12 @@ namespace modernRX {
         void executeProgram(ProgramContext& ctx, const RxProgram& program);
 
         // Finalizes registers after RandomX program execution.
-        // Performs steps 5-12 defined by: https://github.com/tevador/RandomX/blob/master/doc/specs.md#462-loop-execution
+        // Performs steps 1 and 5-12 defined by: https://github.com/tevador/RandomX/blob/master/doc/specs.md#462-loop-execution
         void finalizeRegisters(ProgramContext& ctx);
 
         std::array<std::byte, 64> seed;
         const_span<DatasetItem> dataset;
         Scratchpad scratchpad;
+        jit_function_ptr<RxProgramJIT> jit;
     };
 }

@@ -38,6 +38,7 @@ namespace modernRX::assembler {
 
     struct Memory {
         reg_idx_t reg;
+        reg_idx_t index_reg{ 0xff };
         int32_t offset;
 
         [[nodiscard]] constexpr bool isLow() const noexcept {
@@ -53,13 +54,17 @@ namespace modernRX::assembler {
         }
 
         [[nodiscard]] constexpr bool operator==(const Memory& rhs) const noexcept {
-            return reg == rhs.reg && offset == rhs.offset;
+            return reg == rhs.reg && offset == rhs.offset && index_reg == rhs.index_reg;
         }
     };
 
     struct Register {
         RegisterType type;
         reg_idx_t idx;
+
+        [[nodiscard]] static constexpr Register GPR(const reg_idx_t idx) noexcept {
+            return Register{ RegisterType::GPR, idx };
+        }
 
         [[nodiscard]] static constexpr Register YMM(const reg_idx_t idx) noexcept {
             return Register{ RegisterType::YMM, idx };
@@ -100,7 +105,11 @@ namespace modernRX::assembler {
         }
 
         [[nodiscard]] constexpr const Memory operator[](const int32_t offset) const noexcept {
-            return Memory{ idx, offset };
+            return Memory{ idx, 0xff, offset };
+        }
+
+        [[nodiscard]] constexpr const Memory operator[](const Memory& offset) const noexcept {
+            return Memory{ idx, offset.reg, offset.offset };
         }
     };
 
@@ -159,7 +168,6 @@ namespace modernRX::assembler {
         inline constexpr Register YMM15{ RegisterType::YMM, 15 };
     }
 
-
     // generates 3rd byte of VEX prefix.
     // Len = 1 - 256-bit instruction.
     // Len = 0 - 128-bit instruction.
@@ -206,15 +214,12 @@ namespace modernRX::assembler {
         return static_cast<Ret>((static_cast<uint8_t>(mod) << 6) | (reg << 3) | rm);
     }
 
-
-
     template<typename Ret = std::byte>
     [[nodiscard]] constexpr Ret rex(const int w = 0, const int r = 0, const int x = 0, const int b = 0) noexcept {
         // bit        7    6    5    4    3    2    1    0
         //            0   1   0   0   W   R   X   B
         return static_cast<Ret>((0b0100 << 4) | (w << 3) | (r << 2) | (x << 1) | b);
     }
-
 
     // Index cannot be 4.
     template <typename Ret = std::byte>
@@ -224,7 +229,6 @@ namespace modernRX::assembler {
         //            S   S      I   I   I   B   B   B  ; S - scale; I - index; B - base
         return static_cast<Ret>((static_cast<uint8_t>(scale) << 6) | (index.lowIdx() << 3) | base.lowIdx());
     }
-
 
     template<int Byte, typename Val>
     [[nodiscard]] constexpr std::byte byte(const Val& v) noexcept {

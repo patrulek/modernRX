@@ -49,6 +49,7 @@ namespace modernRX::assembler {
 
     struct Memory {
         reg_idx_t reg;
+        reg_idx_t index_reg{ 0xff };
         int32_t offset;
 
 <span style = "background-color:#dfd">        [[nodiscard]] constexpr bool isLow() const noexcept {
@@ -59,18 +60,22 @@ namespace modernRX::assembler {
             return reg &gt;= 8;
         }</span>
 
-        [[nodiscard]] constexpr reg_idx_t lowIdx() const noexcept {
+<span style = "background-color:#dfd">        [[nodiscard]] constexpr reg_idx_t lowIdx() const noexcept {
             return reg % 8;
-        }
+        }</span>
 
         [[nodiscard]] constexpr bool operator==(const Memory&amp; rhs) const noexcept {
-            return reg == rhs.reg &amp;&amp; offset == rhs.offset;
+            return reg == rhs.reg &amp;&amp; offset == rhs.offset &amp;&amp; index_reg == rhs.index_reg;
         }
     };
 
     struct Register {
         RegisterType type;
         reg_idx_t idx;
+
+<span style = "background-color:#dfd">        [[nodiscard]] static constexpr Register GPR(const reg_idx_t idx) noexcept {
+            return Register{ RegisterType::GPR, idx };
+        }</span>
 
 <span style = "background-color:#dfd">        [[nodiscard]] static constexpr Register YMM(const reg_idx_t idx) noexcept {
             return Register{ RegisterType::YMM, idx };
@@ -111,7 +116,11 @@ namespace modernRX::assembler {
         }
 
 <span style = "background-color:#dfd">        [[nodiscard]] constexpr const Memory operator[](const int32_t offset) const noexcept {
-            return Memory{ idx, offset };
+            return Memory{ idx, 0xff, offset };
+        }</span>
+
+<span style = "background-color:#dfd">        [[nodiscard]] constexpr const Memory operator[](const Memory&amp; offset) const noexcept {
+            return Memory{ idx, offset.reg, offset.offset };
         }</span>
     };
 
@@ -170,7 +179,6 @@ namespace modernRX::assembler {
         inline constexpr Register YMM15{ RegisterType::YMM, 15 };
     }
 
-
     // generates 3rd byte of VEX prefix.
     // Len = 1 - 256-bit instruction.
     // Len = 0 - 128-bit instruction.
@@ -217,15 +225,12 @@ namespace modernRX::assembler {
 <span style = "background-color:#dfd">        return static_cast&lt;Ret&gt;((static_cast&lt;uint8_t&gt;(mod) &lt;&lt; 6) | (reg &lt;&lt; 3) | rm);
     }</span>
 
-
-
     template&lt;typename Ret = std::byte&gt;
 <span style = "background-color:#dfd">    [[nodiscard]] constexpr Ret rex(const int w = 0, const int r = 0, const int x = 0, const int b = 0) noexcept {</span>
         // bit        7    6    5    4    3    2    1    0
         //            0   1   0   0   W   R   X   B
 <span style = "background-color:#dfd">        return static_cast&lt;Ret&gt;((0b0100 &lt;&lt; 4) | (w &lt;&lt; 3) | (r &lt;&lt; 2) | (x &lt;&lt; 1) | b);
     }</span>
-
 
     // Index cannot be 4.
     template &lt;typename Ret = std::byte&gt;
@@ -235,7 +240,6 @@ namespace modernRX::assembler {
         //            S   S      I   I   I   B   B   B  ; S - scale; I - index; B - base
 <span style = "background-color:#dfd">        return static_cast&lt;Ret&gt;((static_cast&lt;uint8_t&gt;(scale) &lt;&lt; 6) | (index.lowIdx() &lt;&lt; 3) | base.lowIdx());
     }</span>
-
 
     template&lt;int Byte, typename Val&gt;
 <span style = "background-color:#dfd">    [[nodiscard]] constexpr std::byte byte(const Val&amp; v) noexcept {</span>

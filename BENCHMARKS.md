@@ -15,9 +15,11 @@ System: Windows 11
 
 |                                      | Blake2b [H/s] | Blake2bLong [H/s] | Argon2d [MB/s] | Aes1R [MB/s] | Aes4R [MB/s] | AesHash1R [H/s] | Superscalar [Prog/s] | Dataset [MB/s] | Hash [H/s] | Efficiency [H/Watt/s] |
 | ------------------------------------ | :-----------: | :---------------: | :------------: | :----------: | :----------: | :-------------: | :------------------: | :------------: | :--------: | :-------------------: |
-| RandomX-1.2.1 (102f8acf)             |        3.231M |           103.46K |          881.4 |  **47402.5** |      11473.4 |       **23702** |                 2754 |         ~838.7 |   **4554** |            **~84.33** |
+| RandomX-1.2.1 (102f8acf)             |        3.231M |           103.46K |          881.4 |  **47402.5** |      11473.4 |           23702 |                 2754 |         ~838.7 |   **4554** |            **~84.33** |
+| RandomX-1.2.1 (102f8acf)<sup>5</sup> |        3.231M |           103.46K |          881.4 |      47402.5 |      11473.4 |           23702 |                 2754 |         ~838.7 |      490.8 |                ~22.31 |
+| modernRX 0.6.0                       |        5.456M |       **171.99K** |         1215.1 |      47271.9 |  **11868.4** |       **23743** |                 9652 |         1238.3 |      312.2 |                ~13.28 |
 | RandomX-1.2.1 (102f8acf)<sup>4</sup> |        3.231M |           103.46K |          881.4 |      47402.5 |      11473.4 |           23702 |                 2754 |         ~838.7 |       19.4 |                 ~0.62 |
-| modernRX 0.5.1                       |    **5.457M** |       **171.99K** |         1210.8 |      47119.6 |  **11862.2** |           23640 |                 9640 |         1253.2 |       69.1 |                 ~2.82 |
+| modernRX 0.5.1                       |    **5.457M** |           171.99K |         1210.8 |      47119.6 |      11862.2 |           23640 |                 9640 |         1253.2 |       69.1 |                 ~2.82 |
 | modernRX 0.5.0                       |        5.450M |           171.11K |         1228.6 |      47018.1 |      11847.7 |           23682 |                 9637 |         1236.4 |       33.3 |                 ~1.11 |
 | RandomX-1.2.1 (102f8acf)<sup>3</sup> |        3.231M |           103.46K |          881.4 |       2333.3 |        524.7 |            1166 |                 2754 |         ~838.7 |       18.6 |                 ~0.84 |
 | modernRX 0.4.0                       |        5.450M |           170.25K |     **1241.6** |       2781.1 |        728.6 |            1449 |             **9741** |         1254.0 |       31.6 |                 ~1.31 |
@@ -47,12 +49,14 @@ System: Windows 11
 
 |                                      | Blake2b [H/s] | Blake2bLong [H/s] | Argon2d [MB/s] | Aes1R [MB/s] | Aes4R [MB/s] | AesHash1R [H/s] | Superscalar [Prog/s] | Dataset [MB/s] | Hash [H/s] | Efficiency [H/Watt/s] |
 | ------------------------------------ | :-----------: | :---------------: | :------------: | :----------: | :----------: | :-------------: | :------------------: | :------------: | :--------: | :-------------------: |
-| RandomX-1.2.1 (102f8acf)             |        4.434M |           133.57K |         1089.3 |  **53391.3** |      15955.5 |           30213 |                 5750 |        ~1020.8 |   **5233** |            **~59.46** |
+| RandomX-1.2.1 (102f8acf)             |        4.434M |           133.57K |         1089.3 |      53391.3 |      15955.5 |           30213 |                 5750 |        ~1020.8 |   **5233** |            **~59.46** |
+| RandomX-1.2.1 (102f8acf)<sup>5</sup> |        4.434M |           133.57K |         1089.3 |      53391.3 |      15955.5 |           30213 |                 5750 |        ~1020.8 |      604.8 |                ~16.34 |
+| modernRX 0.6.0                       |    **7.574M** |       **238.33K** |         1456.9 |  **56077.8** |  **16517.6** |       **32059** |                13238 |         1365.6 |      397.7 |                ~10.33 |
 | RandomX-1.2.1 (102f8acf)<sup>4</sup> |        4.434M |           133.57K |         1089.3 |      53391.3 |      15955.5 |           30213 |                 5750 |        ~1020.8 |       27.4 |                 ~0.61 |
-| modernRX 0.5.1                       |    **7.552M** |           237.47K |         1413.6 |      49992.3 |  **16418.3** |       **31961** |                13123 |         1353.4 |       92.7 |                 ~2.35 |
+| modernRX 0.5.1                       |        7.552M |           237.47K |         1413.6 |      49992.3 |      16418.3 |           31961 |                13123 |         1353.4 |       92.7 |                 ~2.35 |
 | modernRX 0.5.0                       |        7.486M |           236.77K |         1432.3 |      52762.1 |      16332.9 |           31825 |                13095 |         1349.1 |       44.1 |                 ~0.94 |
 | RandomX-1.2.1 (102f8acf)<sup>3</sup> |        4.434M |           133.57K |         1089.3 |       3164.2 |        714.7 |            1579 |                 5750 |        ~1020.8 |        --- |                   --- |
-| modernRX 0.4.0                       |        7.552M |       **237.58K** |     **1459.0** |       3694.0 |        976.8 |            1943 |            **13244** |     **1370.9** |       41.9 |                 ~1.06 |
+| modernRX 0.4.0                       |        7.552M |           237.58K |     **1459.0** |       3694.0 |        976.8 |            1943 |            **13244** |     **1370.9** |       41.9 |                 ~1.06 |
 | modernRX 0.3.12                      |           --- |               --- |            --- |          --- |          --- |             --- |                  --- |            --- |        --- |                   --- |
 | modernRX 0.3.11                      |           --- |               --- |            --- |          --- |          --- |             --- |                  --- |            --- |        --- |                   --- |
 | modernRX 0.3.10                      |           --- |               --- |            --- |          --- |          --- |             --- |                  --- |            --- |        --- |                   --- |
@@ -99,6 +103,8 @@ Units:
 
 <sup>2)</sup> avx2 argon2d, interpreted mode, software AES mode, small pages mode, no batch, multi-threaded dataset, single-threaded hash, full memory mode
 
-<sup>3)</sup> avx2 argon2d, dataset JIT mode, hash calculation interpreted mode, software AES mode, small pages mode, no batch, multi-threaded dataset, single-threaded hash, full memory mode
+<sup>3)</sup> avx2 argon2d, multi-threaded dataset JIT mode, single-threaded hash calculation interpreted mode, software AES mode, small pages mode, no batch, full memory mode
 
-<sup>4)</sup> avx2 argon2d, dataset JIT mode, hash calculation interpreted mode, hardware AES mode, small pages mode, no batch, multi-threaded dataset, single-threaded hash, full memory mode
+<sup>4)</sup> avx2 argon2d, multi-threaded dataset JIT mode, single-threaded hash calculation interpreted mode, hardware AES mode, small pages mode, no batch, full memory mode
+
+<sup>5)</sup> avx2 argon2d, multi-threaded dataset JIT mode, single-threaded hash calculation JIT mode, hardware AES mode, small pages mode, no batch, full memory mode
