@@ -1,5 +1,5 @@
 #include "assembler.hpp"
-#include "jitcompiler.hpp"
+#include "datasetcompiler.hpp"
 #include "superscalar.hpp"
 
 
@@ -65,7 +65,8 @@ namespace modernRX {
 
         // II. Main loop
         // 11) Start loop over all elements.
-        asmb.label("loop");
+        constexpr int Loop_Label{ 0 };
+        asmb.label(Loop_Label);
 
         // 12) Set data pointer to proper offset.
         asmb.movDataPtr(RBX, 192);
@@ -219,7 +220,7 @@ namespace modernRX {
 
         // 28) Decrease loop counter.
         asmb.sub(R13, 1);
-        asmb.jne("loop");
+        asmb.jne(Loop_Label);
 
         // IV. Epilogue
         // 29) Destroy local variable (cache_indexes, cache_item_mask, vpmulhuq mask, vpmullq mask, v4q_add_consts, v4q_item_numbers_step).

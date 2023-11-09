@@ -67,6 +67,10 @@ public:
     [[nodiscard]] constexpr std::span<T> view(const size_t offset, const size_t size) const noexcept {
         return const_span<T>(data_ + offset, size);
     }
+
+    [[nodiscard]] constexpr const T* data() const noexcept {
+        return data_;
+    }
 private:
     T* data_;
     size_t size_;

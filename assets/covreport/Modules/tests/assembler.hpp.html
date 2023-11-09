@@ -19,12 +19,11 @@
 
 #include &lt;array&gt;
 #include &lt;iterator&gt;
-#include &lt;string&gt;
-#include &lt;unordered_map&gt;
 #include &lt;vector&gt;
 
 #include "alignedallocator.hpp"
 #include "assemblerdef.hpp"
+#include "cast.hpp"
 
 namespace modernRX::assembler {
     using data_vector = std::vector&lt;uint8_t, AlignedAllocator&lt;uint8_t, 4096&gt;&gt;;
@@ -34,7 +33,6 @@ namespace modernRX::assembler {
 <span style = "background-color:#dfd">        [[nodiscard]] explicit Context(const size_t code_size, const size_t data_size = 0) {
             code.reserve(code_size);
             data.reserve(data_size);
-            labels.reserve(256);
             instruction.reserve(32);
         }</span>
 
@@ -143,11 +141,8 @@ namespace modernRX::assembler {
 <span style = "background-color:#dfd">        }</span>
 
 <span style = "background-color:#dfd">        constexpr void prefetchnta(const Memory src_reg) {
-            if (src_reg.isHigh()) {
-                encode(rex&lt;uint8_t&gt;(0, 0, 0, 1));</span>
-            }
-
-<span style = "background-color:#dfd">            encode(0x0F);
+            encode(rex&lt;uint8_t&gt;(1, 0, 0, src_reg.isHigh()));
+            encode(0x0F);
             encode(0x18);
             addr(0, src_reg);
             schedule();
@@ -305,24 +300,27 @@ namespace modernRX::assembler {
             sub(registers::RSP, 56);
         }</span>
 
+
+<span style = "background-color:#dfd">        constexpr void and_(const Register dst, const Register src) {
+            encode(rex&lt;uint8_t&gt;(1, dst.isHigh(), 0, src.isHigh()));
+            encode(0x23);
+            encode(modregrm&lt;uint8_t&gt;(dst.lowIdx(), src.lowIdx()));
+            schedule();
+        }</span>
+
 <span style = "background-color:#dfd">        constexpr void and_(const Register dst_reg, const int32_t imm) {
             encode(rex&lt;uint8_t&gt;(1, 0, 0, dst_reg.isHigh()));
             encode(0x81);
             encode(modregrm&lt;uint8_t&gt;(4, dst_reg.lowIdx()));
-            encode((uint8_t)byte&lt;0&gt;(imm));
-            encode((uint8_t)byte&lt;1&gt;(imm));
-            encode((uint8_t)byte&lt;2&gt;(imm));
-            encode((uint8_t)byte&lt;3&gt;(imm));
+            encode32(imm);
+            schedule();
         }</span>
 
 <span style = "background-color:#dfd">        constexpr void or_(const Register dst_reg, const int32_t imm) {
             encode(rex&lt;uint8_t&gt;(1, 0, 0, dst_reg.isHigh()));
             encode(0x81);
             encode(modregrm&lt;uint8_t&gt;(1, dst_reg.lowIdx()));
-            encode((uint8_t)byte&lt;0&gt;(imm));
-            encode((uint8_t)byte&lt;1&gt;(imm));
-            encode((uint8_t)byte&lt;2&gt;(imm));
-            encode((uint8_t)byte&lt;3&gt;(imm));
+            encode32(imm);
             schedule();
         }</span>
 
@@ -337,10 +335,7 @@ namespace modernRX::assembler {
             encode(rex&lt;uint8_t&gt;(1, 0, 0, dst.isHigh()));
             encode(0x81);
             encode(modregrm&lt;uint8_t&gt;(6, dst.lowIdx()));
-            encode((uint8_t)byte&lt;0&gt;(imm));
-            encode((uint8_t)byte&lt;1&gt;(imm));
-            encode((uint8_t)byte&lt;2&gt;(imm));
-            encode((uint8_t)byte&lt;3&gt;(imm));
+            encode32(imm);
             schedule();
         }</span>
 
@@ -387,22 +382,16 @@ namespace modernRX::assembler {
             encode(rex&lt;uint8_t&gt;(1, 0, 0, dst.isHigh()));
             encode(0xf7);
             encode(modregrm&lt;uint8_t&gt;(0, dst.lowIdx()));
-            encode((uint8_t)byte&lt;0&gt;(imm));
-            encode((uint8_t)byte&lt;1&gt;(imm));
-            encode((uint8_t)byte&lt;2&gt;(imm));
-            encode((uint8_t)byte&lt;3&gt;(imm));
+            encode32(imm);
             schedule();
         }</span>
 
-<span style = "background-color:#dfd">        void jz(const std::string name) {
+<span style = "background-color:#dfd">        constexpr void jz(const int name) {
             const auto rel32{ labels[name] - code.size() - 6 };</span>
 
 <span style = "background-color:#dfd">            encode(0x0f);
             encode(0x84);
-            encode((uint8_t)byte&lt;0&gt;(rel32));
-            encode((uint8_t)byte&lt;1&gt;(rel32));
-            encode((uint8_t)byte&lt;2&gt;(rel32));
-            encode((uint8_t)byte&lt;3&gt;(rel32));
+            encode32(static_cast&lt;int32_t&gt;(rel32));
             schedule();
         }</span>
 
@@ -519,18 +508,22 @@ namespace modernRX::assembler {
         }</span>
 
         // Moves 64-bit value from Memory to gpr register.
-<span style = "background-color:#dfd">        constexpr void mov(const Register gpr, const Memory m64) {
-            encode(rex&lt;uint8_t&gt;(1, gpr.isHigh(), 0, m64.isHigh()));
-            encode(0x8b);
-            addr(gpr.lowIdx(), m64);
+<span style = "background-color:#dfd">        constexpr void mov(const Register gpr, const Memory m64, const uint32_t scale = 1, const bool x64 = true) {
+            if (x64) {
+                encode(rex&lt;uint8_t&gt;(1, gpr.isHigh(), 0, m64.isHigh()));</span>
+            }
+<span style = "background-color:#dfd">            encode(0x8b);
+            addr(gpr.lowIdx(), m64, scale);
             schedule();
         }</span>
 
         // Moves 64-bit value from Register to memory.
-<span style = "background-color:#dfd">        constexpr void mov(const Memory m64, const Register src) {
-            encode(rex&lt;uint8_t&gt;(1, src.isHigh(), m64.index_reg &gt;= 8 &amp;&amp; m64.index_reg != registers::DUMMY.idx, m64.isHigh()));
-            encode(0x89);
-            addr(src.lowIdx(), m64);
+<span style = "background-color:#dfd">        constexpr void mov(const Memory m64, const Register src, const uint32_t scale = 1, const bool x64 = true) {
+            if (x64) {
+                encode(rex&lt;uint8_t&gt;(1, src.isHigh(), m64.index_reg &gt;= 8 &amp;&amp; m64.index_reg != registers::DUMMY.idx, m64.isHigh()));</span>
+            }
+<span style = "background-color:#dfd">            encode(0x89);
+            addr(src.lowIdx(), m64, scale);
             schedule();
         }</span>
 
@@ -539,6 +532,14 @@ namespace modernRX::assembler {
             encode(rex&lt;uint8_t&gt;(1, gpr.isHigh(), 0, src.isHigh()));
             encode(0x8b);
             encode(modregrm&lt;uint8_t&gt;(gpr.lowIdx(), src.lowIdx()));
+            schedule();
+        }</span>
+
+        // Moves 64-bit immediate value into register.
+<span style = "background-color:#dfd">        constexpr void mov64(const Register gpr, const uint64_t imm64) {
+            encode(rex&lt;uint8_t&gt;(1, 0, 0, gpr.isHigh()));
+            encode(0xb8 + gpr.lowIdx());
+            encode64(imm64);
             schedule();
         }</span>
 
@@ -552,10 +553,7 @@ namespace modernRX::assembler {
             }
 
 <span style = "background-color:#dfd">            encode(0xb8 + gpr.lowIdx());
-            encode((uint8_t)byte&lt;0&gt;(imm64));
-            encode((uint8_t)byte&lt;1&gt;(imm64));
-            encode((uint8_t)byte&lt;2&gt;(imm64));
-            encode((uint8_t)byte&lt;3&gt;(imm64));</span>
+            encode32(static_cast&lt;int32_t&gt;(imm64));</span>
 
 <span style = "background-color:#dfd">            if (imm64 &gt; std::numeric_limits&lt;uint32_t&gt;::max()) {
                 encode((uint8_t)byte&lt;4&gt;(imm64));
@@ -575,15 +573,12 @@ namespace modernRX::assembler {
         }</span>
 
         // Can jump only backwards.
-<span style = "background-color:#dfd">        void jne(const std::string name) {
+<span style = "background-color:#dfd">        constexpr void jne(const int name) {
             const auto rel32{ labels[name] - code.size() - 6 };</span>
 
 <span style = "background-color:#dfd">            encode(0x0f);
             encode(0x85);
-            encode((uint8_t)byte&lt;0&gt;(rel32));
-            encode((uint8_t)byte&lt;1&gt;(rel32));
-            encode((uint8_t)byte&lt;2&gt;(rel32));
-            encode((uint8_t)byte&lt;3&gt;(rel32));
+            encode32(static_cast&lt;int32_t&gt;(rel32));
             schedule();
         }</span>
 
@@ -594,7 +589,7 @@ namespace modernRX::assembler {
         }</span>
 
         // Align to 32 bytes and store label.
-<span style = "background-color:#dfd">        void label(const std::string name, const bool align = true) {
+<span style = "background-color:#dfd">        constexpr void label(const int name, const bool align = true) {
             if (align &amp;&amp; code.size() % 32 != 0) {
                 nop(32 - (code.size() % 32));</span>
             }
@@ -825,10 +820,7 @@ namespace modernRX::assembler {
             encode(rex&lt;uint8_t&gt;(1, dst.isHigh(), 0, dst.isHigh()));
             encode(0x69);
             encode(modregrm&lt;uint8_t&gt;(dst.lowIdx(), dst.lowIdx()));
-            encode((uint8_t)byte&lt;0&gt;(imm));
-            encode((uint8_t)byte&lt;1&gt;(imm));
-            encode((uint8_t)byte&lt;2&gt;(imm));
-            encode((uint8_t)byte&lt;3&gt;(imm));
+            encode32(imm);
             schedule();
         }</span>
 
@@ -996,11 +988,11 @@ namespace modernRX::assembler {
         // Generates nop instructions for given size in bytes.
 <span style = "background-color:#dfd">        constexpr void nop(const int32_t size) {
             int s = size;
-            while (s &gt; 15) {</span>
-<span style = "background-color:#fdd">                code.append_range(std::vector&lt;uint8_t&gt;{ 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x2e, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00}); 
+            while (s &gt; 15) {
+                code.append_range(std::vector&lt;uint8_t&gt;{ 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x2e, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00}); 
                 s -= 15;
-            }</span>
-<span style = "background-color:#dfd">            switch (s % 16) {
+            }
+            switch (s % 16) {
             case 1: code.push_back(0x90); --s; break;
             case 2: code.append_range(std::vector&lt;uint8_t&gt;{ 0x66, 0x90 }); s -= 2; break;
             case 3: code.append_range(std::vector&lt;uint8_t&gt;{ 0x0f, 0x1f, 0x00 }); s -= 3; break;
@@ -1012,9 +1004,9 @@ namespace modernRX::assembler {
             case 9: code.append_range(std::vector&lt;uint8_t&gt;{ 0x66, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00 }); s -= 9; break;
             case 10: code.append_range(std::vector&lt;uint8_t&gt;{ 0x66, 0x2e, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00 }); s -= 10; break;
             case 11: code.append_range(std::vector&lt;uint8_t&gt;{ 0x66, 0x66, 0x2e, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00 }); s -= 11; break;</span>
-<span style = "background-color:#dfd">            case 12: code.append_range(std::vector&lt;uint8_t&gt;{ 0x66, 0x66, 0x66, 0x2e, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00 }); s -= 12; break;</span>
-<span style = "background-color:#fdd">            case 13: code.append_range(std::vector&lt;uint8_t&gt;{ 0x66, 0x66, 0x66, 0x66, 0x2e, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00 }); s -= 13; break;
-            case 14: code.append_range(std::vector&lt;uint8_t&gt;{ 0x66, 0x66, 0x66, 0x66, 0x66, 0x2e, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00 }); s -= 14; break;
+<span style = "background-color:#dfd">            case 12: code.append_range(std::vector&lt;uint8_t&gt;{ 0x66, 0x66, 0x66, 0x2e, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00 }); s -= 12; break;
+            case 13: code.append_range(std::vector&lt;uint8_t&gt;{ 0x66, 0x66, 0x66, 0x66, 0x2e, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00 }); s -= 13; break;</span>
+<span style = "background-color:#fdd">            case 14: code.append_range(std::vector&lt;uint8_t&gt;{ 0x66, 0x66, 0x66, 0x66, 0x66, 0x2e, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00 }); s -= 14; break;
             case 15: code.append_range(std::vector&lt;uint8_t&gt;{ 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x2e, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00}); s -= 15; break;
             default: std::unreachable();</span>
             }
@@ -1050,56 +1042,53 @@ namespace modernRX::assembler {
             return data.data();
         }</span>
 
-        [[nodiscard]] constexpr const int32_t dataSize() noexcept {
-            return static_cast&lt;int32_t&gt;(data.size());
-        }
-
         std::vector&lt;std::pair&lt;size_t, size_t&gt;&gt; data_ptr_pos;
         std::vector&lt;uint8_t&gt; code;
         data_vector data;
         std::vector&lt;uint8_t&gt; instruction;
-        std::unordered_map&lt;std::string, size_t&gt; labels;
+        std::array&lt;size_t, 512&gt; labels{};
 
-<span style = "background-color:#dfd">        constexpr void schedule(int force_align = 0) {
+<span style = "background-color:#dfd">        constexpr void schedule() {
             if (instruction.empty()) {
                 return;</span>
             }
 
 <span style = "background-color:#dfd">            constexpr uint32_t align{ 4096 };
-            if (force_align == 0 &amp;&amp; (code.size() + instruction.size() != align) &amp;&amp; code.size() % align &gt; (code.size() + instruction.size()) % align) {
+            if ((code.size() + instruction.size() != align) &amp;&amp; code.size() % align &gt; (code.size() + instruction.size()) % align) {
                 nop(align - (code.size() % align));</span>
             }
 
 <span style = "background-color:#dfd">            code.insert(code.end(), instruction.begin(), instruction.end());
-            instruction.clear();</span>
-
-<span style = "background-color:#dfd">            if (force_align &gt; 0) {</span>
-<span style = "background-color:#fdd">                nop(force_align);</span>
-            }
-<span style = "background-color:#dfd">        }</span>
+            instruction.clear();
+        }</span>
 
 <span style = "background-color:#dfd">        constexpr void encode(const uint8_t byte) {
             instruction.push_back(byte);
         }</span>
 
+<span style = "background-color:#dfd">        constexpr void encode32(const int32_t bytes) {
+            instruction.append_range(span_cast&lt;const uint8_t, sizeof(int32_t)&gt;(bytes));
+        }</span>
+
+<span style = "background-color:#dfd">        constexpr void encode64(const int64_t bytes) {
+            instruction.append_range(span_cast&lt;const uint8_t, sizeof(int64_t)&gt;(bytes));
+        }</span>
 
 
 <span style = "background-color:#dfd">        constexpr void addr(const reg_idx_t dst, const Memory&amp; src, const uint32_t scale = 1) {</span>
             // RIP relative addressing (displacement only).
-<span style = "background-color:#dfd">            if (src.lowIdx() == registers::RBP.idx &amp;&amp; src.index_reg == registers::DUMMY.idx) {</span>
+<span style = "background-color:#dfd">            if (src.lowIdx() == registers::RBP.idx &amp;&amp; src.index_reg == registers::DUMMY.idx &amp;&amp; src.rip) {</span>
 <span style = "background-color:#fdd">                encode(modregrm&lt;uint8_t&gt;(0, registers::RBP.idx, MOD::MOD00)); // Indirect or SIB mode if RSP used.
-                encode((uint8_t)byte&lt;0&gt;(src.offset));
-                encode((uint8_t)byte&lt;1&gt;(src.offset));
-                encode((uint8_t)byte&lt;2&gt;(src.offset));
-                encode((uint8_t)byte&lt;3&gt;(src.offset));
+                encode32(src.offset);
                 return;</span>
             }
 
             // its sib here
 <span style = "background-color:#dfd">            const auto is_sib{ src.index_reg != registers::DUMMY.idx };
-            const auto srcreg{ is_sib ? registers::RSP.idx : src.lowIdx() };</span>
+            const auto srcreg{ is_sib ? registers::RSP.idx : src.lowIdx() };
+            const auto basereg{ src.lowIdx() };</span>
 
-<span style = "background-color:#dfd">            if (src.offset == 0) {
+<span style = "background-color:#dfd">            if (src.offset == 0 &amp;&amp; basereg != registers::RBP.idx) {
                 encode(modregrm&lt;uint8_t&gt;(dst % 8, srcreg, MOD::MOD00)); // Indirect or SIB mode if RSP used.
             } else if (src.offset &gt;= std::numeric_limits&lt;int8_t&gt;::min() &amp;&amp; src.offset &lt;= std::numeric_limits&lt;int8_t&gt;::max()) {
                 encode(modregrm&lt;uint8_t&gt;(dst % 8, srcreg, MOD::MOD01)); // Indirect + disp8 or SIB mode + disp8 if RSP used.
@@ -1130,7 +1119,7 @@ namespace modernRX::assembler {
             }
 
             // Disp8
-<span style = "background-color:#dfd">            if (src.offset != 0) {
+<span style = "background-color:#dfd">            if (src.offset != 0 || basereg == registers::RBP.idx) {
                 encode((uint8_t)byte&lt;0&gt;(src.offset));</span>
             }
 
@@ -1329,7 +1318,7 @@ namespace modernRX::assembler {
             if constexpr (mm == MM::MM0x0F) {
 <span style = "background-color:#dfd">                if (src2.isLow() &amp;&amp; dst.isLow()) {</span>
                     // INSTR ymmD, ymmS1, ymmS2: {vex.2B: 0xc5} {vex.0b1'sss!'1'66} {opcode.code /opcode.mod} {modrm: 0b11'ddd'ss@}
-<span style = "background-color:#fdd">                    encode(vex1&lt;uint8_t&gt;(false));
+<span style = "background-color:#dfd">                    encode(vex1&lt;uint8_t&gt;(false));
                     encode(vex2&lt;uint8_t&gt;(src1.idx, pp, 1, 0));
                 } else {</span>
                     // INSTR ymmD, ymmS1, ymmS2: {vex.3B: 0xc4} {vex.0bR0B'00001} {vex.0bW'sss!'1'66} {opcode.code /opcode.mod} {modrm: 0b11'ddd'ss@}

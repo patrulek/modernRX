@@ -40,6 +40,12 @@ namespace modernRX::assembler {
         reg_idx_t reg;
         reg_idx_t index_reg{ 0xff };
         int32_t offset;
+        bool rip{ false };
+
+        // Should be used only when mem.reg is RBP.
+        [[nodiscard]] static constexpr Memory RIP(const Memory& mem) noexcept {
+            return Memory{ mem.reg, mem.index_reg, mem.offset, true };
+        }
 
         [[nodiscard]] constexpr bool isLow() const noexcept {
             return reg < 8;
@@ -105,11 +111,11 @@ namespace modernRX::assembler {
         }
 
         [[nodiscard]] constexpr const Memory operator[](const int32_t offset) const noexcept {
-            return Memory{ idx, 0xff, offset };
+            return Memory{ idx, 0xff, offset, false };
         }
 
         [[nodiscard]] constexpr const Memory operator[](const Memory& offset) const noexcept {
-            return Memory{ idx, offset.reg, offset.offset };
+            return Memory{ idx, offset.reg, offset.offset, offset.rip };
         }
     };
 

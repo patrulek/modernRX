@@ -1,0 +1,455 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+        <meta charset="utf-8"/>
+	    <title>bytecodecompiler.cpp</title>
+	    <link href="../../third-party/google-code-prettify/prettify-CppCoverage.css" type="text/css" rel="stylesheet" />
+	    <script type="text/javascript" src="../../third-party/google-code-prettify/prettify.js"></script>
+	</head>
+    <body onload="prettyPrint()">
+        <h4></h4>
+        <pre class="prettyprint lang-cpp linenums">
+#pragma once
+
+#include "bytecodecompiler.hpp"
+#include "randomxparams.hpp"
+#include "reciprocal.hpp"
+#include "sse.hpp"
+
+namespace modernRX {
+    namespace {
+        constexpr uint32_t Scratchpad_L1_Mask{ (Rx_Scratchpad_L1_Size - 1) &amp; ~7 }; // L1 cache 8-byte alignment mask.
+        constexpr uint32_t Scratchpad_L2_Mask{ (Rx_Scratchpad_L2_Size - 1) &amp; ~7 }; // L2 cache 8-byte alignment mask.
+        constexpr uint32_t Scratchpad_L3_Mask{ (Rx_Scratchpad_L3_Size - 1) &amp; ~7 }; // L3 cache 8-byte alignment mask.
+
+        void setJmpPoint(assembler::Context&amp; asmb, std::span&lt;int32_t, Int_Register_Count&gt; reg_usage, const uint32_t reg_idx, const uint32_t instr_idx);
+    }
+
+    using namespace assembler;
+    using namespace assembler::registers;
+
+<span style = "background-color:#dfd">    void iaddrs_cmpl(assembler::Context&amp; asmb, std::span&lt;int32_t, Int_Register_Count&gt; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
+        constexpr uint8_t Displacement_Reg_Idx{ 5 };
+        const auto dst_register{ instr.dst_register % Int_Register_Count };
+        const auto src_register{ instr.src_register % Int_Register_Count };
+        const bool with_imm{ dst_register == Displacement_Reg_Idx };
+        const auto offset = with_imm ? instr.imm32 : 0;
+        const auto asmb_dst_reg{ Register::GPR(dst_register | 8) };
+        const auto asmb_src_reg{ Register::GPR(src_register | 8) };</span>
+
+<span style = "background-color:#dfd">        asmb.lea(asmb_dst_reg, asmb_dst_reg[asmb_src_reg[offset]], 1 &lt;&lt; instr.modShift());
+        setJmpPoint(asmb, reg_usage, dst_register, idx);
+    }</span>
+
+<span style = "background-color:#dfd">    void iaddm_cmpl(assembler::Context&amp; asmb, std::span&lt;int32_t, Int_Register_Count&gt; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
+        const auto dst_register{ instr.dst_register % Int_Register_Count };
+        const auto src_register{ instr.src_register % Int_Register_Count };
+        const auto asmb_dst_reg{ Register::GPR(dst_register | 8) };
+        const auto asmb_src_reg{ Register::GPR(src_register | 8) };
+        auto mem_mask{ instr.modMask() ? Scratchpad_L1_Mask : Scratchpad_L2_Mask };</span>
+
+<span style = "background-color:#dfd">        if (dst_register == src_register) {
+            const auto offset{ instr.imm32 &amp; Scratchpad_L3_Mask };
+            asmb.add(asmb_dst_reg, RSI[offset]);
+        } else {
+            asmb.lea(RAX, asmb_src_reg[instr.imm32]);
+            asmb.and_(RAX, mem_mask);
+            asmb.add(asmb_dst_reg, RSI[RAX[0]]);</span>
+        }
+
+<span style = "background-color:#dfd">        setJmpPoint(asmb, reg_usage, dst_register, idx);
+    }</span>
+
+<span style = "background-color:#dfd">    void isubr_cmpl(assembler::Context&amp; asmb, std::span&lt;int32_t, Int_Register_Count&gt; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
+        const auto dst_register{ instr.dst_register % Int_Register_Count };
+        const auto src_register{ instr.src_register % Int_Register_Count };
+        const auto asmb_dst_reg{ Register::GPR(dst_register | 8) };
+        const auto asmb_src_reg{ Register::GPR(src_register | 8) };</span>
+
+<span style = "background-color:#dfd">        if (dst_register == src_register) {
+            asmb.sub(asmb_dst_reg, static_cast&lt;int32_t&gt;(instr.imm32));
+        } else {
+            asmb.sub(asmb_dst_reg, asmb_src_reg);</span>
+        }
+
+<span style = "background-color:#dfd">        setJmpPoint(asmb, reg_usage, dst_register, idx);
+    }</span>
+
+<span style = "background-color:#dfd">    void isubm_cmpl(assembler::Context&amp; asmb, std::span&lt;int32_t, Int_Register_Count&gt; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
+        const auto dst_register{ instr.dst_register % Int_Register_Count };
+        const auto src_register{ instr.src_register % Int_Register_Count };
+        const auto asmb_dst_reg{ Register::GPR(dst_register | 8) };
+        const auto asmb_src_reg{ Register::GPR(src_register | 8) };
+        auto mem_mask{ instr.modMask() ? Scratchpad_L1_Mask : Scratchpad_L2_Mask };</span>
+
+<span style = "background-color:#dfd">        if (dst_register == src_register) {
+            const auto offset{ instr.imm32 &amp; Scratchpad_L3_Mask };
+            asmb.sub(asmb_dst_reg, RSI[offset]);
+        } else {
+            asmb.lea(RAX, asmb_src_reg[instr.imm32]);
+            asmb.and_(RAX, mem_mask);
+            asmb.sub(asmb_dst_reg, RSI[RAX[0]]);</span>
+        }
+
+<span style = "background-color:#dfd">        setJmpPoint(asmb, reg_usage, dst_register, idx);
+    }</span>
+
+<span style = "background-color:#dfd">    void imulr_cmpl(assembler::Context&amp; asmb, std::span&lt;int32_t, Int_Register_Count&gt; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
+        const auto dst_register{ instr.dst_register % Int_Register_Count };
+        const auto src_register{ instr.src_register % Int_Register_Count };
+        const auto asmb_dst_reg{ Register::GPR(dst_register | 8) };
+        const auto asmb_src_reg{ Register::GPR(src_register | 8) };</span>
+
+<span style = "background-color:#dfd">        if (dst_register == src_register) {
+            asmb.imul(asmb_dst_reg, static_cast&lt;int32_t&gt;(instr.imm32));
+        } else {
+            asmb.imul(asmb_dst_reg, asmb_src_reg);</span>
+        }
+
+<span style = "background-color:#dfd">        setJmpPoint(asmb, reg_usage, dst_register, idx);
+    }</span>
+
+<span style = "background-color:#dfd">    void imulm_cmpl(assembler::Context&amp; asmb, std::span&lt;int32_t, Int_Register_Count&gt; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
+        const auto dst_register{ instr.dst_register % Int_Register_Count };
+        const auto src_register{ instr.src_register % Int_Register_Count };
+        const auto asmb_dst_reg{ Register::GPR(dst_register | 8) };
+        const auto asmb_src_reg{ Register::GPR(src_register | 8) };
+        auto mem_mask{ instr.modMask() ? Scratchpad_L1_Mask : Scratchpad_L2_Mask };</span>
+
+<span style = "background-color:#dfd">        if (dst_register == src_register) {
+            const auto offset{ instr.imm32 &amp; Scratchpad_L3_Mask };
+            asmb.imul(asmb_dst_reg, RSI[offset]);
+        } else {
+            asmb.lea(RCX, asmb_src_reg[instr.imm32]);
+            asmb.and_(RCX, mem_mask);
+            asmb.imul(asmb_dst_reg, RSI[RCX[0]]);</span>
+        }
+
+<span style = "background-color:#dfd">        setJmpPoint(asmb, reg_usage, dst_register, idx);
+    }</span>
+
+<span style = "background-color:#dfd">    void imulhr_cmpl(assembler::Context&amp; asmb, std::span&lt;int32_t, Int_Register_Count&gt; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
+        const auto dst_register{ instr.dst_register % Int_Register_Count };
+        const auto src_register{ instr.src_register % Int_Register_Count };
+        const auto asmb_dst_reg{ Register::GPR(dst_register | 8) };
+        const auto asmb_src_reg{ Register::GPR(src_register | 8) };
+        asmb.mulh(asmb_dst_reg, asmb_src_reg);</span>
+
+<span style = "background-color:#dfd">        setJmpPoint(asmb, reg_usage, dst_register, idx);
+    }</span>
+
+<span style = "background-color:#dfd">    void imulhm_cmpl(assembler::Context&amp; asmb, std::span&lt;int32_t, Int_Register_Count&gt; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
+        const auto dst_register{ instr.dst_register % Int_Register_Count };
+        const auto src_register{ instr.src_register % Int_Register_Count };
+        const auto asmb_dst_reg{ Register::GPR(dst_register | 8) };
+        const auto asmb_src_reg{ Register::GPR(src_register | 8) };
+        auto mem_mask{ instr.modMask() ? Scratchpad_L1_Mask : Scratchpad_L2_Mask };</span>
+
+<span style = "background-color:#dfd">        if (dst_register == src_register) {
+            const auto offset{ instr.imm32 &amp; Scratchpad_L3_Mask };
+            asmb.mulh(asmb_dst_reg, RSI[offset]);
+        } else {
+            asmb.lea(RCX, asmb_src_reg[instr.imm32]);
+            asmb.and_(RCX, mem_mask);
+            asmb.mulh(asmb_dst_reg, RSI[RCX[0]]);</span>
+        }
+
+<span style = "background-color:#dfd">        setJmpPoint(asmb, reg_usage, dst_register, idx);
+    }</span>
+
+<span style = "background-color:#dfd">    void ismulhr_cmpl(assembler::Context&amp; asmb, std::span&lt;int32_t, Int_Register_Count&gt; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
+        const auto dst_register{ instr.dst_register % Int_Register_Count };
+        const auto src_register{ instr.src_register % Int_Register_Count };
+        const auto asmb_dst_reg{ Register::GPR(dst_register | 8) };
+        const auto asmb_src_reg{ Register::GPR(src_register | 8) };
+        asmb.imulh(asmb_dst_reg, asmb_src_reg);</span>
+
+<span style = "background-color:#dfd">        setJmpPoint(asmb, reg_usage, dst_register, idx);
+    }</span>
+
+<span style = "background-color:#dfd">    void ismulhm_cmpl(assembler::Context&amp; asmb, std::span&lt;int32_t, Int_Register_Count&gt; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
+        const auto dst_register{ instr.dst_register % Int_Register_Count };
+        const auto src_register{ instr.src_register % Int_Register_Count };
+        const auto asmb_dst_reg{ Register::GPR(dst_register | 8) };
+        const auto asmb_src_reg{ Register::GPR(src_register | 8) };
+        auto mem_mask{ instr.modMask() ? Scratchpad_L1_Mask : Scratchpad_L2_Mask };</span>
+
+<span style = "background-color:#dfd">        if (dst_register == src_register) {
+            const auto offset{ instr.imm32 &amp; Scratchpad_L3_Mask };
+            asmb.imulh(asmb_dst_reg, RSI[offset]);
+        } else {
+            asmb.lea(RCX, asmb_src_reg[instr.imm32]);
+            asmb.and_(RCX, mem_mask);
+            asmb.imulh(asmb_dst_reg, RSI[RCX[0]]);</span>
+        }
+
+<span style = "background-color:#dfd">        setJmpPoint(asmb, reg_usage, dst_register, idx);
+    }</span>
+
+<span style = "background-color:#dfd">    void inegr_cmpl(assembler::Context&amp; asmb, std::span&lt;int32_t, Int_Register_Count&gt; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
+        const auto dst_register{ instr.dst_register % Int_Register_Count };
+        const auto asmb_dst_reg{ Register::GPR(dst_register | 8) };
+        asmb.neg(asmb_dst_reg);</span>
+
+<span style = "background-color:#dfd">        setJmpPoint(asmb, reg_usage, dst_register, idx);
+    }</span>
+
+<span style = "background-color:#dfd">    void ixorr_cmpl(assembler::Context&amp; asmb, std::span&lt;int32_t, Int_Register_Count&gt; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
+        const auto dst_register{ instr.dst_register % Int_Register_Count };
+        const auto src_register{ instr.src_register % Int_Register_Count };
+        const auto asmb_dst_reg{ Register::GPR(dst_register | 8) };
+        const auto asmb_src_reg{ Register::GPR(src_register | 8) };</span>
+
+<span style = "background-color:#dfd">        if (dst_register == src_register) {
+            asmb.xor_(asmb_dst_reg, static_cast&lt;int32_t&gt;(instr.imm32));
+        } else {
+            asmb.xor_(asmb_dst_reg, asmb_src_reg);</span>
+        }
+
+<span style = "background-color:#dfd">        setJmpPoint(asmb, reg_usage, dst_register, idx);
+    }</span>
+
+<span style = "background-color:#dfd">    void ixorm_cmpl(assembler::Context&amp; asmb, std::span&lt;int32_t, Int_Register_Count&gt; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
+        const auto dst_register{ instr.dst_register % Int_Register_Count };
+        const auto src_register{ instr.src_register % Int_Register_Count };
+        const auto asmb_dst_reg{ Register::GPR(dst_register | 8) };
+        const auto asmb_src_reg{ Register::GPR(src_register | 8) };
+        auto mem_mask{ instr.modMask() ? Scratchpad_L1_Mask : Scratchpad_L2_Mask };</span>
+
+<span style = "background-color:#dfd">        if (dst_register == src_register) {
+            const auto offset{ instr.imm32 &amp; Scratchpad_L3_Mask };
+            asmb.xor_(asmb_dst_reg, RSI[offset]);
+        } else {
+            asmb.lea(RAX, asmb_src_reg[instr.imm32]);
+            asmb.and_(RAX, mem_mask);
+            asmb.xor_(asmb_dst_reg, RSI[RAX[0]]);</span>
+        }
+
+<span style = "background-color:#dfd">        setJmpPoint(asmb, reg_usage, dst_register, idx);
+    }</span>
+
+<span style = "background-color:#dfd">    void irorr_cmpl(assembler::Context&amp; asmb, std::span&lt;int32_t, Int_Register_Count&gt; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
+        const auto dst_register{ instr.dst_register % Int_Register_Count };
+        const auto src_register{ instr.src_register % Int_Register_Count };
+        const auto asmb_dst_reg{ Register::GPR(dst_register | 8) };
+        const auto asmb_src_reg{ Register::GPR(src_register | 8) };</span>
+
+<span style = "background-color:#dfd">        if (dst_register == src_register) {
+            asmb.ror(asmb_dst_reg, instr.imm32 % 64);
+        } else {
+            asmb.ror(asmb_dst_reg, asmb_src_reg);</span>
+        }
+
+<span style = "background-color:#dfd">        setJmpPoint(asmb, reg_usage, dst_register, idx);
+    }</span>
+
+<span style = "background-color:#dfd">    void irolr_cmpl(assembler::Context&amp; asmb, std::span&lt;int32_t, Int_Register_Count&gt; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
+        const auto dst_register{ instr.dst_register % Int_Register_Count };
+        const auto src_register{ instr.src_register % Int_Register_Count };
+        const auto asmb_dst_reg{ Register::GPR(dst_register | 8) };
+        const auto asmb_src_reg{ Register::GPR(src_register | 8) };</span>
+
+<span style = "background-color:#dfd">        if (dst_register == src_register) {
+            asmb.rol(asmb_dst_reg, instr.imm32 % 64);
+        } else {
+            asmb.rol(asmb_dst_reg, asmb_src_reg);</span>
+        }
+
+<span style = "background-color:#dfd">        setJmpPoint(asmb, reg_usage, dst_register, idx);
+    }</span>
+
+<span style = "background-color:#dfd">    void imulrcp_cmpl(assembler::Context&amp; asmb, std::span&lt;int32_t, Int_Register_Count&gt; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
+        const auto dst_register{ instr.dst_register % Int_Register_Count };
+        const auto asmb_dst_reg{ Register::GPR(dst_register | 8) };</span>
+
+<span style = "background-color:#dfd">        if (instr.imm32 != 0 &amp;&amp; !std::has_single_bit(instr.imm32)) {
+            asmb.mov(RAX, reciprocal(instr.imm32));
+            asmb.imul(asmb_dst_reg, RAX);
+            setJmpPoint(asmb, reg_usage, dst_register, idx);</span>
+        }
+<span style = "background-color:#dfd">    }</span>
+
+<span style = "background-color:#dfd">    void iswapr_cmpl(assembler::Context&amp; asmb, std::span&lt;int32_t, Int_Register_Count&gt; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
+        const auto dst_register{ instr.dst_register % Int_Register_Count };
+        const auto src_register{ instr.src_register % Int_Register_Count };
+        const auto asmb_dst_reg{ Register::GPR(dst_register | 8) };
+        const auto asmb_src_reg{ Register::GPR(src_register | 8) };</span>
+
+<span style = "background-color:#dfd">        if (src_register != dst_register) {
+            asmb.xchg(asmb_dst_reg, asmb_src_reg);
+            setJmpPoint(asmb, reg_usage, src_register, idx);
+            setJmpPoint(asmb, reg_usage, dst_register, idx);</span>
+        }
+<span style = "background-color:#dfd">    }</span>
+
+<span style = "background-color:#dfd">    void cbranch_cmpl(assembler::Context&amp; asmb, std::span&lt;int32_t, Int_Register_Count&gt; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
+        const auto dst_register{ instr.dst_register % Int_Register_Count };
+        const auto src_register{ instr.src_register % Int_Register_Count };
+        const auto asmb_dst_reg{ Register::GPR(dst_register | 8) };
+        const auto asmb_src_reg{ Register::GPR(src_register | 8) };</span>
+
+<span style = "background-color:#dfd">        constexpr uint32_t Condition_Mask{ (1 &lt;&lt; Rx_Jump_Bits) - 1 };
+        const auto shift{ instr.modCond() + Rx_Jump_Offset };
+        const auto mem_mask{ Condition_Mask &lt;&lt; shift };</span>
+
+        static_assert(Rx_Jump_Offset &gt; 0, "Below simplification requires this assertion");
+<span style = "background-color:#dfd">        uint64_t imm{ static_cast&lt;int32_t&gt;(instr.imm32) | (1ULL &lt;&lt; shift) };
+        imm &amp;= ~(1ULL &lt;&lt; (shift - 1)); // Clear the bit below the condition mask - this limits the number of successive jumps to 2.</span>
+
+<span style = "background-color:#dfd">        const auto jmp_target{ reg_usage[dst_register] + 1 };</span>
+
+<span style = "background-color:#dfd">        asmb.add(asmb_dst_reg, static_cast&lt;int32_t&gt;(imm));
+        asmb.test(asmb_dst_reg, mem_mask);
+        asmb.jz(jmp_target);
+        setJmpPoint(asmb, reg_usage, dst_register, idx);</span>
+
+<span style = "background-color:#dfd">        for (auto&amp; reg : reg_usage) reg = idx; // Set all registers as used.
+    }</span>
+
+<span style = "background-color:#dfd">    void fswapr_cmpl(assembler::Context&amp; asmb, std::span&lt;int32_t, Int_Register_Count&gt; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
+        const auto dst_register{ instr.dst_register % Int_Register_Count };
+        const auto f_dst_register{ instr.dst_register % Float_Register_Count };
+        const auto f_asmb_dst_reg{ Register::XMM(f_dst_register) };
+        const auto e_asmb_dst_reg{ Register::XMM(f_dst_register + 4) };</span>
+
+<span style = "background-color:#dfd">        const auto&amp; swapreg{ dst_register &lt; Float_Register_Count ? f_asmb_dst_reg : e_asmb_dst_reg };
+        asmb.vshufpd(swapreg, swapreg, swapreg, 0b0000'0001);
+    }</span>
+
+<span style = "background-color:#dfd">    void faddr_cmpl(assembler::Context&amp; asmb, std::span&lt;int32_t, Int_Register_Count&gt; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
+        const auto f_dst_register{ instr.dst_register % Float_Register_Count };
+        const auto f_src_register{ instr.src_register % Float_Register_Count };
+        const auto f_asmb_dst_reg{ Register::XMM(f_dst_register) };
+        const auto a_asmb_src_reg{ Register::XMM(f_src_register + 8) };</span>
+
+<span style = "background-color:#dfd">        asmb.vaddpd(f_asmb_dst_reg, a_asmb_src_reg);
+    }</span>
+
+<span style = "background-color:#dfd">    void faddm_cmpl(assembler::Context&amp; asmb, std::span&lt;int32_t, Int_Register_Count&gt; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
+        const auto src_register{ instr.src_register % Int_Register_Count };
+        const auto asmb_src_reg{ Register::GPR(src_register | 8) };
+        const auto f_dst_register{ instr.dst_register % Float_Register_Count };
+        const auto f_asmb_dst_reg{ Register::XMM(f_dst_register) };
+        auto mem_mask{ instr.modMask() ? Scratchpad_L1_Mask : Scratchpad_L2_Mask };</span>
+
+<span style = "background-color:#dfd">        asmb.lea(RAX, asmb_src_reg[instr.imm32]);
+        asmb.and_(RAX, mem_mask);
+        asmb.vcvtdq2pd(XMM12, RSI[RAX[0]]);
+        asmb.vaddpd(f_asmb_dst_reg, XMM12);
+    }</span>
+
+<span style = "background-color:#dfd">    void fsubr_cmpl(assembler::Context&amp; asmb, std::span&lt;int32_t, Int_Register_Count&gt; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
+        const auto f_dst_register{ instr.dst_register % Float_Register_Count };
+        const auto f_src_register{ instr.src_register % Float_Register_Count };
+        const auto f_asmb_dst_reg{ Register::XMM(f_dst_register) };
+        const auto a_asmb_src_reg{ Register::XMM(f_src_register + 8) };</span>
+
+<span style = "background-color:#dfd">        asmb.vsubpd(f_asmb_dst_reg, a_asmb_src_reg);
+    }</span>
+
+<span style = "background-color:#dfd">    void fsubm_cmpl(assembler::Context&amp; asmb, std::span&lt;int32_t, Int_Register_Count&gt; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
+        const auto src_register{ instr.src_register % Int_Register_Count };
+        const auto asmb_src_reg{ Register::GPR(src_register | 8) };
+        const auto f_dst_register{ instr.dst_register % Float_Register_Count };
+        const auto f_asmb_dst_reg{ Register::XMM(f_dst_register) };
+        auto mem_mask{ instr.modMask() ? Scratchpad_L1_Mask : Scratchpad_L2_Mask };</span>
+
+<span style = "background-color:#dfd">        asmb.lea(RAX, asmb_src_reg[instr.imm32]);
+        asmb.and_(RAX, mem_mask);
+        asmb.vcvtdq2pd(XMM12, RSI[RAX[0]]);
+        asmb.vsubpd(f_asmb_dst_reg, XMM12);
+    }</span>
+
+<span style = "background-color:#dfd">    void fscalr_cmpl(assembler::Context&amp; asmb, std::span&lt;int32_t, Int_Register_Count&gt; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
+        const auto f_dst_register{ instr.dst_register % Float_Register_Count };
+        const auto f_asmb_dst_reg{ Register::XMM(f_dst_register) };</span>
+
+<span style = "background-color:#dfd">        asmb.vpxor(f_asmb_dst_reg, f_asmb_dst_reg, XMM14);
+    }</span>
+
+<span style = "background-color:#dfd">    void fmulr_cmpl(assembler::Context&amp; asmb, std::span&lt;int32_t, Int_Register_Count&gt; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
+        const auto f_dst_register{ instr.dst_register % Float_Register_Count };
+        const auto f_src_register{ instr.src_register % Float_Register_Count };
+        const auto e_asmb_dst_reg{ Register::XMM(f_dst_register + 4) };
+        const auto a_asmb_src_reg{ Register::XMM(f_src_register + 8) };</span>
+
+<span style = "background-color:#dfd">        asmb.vmulpd(e_asmb_dst_reg, a_asmb_src_reg);
+    }</span>
+
+<span style = "background-color:#dfd">    void fdivm_cmpl(assembler::Context&amp; asmb, std::span&lt;int32_t, Int_Register_Count&gt; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
+        const auto src_register{ instr.src_register % Int_Register_Count };
+        const auto asmb_src_reg{ Register::GPR(src_register | 8) };
+        const auto f_dst_register{ instr.dst_register % Float_Register_Count };
+        const auto e_asmb_dst_reg{ Register::XMM(f_dst_register + 4) };
+        auto mem_mask{ instr.modMask() ? Scratchpad_L1_Mask : Scratchpad_L2_Mask };</span>
+
+<span style = "background-color:#dfd">        asmb.vmovdqu(XMM13, RDI[280 + 0]); // Load e_mask.
+        asmb.lea(RAX, asmb_src_reg[instr.imm32]);
+        asmb.and_(RAX, mem_mask);
+        asmb.vcvtdq2pd(XMM12, RSI[RAX[0]]);
+        asmb.vpand(XMM12, XMM12, XMM15);
+        asmb.vpor(XMM12, XMM12, XMM13);
+        asmb.vdivpd(e_asmb_dst_reg, XMM12);
+    }</span>
+
+<span style = "background-color:#dfd">    void fsqrtr_cmpl(assembler::Context&amp; asmb, std::span&lt;int32_t, Int_Register_Count&gt; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
+        const auto f_dst_register{ instr.dst_register % Float_Register_Count };
+        const auto e_asmb_dst_reg{ Register::XMM(f_dst_register + 4) };</span>
+
+<span style = "background-color:#dfd">        asmb.vsqrtpd(e_asmb_dst_reg);
+    }</span>
+
+<span style = "background-color:#dfd">    void cfround_cmpl(assembler::Context&amp; asmb, std::span&lt;int32_t, Int_Register_Count&gt; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
+        const auto src_register{ instr.src_register % Int_Register_Count };
+        const auto asmb_src_reg{ Register::GPR(src_register | 8) };</span>
+
+<span style = "background-color:#dfd">        asmb.mov(RAX, asmb_src_reg);
+        asmb.ror(RAX, static_cast&lt;int32_t&gt;(instr.imm32 % 64));
+        asmb.and_(RAX, 3);
+        asmb.rol(RAX, 13);
+        asmb.or_(RAX, intrinsics::sse::Rx_Mxcsr_Default);
+        asmb.push(RAX);
+        asmb.ldmxcsr(RSP[0]);
+        asmb.pop(RAX);
+    }</span>
+
+<span style = "background-color:#dfd">    void istore_cmpl(assembler::Context&amp; asmb, std::span&lt;int32_t, Int_Register_Count&gt; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
+        const auto dst_register{ instr.dst_register % Int_Register_Count };
+        const auto src_register{ instr.src_register % Int_Register_Count };
+        const auto asmb_dst_reg{ Register::GPR(dst_register | 8) };
+        const auto asmb_src_reg{ Register::GPR(src_register | 8) };
+        auto mem_mask{ instr.modMask() ? Scratchpad_L1_Mask : Scratchpad_L2_Mask };</span>
+
+<span style = "background-color:#dfd">        constexpr uint32_t L3_Store_Condition{ 14 };</span>
+
+<span style = "background-color:#dfd">        if (instr.modCond() &gt;= L3_Store_Condition) {
+            mem_mask = Scratchpad_L3_Mask;</span>
+        }
+
+<span style = "background-color:#dfd">        asmb.lea(RAX, asmb_dst_reg[static_cast&lt;int32_t&gt;(instr.imm32)]);
+        asmb.and_(RAX, mem_mask);
+        asmb.mov(RSI[RAX[0]], asmb_src_reg);
+    }</span>
+
+    namespace {
+<span style = "background-color:#dfd">        void setJmpPoint(assembler::Context&amp; asmb, std::span&lt;int32_t, Int_Register_Count&gt; reg_usage, const uint32_t reg_idx, const uint32_t instr_idx) {
+            reg_usage[reg_idx] = instr_idx;
+            asmb.label(instr_idx + 1, false);
+        };</span>
+    }
+}</pre>
+        <hr />
+        <table width="100%">
+            <thead>
+                <tr>
+                    <th align="center">
+                        <small>Generated by</small>
+                        <a href="https://github.com/OpenCppCoverage/OpenCppCoverage/releases">
+                            <strong>OpenCppCoverage (Version: 0.9.9.0)</strong>
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+        </table>
+    </body>
+</html>

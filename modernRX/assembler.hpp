@@ -8,12 +8,11 @@
 
 #include <array>
 #include <iterator>
-#include <string>
-#include <unordered_map>
 #include <vector>
 
 #include "alignedallocator.hpp"
 #include "assemblerdef.hpp"
+#include "cast.hpp"
 
 namespace modernRX::assembler {
     using data_vector = std::vector<uint8_t, AlignedAllocator<uint8_t, 4096>>;
@@ -23,7 +22,6 @@ namespace modernRX::assembler {
         [[nodiscard]] explicit Context(const size_t code_size, const size_t data_size = 0) {
             code.reserve(code_size);
             data.reserve(data_size);
-            labels.reserve(256);
             instruction.reserve(32);
         }
 
@@ -132,10 +130,7 @@ namespace modernRX::assembler {
         }
 
         constexpr void prefetchnta(const Memory src_reg) {
-            if (src_reg.isHigh()) {
-                encode(rex<uint8_t>(0, 0, 0, 1));
-            }
-
+            encode(rex<uint8_t>(1, 0, 0, src_reg.isHigh()));
             encode(0x0F);
             encode(0x18);
             addr(0, src_reg);
@@ -294,24 +289,27 @@ namespace modernRX::assembler {
             sub(registers::RSP, 56);
         }
 
+
+        constexpr void and_(const Register dst, const Register src) {
+            encode(rex<uint8_t>(1, dst.isHigh(), 0, src.isHigh()));
+            encode(0x23);
+            encode(modregrm<uint8_t>(dst.lowIdx(), src.lowIdx()));
+            schedule();
+        }
+
         constexpr void and_(const Register dst_reg, const int32_t imm) {
             encode(rex<uint8_t>(1, 0, 0, dst_reg.isHigh()));
             encode(0x81);
             encode(modregrm<uint8_t>(4, dst_reg.lowIdx()));
-            encode((uint8_t)byte<0>(imm));
-            encode((uint8_t)byte<1>(imm));
-            encode((uint8_t)byte<2>(imm));
-            encode((uint8_t)byte<3>(imm));
+            encode32(imm);
+            schedule();
         }
 
         constexpr void or_(const Register dst_reg, const int32_t imm) {
             encode(rex<uint8_t>(1, 0, 0, dst_reg.isHigh()));
             encode(0x81);
             encode(modregrm<uint8_t>(1, dst_reg.lowIdx()));
-            encode((uint8_t)byte<0>(imm));
-            encode((uint8_t)byte<1>(imm));
-            encode((uint8_t)byte<2>(imm));
-            encode((uint8_t)byte<3>(imm));
+            encode32(imm);
             schedule();
         }
 
@@ -326,10 +324,7 @@ namespace modernRX::assembler {
             encode(rex<uint8_t>(1, 0, 0, dst.isHigh()));
             encode(0x81);
             encode(modregrm<uint8_t>(6, dst.lowIdx()));
-            encode((uint8_t)byte<0>(imm));
-            encode((uint8_t)byte<1>(imm));
-            encode((uint8_t)byte<2>(imm));
-            encode((uint8_t)byte<3>(imm));
+            encode32(imm);
             schedule();
         }
 
@@ -376,22 +371,16 @@ namespace modernRX::assembler {
             encode(rex<uint8_t>(1, 0, 0, dst.isHigh()));
             encode(0xf7);
             encode(modregrm<uint8_t>(0, dst.lowIdx()));
-            encode((uint8_t)byte<0>(imm));
-            encode((uint8_t)byte<1>(imm));
-            encode((uint8_t)byte<2>(imm));
-            encode((uint8_t)byte<3>(imm));
+            encode32(imm);
             schedule();
         }
 
-        void jz(const std::string name) {
+        constexpr void jz(const int name) {
             const auto rel32{ labels[name] - code.size() - 6 };
 
             encode(0x0f);
             encode(0x84);
-            encode((uint8_t)byte<0>(rel32));
-            encode((uint8_t)byte<1>(rel32));
-            encode((uint8_t)byte<2>(rel32));
-            encode((uint8_t)byte<3>(rel32));
+            encode32(static_cast<int32_t>(rel32));
             schedule();
         }
 
@@ -508,18 +497,22 @@ namespace modernRX::assembler {
         }
 
         // Moves 64-bit value from Memory to gpr register.
-        constexpr void mov(const Register gpr, const Memory m64) {
-            encode(rex<uint8_t>(1, gpr.isHigh(), 0, m64.isHigh()));
+        constexpr void mov(const Register gpr, const Memory m64, const uint32_t scale = 1, const bool x64 = true) {
+            if (x64) {
+                encode(rex<uint8_t>(1, gpr.isHigh(), 0, m64.isHigh()));
+            }
             encode(0x8b);
-            addr(gpr.lowIdx(), m64);
+            addr(gpr.lowIdx(), m64, scale);
             schedule();
         }
 
         // Moves 64-bit value from Register to memory.
-        constexpr void mov(const Memory m64, const Register src) {
-            encode(rex<uint8_t>(1, src.isHigh(), m64.index_reg >= 8 && m64.index_reg != registers::DUMMY.idx, m64.isHigh()));
+        constexpr void mov(const Memory m64, const Register src, const uint32_t scale = 1, const bool x64 = true) {
+            if (x64) {
+                encode(rex<uint8_t>(1, src.isHigh(), m64.index_reg >= 8 && m64.index_reg != registers::DUMMY.idx, m64.isHigh()));
+            }
             encode(0x89);
-            addr(src.lowIdx(), m64);
+            addr(src.lowIdx(), m64, scale);
             schedule();
         }
 
@@ -528,6 +521,14 @@ namespace modernRX::assembler {
             encode(rex<uint8_t>(1, gpr.isHigh(), 0, src.isHigh()));
             encode(0x8b);
             encode(modregrm<uint8_t>(gpr.lowIdx(), src.lowIdx()));
+            schedule();
+        }
+
+        // Moves 64-bit immediate value into register.
+        constexpr void mov64(const Register gpr, const uint64_t imm64) {
+            encode(rex<uint8_t>(1, 0, 0, gpr.isHigh()));
+            encode(0xb8 + gpr.lowIdx());
+            encode64(imm64);
             schedule();
         }
 
@@ -541,10 +542,7 @@ namespace modernRX::assembler {
             }
 
             encode(0xb8 + gpr.lowIdx());
-            encode((uint8_t)byte<0>(imm64));
-            encode((uint8_t)byte<1>(imm64));
-            encode((uint8_t)byte<2>(imm64));
-            encode((uint8_t)byte<3>(imm64));
+            encode32(static_cast<int32_t>(imm64));
 
             if (imm64 > std::numeric_limits<uint32_t>::max()) {
                 encode((uint8_t)byte<4>(imm64));
@@ -564,15 +562,12 @@ namespace modernRX::assembler {
         }
 
         // Can jump only backwards.
-        void jne(const std::string name) {
+        constexpr void jne(const int name) {
             const auto rel32{ labels[name] - code.size() - 6 };
 
             encode(0x0f);
             encode(0x85);
-            encode((uint8_t)byte<0>(rel32));
-            encode((uint8_t)byte<1>(rel32));
-            encode((uint8_t)byte<2>(rel32));
-            encode((uint8_t)byte<3>(rel32));
+            encode32(static_cast<int32_t>(rel32));
             schedule();
         }
 
@@ -583,7 +578,7 @@ namespace modernRX::assembler {
         }
 
         // Align to 32 bytes and store label.
-        void label(const std::string name, const bool align = true) {
+        constexpr void label(const int name, const bool align = true) {
             if (align && code.size() % 32 != 0) {
                 nop(32 - (code.size() % 32));
             }
@@ -814,10 +809,7 @@ namespace modernRX::assembler {
             encode(rex<uint8_t>(1, dst.isHigh(), 0, dst.isHigh()));
             encode(0x69);
             encode(modregrm<uint8_t>(dst.lowIdx(), dst.lowIdx()));
-            encode((uint8_t)byte<0>(imm));
-            encode((uint8_t)byte<1>(imm));
-            encode((uint8_t)byte<2>(imm));
-            encode((uint8_t)byte<3>(imm));
+            encode32(imm);
             schedule();
         }
 
@@ -1039,56 +1031,53 @@ namespace modernRX::assembler {
             return data.data();
         }
 
-        [[nodiscard]] constexpr const int32_t dataSize() noexcept {
-            return static_cast<int32_t>(data.size());
-        }
-
         std::vector<std::pair<size_t, size_t>> data_ptr_pos;
         std::vector<uint8_t> code;
         data_vector data;
         std::vector<uint8_t> instruction;
-        std::unordered_map<std::string, size_t> labels;
+        std::array<size_t, 512> labels{};
 
-        constexpr void schedule(int force_align = 0) {
+        constexpr void schedule() {
             if (instruction.empty()) {
                 return;
             }
 
             constexpr uint32_t align{ 4096 };
-            if (force_align == 0 && (code.size() + instruction.size() != align) && code.size() % align > (code.size() + instruction.size()) % align) {
+            if ((code.size() + instruction.size() != align) && code.size() % align > (code.size() + instruction.size()) % align) {
                 nop(align - (code.size() % align));
             }
 
             code.insert(code.end(), instruction.begin(), instruction.end());
             instruction.clear();
-
-            if (force_align > 0) {
-                nop(force_align);
-            }
         }
 
         constexpr void encode(const uint8_t byte) {
             instruction.push_back(byte);
         }
 
+        constexpr void encode32(const int32_t bytes) {
+            instruction.append_range(span_cast<const uint8_t, sizeof(int32_t)>(bytes));
+        }
+
+        constexpr void encode64(const int64_t bytes) {
+            instruction.append_range(span_cast<const uint8_t, sizeof(int64_t)>(bytes));
+        }
 
 
         constexpr void addr(const reg_idx_t dst, const Memory& src, const uint32_t scale = 1) {
             // RIP relative addressing (displacement only).
-            if (src.lowIdx() == registers::RBP.idx && src.index_reg == registers::DUMMY.idx) {
+            if (src.lowIdx() == registers::RBP.idx && src.index_reg == registers::DUMMY.idx && src.rip) {
                 encode(modregrm<uint8_t>(0, registers::RBP.idx, MOD::MOD00)); // Indirect or SIB mode if RSP used.
-                encode((uint8_t)byte<0>(src.offset));
-                encode((uint8_t)byte<1>(src.offset));
-                encode((uint8_t)byte<2>(src.offset));
-                encode((uint8_t)byte<3>(src.offset));
+                encode32(src.offset);
                 return;
             }
 
             // its sib here
             const auto is_sib{ src.index_reg != registers::DUMMY.idx };
             const auto srcreg{ is_sib ? registers::RSP.idx : src.lowIdx() };
+            const auto basereg{ src.lowIdx() };
 
-            if (src.offset == 0) {
+            if (src.offset == 0 && basereg != registers::RBP.idx) {
                 encode(modregrm<uint8_t>(dst % 8, srcreg, MOD::MOD00)); // Indirect or SIB mode if RSP used.
             } else if (src.offset >= std::numeric_limits<int8_t>::min() && src.offset <= std::numeric_limits<int8_t>::max()) {
                 encode(modregrm<uint8_t>(dst % 8, srcreg, MOD::MOD01)); // Indirect + disp8 or SIB mode + disp8 if RSP used.
@@ -1119,7 +1108,7 @@ namespace modernRX::assembler {
             }
 
             // Disp8
-            if (src.offset != 0) {
+            if (src.offset != 0 || basereg == registers::RBP.idx) {
                 encode((uint8_t)byte<0>(src.offset));
             }
 

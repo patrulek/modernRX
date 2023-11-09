@@ -1,5 +1,16 @@
 ## modernRX - Changelog
 
+### v0.6.1 - 09.11.2023:
+
+Hand-written assembly around jitted programs.
+All optimization decisions made in this version:
+* hand-write assembly around JIT-compiled random programs 
+* change assembler's labels type (string -> int) and limit to 512 labels
+
+Improvements:
+* rename and refactor interpreter/jitcompiler
+* JIT code buffer little api change
+
 ### v0.6.0 - 08.11.2023:
 
 Random programs JIT-compiler.

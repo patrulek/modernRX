@@ -69,12 +69,12 @@ namespace modernRX::intrinsics {
 
     // Prefetches a cache line and reinterprets given pointer to the specified type.
     template&lt;PrefetchMode Mode = PrefetchMode::NTA, typename Ret = void&gt;
-<span style = "background-color:#dfd">    [[nodiscard]] inline Ret prefetch(const void* ptr) noexcept {
-        _mm_prefetch(reinterpret_cast&lt;const char*&gt;(ptr), static_cast&lt;int&gt;(Mode));</span>
+    [[nodiscard]] inline Ret prefetch(const void* ptr) noexcept {
+        _mm_prefetch(reinterpret_cast&lt;const char*&gt;(ptr), static_cast&lt;int&gt;(Mode));
         if constexpr (!std::is_void_v&lt;Ret&gt;) {
             return reinterpret_cast&lt;Ret&gt;(ptr);
         }
-<span style = "background-color:#dfd">    }</span>
+    }
 
     // Prefetch a CacheLines number of cache lines.
     template&lt;PrefetchMode Mode = PrefetchMode::NTA, size_t CacheLines = 1&gt;

@@ -2,11 +2,10 @@
 
 #include "argon2d.hpp"
 #include "cpuinfo.hpp"
+#include "datasetcompiler.hpp"
 #include "exception.hpp"
 #include "hasher.hpp"
-#include "jitcompiler.hpp"
 #include "randomxparams.hpp"
-#include "scratchpad.hpp"
 #include "superscalar.hpp"
 
 
@@ -59,7 +58,7 @@ namespace modernRX {
         std::array<std::byte, 64> seed{};
         blake2b::hash(seed, input);
 
-        Interpreter interpreter{ seed, dataset.view() };
-        return interpreter.execute();
+        VirtualMachine vm{ seed, dataset.view() };
+        return vm.execute();
     }
 }

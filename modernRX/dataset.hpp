@@ -7,8 +7,8 @@
 */
 
 #include "argon2d.hpp"
+#include "datasetcompiler.hpp"
 #include "heaparray.hpp"
-#include "jitcompiler.hpp"
 #include "randomxparams.hpp"
 #include "superscalar.hpp"
 

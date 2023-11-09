@@ -6,7 +6,7 @@
 
 #include "dataset.hpp"
 #include "heaparray.hpp"
-#include "interpreter.hpp"
+#include "virtualmachine.hpp"
 
 namespace modernRX {
     class Hasher {

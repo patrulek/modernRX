@@ -2,7 +2,7 @@
 
 /*
 * Definitions of all instructions in RandomX programs: https://github.com/tevador/RandomX/blob/master/doc/specs.md#5-instruction-set
-* This is used by RandomX program interpreter.
+* This is used by RandomX VirtualMachine.
 */
 
 #include <array>

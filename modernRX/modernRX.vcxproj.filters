@@ -22,14 +22,14 @@
     <Filter Include="modernRX">
       <UniqueIdentifier>{6b8b4345-5925-445f-9f9d-5de7ad4c9378}</UniqueIdentifier>
     </Filter>
-    <Filter Include="interpreter">
-      <UniqueIdentifier>{b1d97ff8-31a4-48f2-ab6b-93380fd71307}</UniqueIdentifier>
-    </Filter>
     <Filter Include="utils\assembler">
       <UniqueIdentifier>{04bccb2b-a4f0-41c5-8044-4095eb2ecadf}</UniqueIdentifier>
     </Filter>
     <Filter Include="utils\intrinsics">
       <UniqueIdentifier>{5f92fa01-6edf-438c-8374-dd7bc05a3d26}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="vm">
+      <UniqueIdentifier>{b1d97ff8-31a4-48f2-ab6b-93380fd71307}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -51,8 +51,8 @@
     <ClInclude Include="reciprocal.hpp">
       <Filter>utils</Filter>
     </ClInclude>
-    <ClInclude Include="interpreter.hpp">
-      <Filter>interpreter</Filter>
+    <ClInclude Include="virtualmachine.hpp">
+      <Filter>vm</Filter>
     </ClInclude>
     <ClInclude Include="dataset.hpp">
       <Filter>dataset</Filter>
@@ -73,10 +73,7 @@
       <Filter>superscalar</Filter>
     </ClInclude>
     <ClInclude Include="bytecode.hpp">
-      <Filter>interpreter</Filter>
-    </ClInclude>
-    <ClInclude Include="scratchpad.hpp">
-      <Filter>interpreter</Filter>
+      <Filter>vm</Filter>
     </ClInclude>
     <ClInclude Include="hasher.hpp">
       <Filter>modernRX</Filter>
@@ -99,7 +96,7 @@
     <ClInclude Include="heaparray.hpp">
       <Filter>utils</Filter>
     </ClInclude>
-    <ClInclude Include="jitcompiler.hpp">
+    <ClInclude Include="datasetcompiler.hpp">
       <Filter>dataset</Filter>
     </ClInclude>
     <ClInclude Include="alignedallocator.hpp">
@@ -129,6 +126,9 @@
     <ClInclude Include="aes.hpp">
       <Filter>utils\intrinsics</Filter>
     </ClInclude>
+    <ClInclude Include="bytecodecompiler.hpp">
+      <Filter>vm</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="blake2b.cpp">
@@ -155,17 +155,17 @@
     <ClCompile Include="dataset.cpp">
       <Filter>dataset</Filter>
     </ClCompile>
-    <ClCompile Include="interpreter.cpp">
-      <Filter>interpreter</Filter>
-    </ClCompile>
-    <ClCompile Include="scratchpad.cpp">
-      <Filter>interpreter</Filter>
+    <ClCompile Include="virtualmachine.cpp">
+      <Filter>vm</Filter>
     </ClCompile>
     <ClCompile Include="hasher.cpp">
       <Filter>modernRX</Filter>
     </ClCompile>
-    <ClCompile Include="jitcompiler.cpp">
+    <ClCompile Include="datasetcompiler.cpp">
       <Filter>dataset</Filter>
+    </ClCompile>
+    <ClCompile Include="bytecodecompiler.cpp">
+      <Filter>vm</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

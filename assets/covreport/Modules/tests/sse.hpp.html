@@ -47,12 +47,6 @@ namespace modernRX::intrinsics::sse {
         fenv_t fenv;
     };
 
-    // Modifies environment's rounding mode.
-    // Mode limited to 4 values with modulo operation.
-    inline void setFloatRoundingMode(const uint32_t mode, const uint32_t csr = Rx_Mxcsr_Default) noexcept {
-        _mm_setcsr(csr | (mode &lt;&lt; 13));
-    }
-
     template&lt;typename T&gt;
 <span style = "background-color:#dfd">    [[nodiscard]] constexpr xmm&lt;T&gt; vload(const void* ptr) noexcept {</span>
         if constexpr (std::is_same_v&lt;T, double&gt;) {
@@ -63,113 +57,6 @@ namespace modernRX::intrinsics::sse {
             static_assert(!sizeof(T), "the only supported types for this operation are: integral and float64");
         }
 <span style = "background-color:#dfd">    }</span>
-
-    template&lt;typename T&gt;
-<span style = "background-color:#dfd">    [[nodiscard]] constexpr xmm&lt;T&gt; vxor(const xmm&lt;T&gt; x, const xmm&lt;T&gt; y) noexcept {</span>
-        if constexpr (std::is_same_v&lt;T, double&gt;) {
-<span style = "background-color:#dfd">            return _mm_xor_pd(x, y);</span>
-        } else {
-            static_assert(!sizeof(T), "the only supported type for this operation is: float64");
-        }
-<span style = "background-color:#dfd">    }</span>
-
-    template&lt;typename T&gt;
-<span style = "background-color:#dfd">    [[nodiscard]] constexpr xmm&lt;T&gt; vand(const xmm&lt;T&gt; x, const xmm&lt;T&gt; y) noexcept {</span>
-        if constexpr (std::is_same_v&lt;T, double&gt;) {
-<span style = "background-color:#dfd">            return _mm_and_pd(x, y);</span>
-        } else {
-            static_assert(!sizeof(T), "the only supported type for this operation is: float64");
-        }
-<span style = "background-color:#dfd">    }</span>
-
-
-    template&lt;typename T&gt;
-<span style = "background-color:#dfd">    [[nodiscard]] constexpr xmm&lt;T&gt; vor(const xmm&lt;T&gt; x, const xmm&lt;T&gt; y) noexcept {</span>
-        if constexpr (std::is_same_v&lt;T, double&gt;) {
-<span style = "background-color:#dfd">            return _mm_or_pd(x, y);</span>
-        } else {
-            static_assert(!sizeof(T), "the only supported type for this operation is: float64");
-        }
-<span style = "background-color:#dfd">    }</span>
-
-    template&lt;typename T&gt;
-    [[nodiscard]] constexpr xmm&lt;T&gt; vadd(const xmm&lt;T&gt; x, const xmm&lt;T&gt; y) noexcept {
-        if constexpr (std::is_same_v&lt;T, double&gt;) {
-            return _mm_add_pd(x, y);
-        } else {
-            static_assert(!sizeof(T), "the only supported type for this operation is: float64");
-        }
-    }
-
-    template&lt;typename T&gt;
-    [[nodiscard]] constexpr xmm&lt;T&gt; vsub(const xmm&lt;T&gt; x, const xmm&lt;T&gt; y) noexcept {
-        if constexpr (std::is_same_v&lt;T, double&gt;) {
-            return _mm_sub_pd(x, y);
-        } else {
-            static_assert(!sizeof(T), "the only supported type for this operation is: float64");
-        }
-    }
-
-    template&lt;typename T&gt;
-    [[nodiscard]] constexpr xmm&lt;T&gt; vmul(const xmm&lt;T&gt; x, const xmm&lt;T&gt; y) noexcept {
-        if constexpr (std::is_same_v&lt;T, double&gt;) {
-            return _mm_mul_pd(x, y);
-        } else {
-            static_assert(!sizeof(T), "the only supported type for this operation is: float64");
-        }
-    }
-
-    template&lt;typename T&gt;
-    [[nodiscard]] constexpr xmm&lt;T&gt; vdiv(const xmm&lt;T&gt; x, const xmm&lt;T&gt; y) noexcept {
-        if constexpr (std::is_same_v&lt;T, double&gt;) {
-            return _mm_div_pd(x, y);
-        } else {
-            static_assert(!sizeof(T), "the only supported type for this operation is: float64");
-        }
-    }
-
-    template&lt;typename T&gt;
-    [[nodiscard]] constexpr xmm&lt;T&gt; vsqrt(const xmm&lt;T&gt; x) noexcept {
-        if constexpr (std::is_same_v&lt;T, double&gt;) {
-            return _mm_sqrt_pd(x);
-        } else {
-            static_assert(!sizeof(T), "the only supported type for this operation is: float64");
-        }
-    }
-
-    template&lt;typename T&gt;
-    [[nodiscard]] constexpr xmm&lt;T&gt; vswap(const xmm&lt;T&gt; x) noexcept {
-        if constexpr (std::is_same_v&lt;T, double&gt;) {
-            return _mm_shuffle_pd(x, x, 1);
-        } else {
-            static_assert(!sizeof(T), "the only supported type for this operation is: float64");
-        }
-    }
-
-    template&lt;typename T1, typename T2&gt;
-    concept equal_greater_size = sizeof(T1) &gt;= sizeof(T2);
-
-    // Converts 2 packed int32 values into two floating point values.
-    template&lt;typename To&gt;
-    requires std::floating_point&lt;To&gt;&amp;&amp; equal_greater_size&lt;To, int32_t&gt;
-<span style = "background-color:#dfd">    [[nodiscard]] constexpr xmm&lt;To&gt; vcvtpi32(const std::byte* addr) noexcept {</span>
-        if constexpr (std::is_same_v&lt;To, double&gt;) {
-<span style = "background-color:#dfd">            const __m128i x{ _mm_loadl_epi64(reinterpret_cast&lt;const __m128i*&gt;(addr)) };
-            return _mm_cvtepi32_pd(x);</span>
-        } else {
-            static_assert(!sizeof(To), "the only supported type for this operation is: int32 -&gt; float64");
-        }
-<span style = "background-color:#dfd">    }</span>
-
-    template&lt;typename T&gt;
-    [[nodiscard]] constexpr xmm&lt;T&gt; vbcasti64(const uint64_t x) noexcept {
-        if constexpr (std::is_same_v&lt;T, double&gt;) {
-            const __m128i v{ _mm_set1_epi64x(x) };
-            return _mm_castsi128_pd(v);
-        } else {
-            static_assert(!sizeof(T), "the only supported type for this operation is: int64 -&gt; float64");
-        }
-    }
 }</pre>
         <hr />
         <table width="100%">

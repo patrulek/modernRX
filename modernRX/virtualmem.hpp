@@ -36,7 +36,7 @@ namespace modernRX {
     // Somewhat hacky, would be nice to find a better solution.
     template<typename Fn, typename Code, typename Data>
     requires is_spanable_v<Code> && is_vector_v<Data>
-    [[nodiscard]] constexpr jit_function_ptr<Fn> makeExecutable(Code code, Data&& data) {
+    [[nodiscard]] constexpr jit_function_ptr<Fn> makeExecutable(const Code code, Data&& data) {
         const auto code_size{ as_span(code).size_bytes() };
 
         // Alloc buffer for writing code.
@@ -55,10 +55,8 @@ namespace modernRX {
             throw Exception(std::format("Failed to protect memory with error: {:d}", err));
         }
 
-        return jit_function_ptr<Fn>(new Fn(reinterpret_cast<Fn>(buffer)), [moved_data = std::move(data)](Fn* ptr) noexcept {
-            VirtualFree(*ptr, 0, MEM_RELEASE); // Ignore error.
-            delete ptr;
-            ptr = nullptr;
+        return jit_function_ptr<Fn>(reinterpret_cast<Fn*>(buffer), [moved_data = std::move(data)](Fn* ptr) noexcept {
+            VirtualFree(ptr, 0, MEM_RELEASE); // Ignore error.
             // moved_data will be destroyed and release memory here automatically.
         });
     }

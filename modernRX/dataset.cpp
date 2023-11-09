@@ -45,7 +45,7 @@ namespace modernRX {
         std::atomic<uint32_t> job_counter{ 0 };
 
         // Task that will be executed by each thread.
-        const auto task = [max_jobs, items_per_job, &job_counter, jit_program{ *jit }, cache_ptr{ cache.data() }](std::span<DatasetItem> memory) {
+        const auto task = [max_jobs, items_per_job, &job_counter, jit_program{ reinterpret_cast<JITDatasetItemProgram>(jit.get()) }, cache_ptr{cache.data()}](std::span<DatasetItem> memory) {
             auto job_id{ job_counter.fetch_add(1, std::memory_order_relaxed) };
             while (job_id < max_jobs) {
                 const auto start_item{ job_id * items_per_job };

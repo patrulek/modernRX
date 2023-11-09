@@ -47,7 +47,7 @@ namespace modernRX {
     // Somewhat hacky, would be nice to find a better solution.
     template&lt;typename Fn, typename Code, typename Data&gt;
     requires is_spanable_v&lt;Code&gt; &amp;&amp; is_vector_v&lt;Data&gt;
-<span style = "background-color:#dfd">    [[nodiscard]] constexpr jit_function_ptr&lt;Fn&gt; makeExecutable(Code code, Data&amp;&amp; data) {
+<span style = "background-color:#dfd">    [[nodiscard]] constexpr jit_function_ptr&lt;Fn&gt; makeExecutable(const Code code, Data&amp;&amp; data) {
         const auto code_size{ as_span(code).size_bytes() };</span>
 
         // Alloc buffer for writing code.
@@ -66,10 +66,8 @@ namespace modernRX {
             throw Exception(std::format("Failed to protect memory with error: {:d}", err));</span>
         }
 
-<span style = "background-color:#dfd">        return jit_function_ptr&lt;Fn&gt;(new Fn(reinterpret_cast&lt;Fn&gt;(buffer)), [moved_data = std::move(data)](Fn* ptr) noexcept {
-            VirtualFree(*ptr, 0, MEM_RELEASE); // Ignore error.
-            delete ptr;
-            ptr = nullptr;</span>
+<span style = "background-color:#dfd">        return jit_function_ptr&lt;Fn&gt;(reinterpret_cast&lt;Fn*&gt;(buffer), [moved_data = std::move(data)](Fn* ptr) noexcept {
+            VirtualFree(ptr, 0, MEM_RELEASE); // Ignore error.</span>
             // moved_data will be destroyed and release memory here automatically.
 <span style = "background-color:#dfd">        });
     }</span>
