@@ -66,10 +66,7 @@ namespace modernRX {
     }</span>
 
 <span style = "background-color:#dfd">    std::array&lt;std::byte, 32&gt; Hasher::run(const_span&lt;std::byte&gt; input) {
-        std::array&lt;std::byte, 64&gt; seed{};
-        blake2b::hash(seed, input);</span>
-
-<span style = "background-color:#dfd">        VirtualMachine vm{ seed, dataset.view() };
+        vm.reset(input, dataset.view());
         return vm.execute();
     }</span>
 }</pre>

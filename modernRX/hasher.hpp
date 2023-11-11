@@ -25,6 +25,7 @@ namespace modernRX {
     private:
         std::vector<std::byte> key; // Latest key used for Dataset generation.
         HeapArray<DatasetItem, 4096> dataset; // Dataset used for program execution.
+        VirtualMachine vm; // Virtual machine used for program execution.
 
         void checkCPU() const; // Ensure CPU supports required features.
     };

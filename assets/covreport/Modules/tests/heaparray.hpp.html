@@ -17,6 +17,8 @@
 * Elements are not initialized by default.
 */
 
+#include &lt;ranges&gt;
+
 #include "aliases.hpp"
 
 template&lt;typename T, size_t Align = sizeof(T)&gt;
@@ -26,10 +28,12 @@ class HeapArray {
     static_assert(std::has_single_bit(Align), "Alignment must be power of two.");
 
 public:
-    [[nodiscard]] constexpr explicit HeapArray() noexcept 
-<span style = "background-color:#dfd">        : data_(nullptr), size_(0) {}</span>
-    [[nodiscard]] constexpr explicit HeapArray(const size_t size) noexcept
-<span style = "background-color:#dfd">        : data_(static_cast&lt;T*&gt;(_aligned_malloc(sizeof(T)* size, Align))), size_(size) {}
+    using value_type = T;
+
+<span style = "background-color:#dfd">    [[nodiscard]] constexpr explicit HeapArray() noexcept = default;
+    [[nodiscard]] constexpr explicit HeapArray(const size_t capacity) noexcept {
+        reserve(capacity);
+    }
     constexpr ~HeapArray() noexcept {
         if (data_ != nullptr) {
             _aligned_free(data_);
@@ -37,21 +41,66 @@ public:
         }
 <span style = "background-color:#dfd">    }</span>
 
+<span style = "background-color:#dfd">    void reserve(const size_t capacity) {
+        if (data_ != nullptr) {</span>
+<span style = "background-color:#fdd">            return;</span>
+        }
+
+<span style = "background-color:#dfd">        data_ = static_cast&lt;T*&gt;(_aligned_malloc(sizeof(T) * capacity, Align));
+        capacity_ = capacity;
+    }</span>
+
+<span style = "background-color:#dfd">    constexpr size_t size() const noexcept {
+        return size_;
+    }</span>
+    
+    template&lt;std::ranges::contiguous_range Rng&gt;
+<span style = "background-color:#dfd">    constexpr void append_range(Rng&amp;&amp; range) {
+        std::memcpy(data_ + size_, range.data(), range.size() * sizeof(T));
+        size_ += range.size();
+    }</span>
+
+<span style = "background-color:#dfd">    constexpr void clear() {
+        size_ = 0;
+    }</span>
+
+<span style = "background-color:#dfd">    constexpr T back() const noexcept {
+        return data_[size_ - 1];
+    }</span>
+
+    constexpr auto begin() noexcept {
+        return std::span&lt;T&gt;(data_, size_).begin();
+    }
+
+    constexpr auto begin() const noexcept {
+        return const_span&lt;T&gt;(data_, size_).begin();
+    }
+
+    constexpr auto end() noexcept {
+        return std::span&lt;T&gt;(data_, size_).end();
+    }
+
+    constexpr auto end() const noexcept {
+        return const_span&lt;T&gt;(data_, size_).end();
+    }
+
     [[nodiscard]] constexpr explicit HeapArray(const HeapArray&amp;) = delete;
     constexpr HeapArray&amp; operator=(const HeapArray&amp;) = delete;
-    [[nodiscard]] constexpr HeapArray(HeapArray&amp;&amp; other) noexcept {
+<span style = "background-color:#dfd">    [[nodiscard]] constexpr HeapArray(HeapArray&amp;&amp; other) noexcept {
         this-&gt;~HeapArray();
         data_ = other.data_;
+        capacity_ = other.capacity_;
         size_ = other.size_;
         other.data_ = nullptr;
-        other.size_ = 0;
+        other.capacity_ = 0;
     }
-<span style = "background-color:#dfd">    constexpr HeapArray&amp; operator=(HeapArray&amp;&amp; other) noexcept {
+    constexpr HeapArray&amp; operator=(HeapArray&amp;&amp; other) noexcept {
         this-&gt;~HeapArray();
         data_ = other.data_;
+        capacity_ = other.capacity_;
         size_ = other.size_;
         other.data_ = nullptr;
-        other.size_ = 0;
+        other.capacity_ = 0;
         return *this;
     }</span>
 
@@ -64,11 +113,11 @@ public:
     }</span>
 
 <span style = "background-color:#dfd">    [[nodiscard]] constexpr std::span&lt;T&gt; buffer() noexcept {
-        return std::span&lt;T&gt;(data_, size_);
+        return std::span&lt;T&gt;(data_, capacity_);
     }</span>
 
 <span style = "background-color:#dfd">    [[nodiscard]] constexpr const_span&lt;T&gt; view() const noexcept {
-        return const_span&lt;T&gt;(data_, size_);
+        return const_span&lt;T&gt;(data_, capacity_);
     }</span>
 
     [[nodiscard]] constexpr std::span&lt;T&gt; buffer(const size_t offset, const size_t size) noexcept {
@@ -82,9 +131,14 @@ public:
 <span style = "background-color:#dfd">    [[nodiscard]] constexpr const T* data() const noexcept {
         return data_;
     }</span>
+
+<span style = "background-color:#dfd">    [[nodiscard]] constexpr T* data() noexcept {
+        return data_;
+    }</span>
 private:
-    T* data_;
-    size_t size_;
+<span style = "background-color:#dfd">    T* data_{ nullptr };
+    size_t capacity_{ 0 };
+    size_t size_{ 0 };</span>
 };</pre>
         <hr />
         <table width="100%">

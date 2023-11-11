@@ -22,6 +22,7 @@
 
 #include &lt;span&gt;
 
+#include "assembler.hpp"
 #include "dataset.hpp"
 #include "heaparray.hpp"
 
@@ -40,9 +41,11 @@ namespace modernRX {
     // Defines RandomX VM bytecode executor.
     class VirtualMachine {
     public:
-        // Creates VirtualMachine instance.
-        // Seed is overtaken by VirtualMachine and shouldnt be used after creation.
-        [[nodiscard]] explicit VirtualMachine(std::span&lt;std::byte, 64&gt; seed, const_span&lt;DatasetItem&gt; dataset);
+        [[nodiscard]] explicit VirtualMachine();
+
+        // Resets VirtualMachine with new input and dataset.
+        // Another VirtualMachine with same input and dataset will produce same result.
+        void reset(const_span&lt;std::byte&gt; input, const_span&lt;DatasetItem&gt; dataset);
         
         // Executes chained RandomX programs based on seed provided at creation.
         // Returns result as a 32-bytes hash of final RegisterFile.
@@ -55,8 +58,9 @@ namespace modernRX {
         void compileProgram(const ProgramContext&amp; ctx, const RxProgram&amp; program);
 
         std::array&lt;std::byte, 64&gt; seed;
-        const_span&lt;DatasetItem&gt; dataset;
+        std::span&lt;const DatasetItem&gt; dataset;
         HeapArray&lt;std::byte, 4096&gt; scratchpad;
+        assembler::Context asmb;
 <span style = "background-color:#dfd">        jit_function_ptr&lt;JITRxProgram&gt; jit{ nullptr };</span>
     };
 }</pre>

@@ -1,5 +1,17 @@
 ## modernRX - Changelog
 
+### v0.6.2 - 11.11.2023:
+
+Hash calculation optimization ("insecure" mode, fewer allocations)
+All optimization decisions made in this version:
+* remove unnecessary data allocations
+* insecure JIT mode (don't protect and reuse allocated virtual memory buffer for JIT code)
+* add machine code injection directly into assembly context instead of using functions to generate code (this makes code less readable though)
+* assembly context uses now HeapArray instead of std::vector for code buffer 
+
+Improvements:
+* HeapArray improvements to match part of std::vector api
+
 ### v0.6.1 - 09.11.2023:
 
 Hand-written assembly around jitted programs.

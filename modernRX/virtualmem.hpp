@@ -14,6 +14,7 @@
 
 #include "aliases.hpp"
 #include "exception.hpp"
+#include "heaparray.hpp"
 
 namespace modernRX {
     template<typename T>
@@ -23,7 +24,8 @@ namespace modernRX {
     inline constexpr bool is_spanable_v = std::is_constructible_v<const_span<typename T::value_type>, T>;
 
     template<typename T>
-    [[nodiscard]] constexpr const_span<typename T::value_type> as_span(T t) noexcept {
+    requires is_spanable_v<T>
+    [[nodiscard]] constexpr const_span<typename T::value_type> as_span(const T& t) noexcept {
         return const_span<typename T::value_type>(t);
     }
 
@@ -35,8 +37,8 @@ namespace modernRX {
     // Function takes data as a parameter and prolongs its lifetime until the JIT-compiled function is destroyed.
     // Somewhat hacky, would be nice to find a better solution.
     template<typename Fn, typename Code, typename Data>
-    requires is_spanable_v<Code> && is_vector_v<Data>
-    [[nodiscard]] constexpr jit_function_ptr<Fn> makeExecutable(const Code code, Data&& data) {
+    requires is_vector_v<Data>
+    [[nodiscard]] constexpr jit_function_ptr<Fn> makeExecutable(const Code&& code, Data&& data) {
         const auto code_size{ as_span(code).size_bytes() };
 
         // Alloc buffer for writing code.
@@ -58,6 +60,22 @@ namespace modernRX {
         return jit_function_ptr<Fn>(reinterpret_cast<Fn*>(buffer), [moved_data = std::move(data)](Fn* ptr) noexcept {
             VirtualFree(ptr, 0, MEM_RELEASE); // Ignore error.
             // moved_data will be destroyed and release memory here automatically.
+        });
+    }
+
+    // Allocates executable memory that is also writeable (not protected).
+    // Use for performance when code buffers are allocated and changed frequently.
+    // May throw if memory allocation fails.
+    template<typename Fn>
+    [[nodiscard]] constexpr jit_function_ptr<Fn> makeExecutable(const size_t code_size) {
+        // Alloc buffer for writing code.
+        const auto buffer{ VirtualAlloc(nullptr, code_size, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE) };
+        if (buffer == nullptr) {
+            throw Exception(std::format("Failed to allocate memory with error: {:d}", GetLastError()));
+        }
+
+        return jit_function_ptr<Fn>(reinterpret_cast<Fn*>(buffer), [](Fn* ptr) noexcept {
+            VirtualFree(ptr, 0, MEM_RELEASE); // Ignore error.           
         });
     }
 }

@@ -125,9 +125,9 @@ namespace modernRX::assembler {
             return Memory{ idx, 0xff, offset, false };
         }</span>
 
-<span style = "background-color:#dfd">        [[nodiscard]] constexpr const Memory operator[](const Memory&amp; offset) const noexcept {
+        [[nodiscard]] constexpr const Memory operator[](const Memory&amp; offset) const noexcept {
             return Memory{ idx, offset.reg, offset.offset, offset.rip };
-        }</span>
+        }
     };
 
     namespace registers {
