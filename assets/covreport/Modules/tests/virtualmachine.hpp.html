@@ -20,10 +20,13 @@
 * This is used to generate and execute RandomX programs and return single RandomX hash.
 */
 
+#include &lt;functional&gt;
 #include &lt;span&gt;
 
+#include "blocktemplate.hpp"
 #include "bytecodecompiler.hpp"
 #include "dataset.hpp"
+#include "hash.hpp"
 #include "heaparray.hpp"
 
 namespace modernRX {
@@ -45,11 +48,11 @@ namespace modernRX {
 
         // Resets VirtualMachine with new input and dataset.
         // Another VirtualMachine with same input and dataset will produce same result.
-        void reset(const_span&lt;std::byte&gt; input, const_span&lt;DatasetItem&gt; dataset);
+        void reset(BlockTemplate block_template, const_span&lt;DatasetItem&gt; dataset);
         
         // Executes chained RandomX programs based on seed provided at creation.
         // Returns result as a 32-bytes hash of final RegisterFile.
-        [[nodiscard]] std::array&lt;std::byte, 32&gt; execute();
+        void execute(std::function&lt;void(const RxHash&amp;)&gt; callback);
     private:
         // Generates program based on current seed value.
         void generateProgram(RxProgram&amp; program);
@@ -62,6 +65,7 @@ namespace modernRX {
         HeapArray&lt;std::byte, 4096&gt; scratchpad;
         BytecodeCompiler compiler;
 <span style = "background-color:#dfd">        jit_function_ptr&lt;JITRxProgram&gt; jit{ nullptr };</span>
+        BlockTemplate block_template;
     };
 }</pre>
         <hr />

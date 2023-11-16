@@ -1,5 +1,14 @@
 ## modernRX - Changelog
 
+### v0.7.0 - 17.11.2023:
+
+Hash calculation optimization with multi-threading.
+All optimization decisions made in this version:
+* add multithreaded hash calculation
+
+Other:
+* adjust tests and fuzzing for new API
+
 ### v0.6.3 - 16.11.2023:
 
 Hash calculation optimization (slightly faster JIT compilation).

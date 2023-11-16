@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <iterator>
 
 #include "argon2d.hpp"
@@ -16,7 +17,50 @@ namespace modernRX {
 
     Hasher::Hasher(const_span<std::byte> key) :
         Hasher() {
+        // If hyper-threading is enabled, use half of available threads.
+        // Possibly it would be better to use L3 cache size to calculate number of threads.
+        const auto threads{ CPUInfo::HTT() ? std::thread::hardware_concurrency() / 2 : std::thread::hardware_concurrency() };
+        vms.resize(threads);
+        vm_workers.reserve(vms.size());
         reset(key);
+    }
+
+    Hasher::~Hasher() {
+        stop();
+    }
+
+    void Hasher::run(std::function<void(const RxHash&)> callback) {
+        bool expected{ false };
+        if (!vm_workers.empty() || !running.compare_exchange_strong(expected, true)) {
+            // Already running.
+            return;
+        }
+
+        // If callback is not provided, use empty function.
+        if (callback == nullptr) {
+            callback = [](const RxHash&) {};
+        }
+
+        for (auto& vm : vms) {
+            vm_workers.emplace_back([&vm, callback, this]() {
+                for (; this->running; ) {
+                    vm.execute(callback);
+                }
+            });
+        }
+    }
+
+    void Hasher::stop() {
+        bool expected{ true };
+        if (vm_workers.size() < vms.size() || !running.compare_exchange_strong(expected, false)) {
+            // Not running or stopping.
+            return;
+        }
+
+        for (auto& worker : vm_workers) {
+            worker.join();
+        }
+        vm_workers.clear();
     }
 
     void Hasher::checkCPU() const {
@@ -54,8 +98,12 @@ namespace modernRX {
         dataset = generateDataset(cache.view(), programs);
     }
 
-    std::array<std::byte, 32> Hasher::run(const_span<std::byte> input) {
-        vm.reset(input, dataset.view());
-        return vm.execute();
+    void Hasher::resetVM(BlockTemplate block_template) {
+        const uint32_t offset{ static_cast<uint32_t>(std::numeric_limits<uint32_t>::max() / vms.size()) };
+
+        for (auto& vm : vms) {
+            vm.reset(block_template, dataset.view());
+            block_template.next(offset);
+        }
     }
 }

@@ -286,9 +286,11 @@
     <ClInclude Include="blake2b.hpp" />
     <ClInclude Include="blake2bavx2.hpp" />
     <ClInclude Include="blake2brandom.hpp" />
+    <ClInclude Include="blocktemplate.hpp" />
     <ClInclude Include="bytecode.hpp" />
     <ClInclude Include="cpuinfo.hpp" />
     <ClInclude Include="exception.hpp" />
+    <ClInclude Include="hash.hpp" />
     <ClInclude Include="heaparray.hpp" />
     <ClInclude Include="datasetcompiler.hpp" />
     <ClInclude Include="dataset.hpp" />

@@ -17,6 +17,7 @@
 #include "aes1rrandom.hpp"
 #include "aes4rrandom.hpp"
 #include "bytecodecompiler.hpp"
+#include "hash.hpp"
 #include "randomxparams.hpp"
 #include "sse.hpp"
 #include "virtualmachine.hpp"
@@ -57,13 +58,14 @@ namespace modernRX {
         compiler.code_buffer = reinterpret_cast&lt;char*&gt;(jit.get()) + Program_Offset;
     }</span>
 
-<span style = "background-color:#dfd">    void VirtualMachine::reset(const_span&lt;std::byte&gt; input, const_span&lt;DatasetItem&gt; dataset) {
+<span style = "background-color:#dfd">    void VirtualMachine::reset(BlockTemplate block_template, const_span&lt;DatasetItem&gt; dataset) {
         this-&gt;dataset = dataset;
-        blake2b::hash(seed, input);
-        aes::fill1R(scratchpad.buffer(sizeof(RegisterFile), scratchpad.size() - sizeof(RegisterFile)), seed);
+        this-&gt;block_template = block_template;
     }</span>
 
-<span style = "background-color:#dfd">    std::array&lt;std::byte, 32&gt; VirtualMachine::execute() {</span>
+<span style = "background-color:#dfd">    void VirtualMachine::execute(std::function&lt;void(const RxHash&amp;)&gt; callback) {
+        blake2b::hash(seed, block_template.view());
+        aes::fill1R(scratchpad.buffer(sizeof(RegisterFile), scratchpad.size() - sizeof(RegisterFile)), seed);</span>
         // RandomX requires specific float environment before executing any program.
         // This RAII object will set proper float flags on creation and restore its values on destruction. 
 <span style = "background-color:#dfd">        const intrinsics::sse::FloatEnvironment fenv{};
@@ -100,10 +102,10 @@ namespace modernRX {
 <span style = "background-color:#dfd">        aes::hash1R(span_cast&lt;std::byte, sizeof(RegisterFile::a)&gt;(scratchpad.data() + sizeof(RegisterFile) - sizeof(RegisterFile::a)), </span>
             span_cast&lt;std::byte, Rx_Scratchpad_L3_Size&gt;(scratchpad.data() + sizeof(RegisterFile)));
         
-<span style = "background-color:#dfd">        std::array&lt;std::byte, 32&gt; output{};
-        blake2b::hash(output, span_cast&lt;std::byte, sizeof(RegisterFile)&gt;(scratchpad.data()));</span>
-
-<span style = "background-color:#dfd">        return output;
+        RxHash output;
+<span style = "background-color:#dfd">        blake2b::hash(output.buffer(), span_cast&lt;std::byte, sizeof(RegisterFile)&gt;(scratchpad.data()));
+        callback(output);
+        block_template.next();
     }</span>
 
 <span style = "background-color:#dfd">    void VirtualMachine::generateProgram(RxProgram&amp; program) {

@@ -93,7 +93,7 @@ public:
         size_ = other.size_;
         other.data_ = nullptr;
         other.capacity_ = 0;
-    }
+    }</span>
     constexpr HeapArray&amp; operator=(HeapArray&amp;&amp; other) noexcept {
         this-&gt;~HeapArray();
         data_ = other.data_;
@@ -102,7 +102,7 @@ public:
         other.data_ = nullptr;
         other.capacity_ = 0;
         return *this;
-    }</span>
+    }
 
 <span style = "background-color:#dfd">    [[nodiscard]] constexpr const T&amp; operator[](const size_t index) const noexcept {
         return data_[index];

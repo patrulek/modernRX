@@ -65,6 +65,7 @@ namespace modernRX {
     static_assert(Rx_Cache_Accesses >= 2 , "Number of cache accesses must be greater-equal than 2.");
 
     // Program Parameters.
+    inline constexpr uint32_t Rx_Hash_Size{ 32 }; // The size of RandomX hash in bytes.
     inline constexpr uint32_t Rx_Program_Size{ 256 }; // The number of instructions in a RandomX program.
     inline constexpr uint32_t Rx_Program_Bytes_Size{ 2176 }; // The size of RandomX program in bytes.
 

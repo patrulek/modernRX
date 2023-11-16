@@ -217,8 +217,8 @@ namespace modernRX {
                 const uint64_t mov{ 0xd0'89'49'0e'24'f7'48'c0 | uint64_t(dst_register) &lt;&lt; 56 | uint64_t(8 * dst_register) };
                 std::memcpy(code_buffer + code_size + 16, &amp;mov, sizeof(mov));
                 code_size += 24;
-            } else {
-                const uint64_t lea{ 0x00'00'00'00'24'88'8d'49 | uint64_t(src_register) &lt;&lt; 16 | uint64_t(imm) &lt;&lt; 32 };
+            } else {</span>
+<span style = "background-color:#fdd">                const uint64_t lea{ 0x00'00'00'00'24'88'8d'49 | uint64_t(src_register) &lt;&lt; 16 | uint64_t(imm) &lt;&lt; 32 };
                 std::memcpy(code_buffer + code_size, &amp;lea, sizeof(lea));
                 const uint64_t and_{ 0x4c'00'00'00'00'e1'81'48 | uint64_t(mem_mask) &lt;&lt; 24 };
                 std::memcpy(code_buffer + code_size + 8, &amp;and_, sizeof(and_));

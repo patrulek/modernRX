@@ -6,6 +6,7 @@
 #include "aes1rrandom.hpp"
 #include "aes4rrandom.hpp"
 #include "bytecodecompiler.hpp"
+#include "hash.hpp"
 #include "randomxparams.hpp"
 #include "sse.hpp"
 #include "virtualmachine.hpp"
@@ -46,13 +47,14 @@ namespace modernRX {
         compiler.code_buffer = reinterpret_cast<char*>(jit.get()) + Program_Offset;
     }
 
-    void VirtualMachine::reset(const_span<std::byte> input, const_span<DatasetItem> dataset) {
+    void VirtualMachine::reset(BlockTemplate block_template, const_span<DatasetItem> dataset) {
         this->dataset = dataset;
-        blake2b::hash(seed, input);
-        aes::fill1R(scratchpad.buffer(sizeof(RegisterFile), scratchpad.size() - sizeof(RegisterFile)), seed);
+        this->block_template = block_template;
     }
 
-    std::array<std::byte, 32> VirtualMachine::execute() {
+    void VirtualMachine::execute(std::function<void(const RxHash&)> callback) {
+        blake2b::hash(seed, block_template.view());
+        aes::fill1R(scratchpad.buffer(sizeof(RegisterFile), scratchpad.size() - sizeof(RegisterFile)), seed);
         // RandomX requires specific float environment before executing any program.
         // This RAII object will set proper float flags on creation and restore its values on destruction. 
         const intrinsics::sse::FloatEnvironment fenv{};
@@ -89,10 +91,10 @@ namespace modernRX {
         aes::hash1R(span_cast<std::byte, sizeof(RegisterFile::a)>(scratchpad.data() + sizeof(RegisterFile) - sizeof(RegisterFile::a)), 
             span_cast<std::byte, Rx_Scratchpad_L3_Size>(scratchpad.data() + sizeof(RegisterFile)));
         
-        std::array<std::byte, 32> output{};
-        blake2b::hash(output, span_cast<std::byte, sizeof(RegisterFile)>(scratchpad.data()));
-
-        return output;
+        RxHash output;
+        blake2b::hash(output.buffer(), span_cast<std::byte, sizeof(RegisterFile)>(scratchpad.data()));
+        callback(output);
+        block_template.next();
     }
 
     void VirtualMachine::generateProgram(RxProgram& program) {

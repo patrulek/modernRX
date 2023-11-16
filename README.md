@@ -21,7 +21,7 @@ Current state of this project does not provide sensible performance to use in mi
 * [x] (28.09.2023) Optimize dataset generation with JIT compiler for superscalar programs.
 * [x] (30.10.2023) Optimize hash calculation with hardware specific instructions.
 * [x] (08.11.2023) Optimize hash calculation with JIT compiler for random programs.
-* [ ] Optimize hash calculation with multithreading.
+* [x] (17.11.2023) Optimize hash calculation with multithreading.
 * [ ] Experiment with further JIT optimizations for faster hash calculation.
 * [ ] Experiment with system and architecture specific optimizations (Huge Pages, MSR etc.) for faster hash calculation.
 * [ ] Port library to Unix-based systems.
@@ -50,29 +50,42 @@ This repository is meant to be build as a library that can be linked into other 
 ```c++
 #include "modernRX/hasher.hpp"
 
+/*
+* This example counts the number of generated hashes.
+*/
+
 // Declare hasher somewhere in your code.
 std::unique_ptr<modernRX::Hasher> hasher{ nullptr };
+std::atomic<uint64_t> counter{ 0 };
 
 // It is advised to initialize it in a place where exception can be handled.
 void initialize() {
     try {
         hasher = std::make_unique<modernRX::Hasher>();
+
+        // This will start VirtualMachine worker threads with a callback function that passes calculated hash. 
+        hasher->run([&counter](const modernRX::RxHash& hash) {
+            counter.fetch_add(1, std::memory_order_relaxed);
+        });
     } catch (const modernRX::Exception& ex) {
         // Handle exception.
     }
 }
 
-void calcHash() {
+void close() {
+    // Stop all VirtualMachine worker threads (waits for all of them to finish).
+    hasher->stop();
+    std::println("Hashes generated: {}", counter.load());
+}
+
+void resetJobParameters() {
     // Miner's responsibility to get proper data from blockchain node and setup job parameters.
     // For tests these values are hardcoded.
     auto [key, input] { miner.getHashingDataFromNode() };    
 
-    // Calculate single hash.
-    hasher->reset(key); // Resets hasher with new key.
-    auto hash{ hasher->run(input) }; // Calculates hash for input data.
-
-    // Miner's responsibility to do something with calculated hash.
-    miner.doSomethingWithHash(hash);
+    // Update job parameters.
+    hasher->reset(key); // Resets hasher with new key (it will recalculate dataset if new key provided).
+    hasher->resetVM(input); // Resets all VirtualMachine worker threads with new input.
 }
 ```
 
@@ -84,14 +97,14 @@ Sample output:
 ```console
 [ 0] Blake2b::hash                            ... Passed (<1ms)
 [ 1] Argon2d::Blake2b::hash                   ... Passed (<1ms)
-[ 2] Argon2d::fillMemory                      ... Passed (19.561s)
+[ 2] Argon2d::fillMemory                      ... Passed (19.531s)
 [ 3] AesGenerator1R::fill                     ... Passed (<1ms)
 [ 4] AesGenerator4R::fill                     ... Passed (<1ms)
 [ 5] AesHash1R                                ... Passed (<1ms)
 [ 6] Blake2brandom::get                       ... Passed (<1ms)
 [ 7] Reciprocal                               ... Passed (<1ms)
 [ 8] Superscalar::generate                    ... Passed (0.010s)
-[ 9] Dataset::generate                        ... Passed (25.904s)
+[ 9] Dataset::generate                        ... Passed (25.357s)
 [10] Hasher::run                              ... Passed (17.148s)
 ```
 
@@ -142,8 +155,8 @@ CPU temperature limit was set to 95°C.
 
 |                                | Blake2b [H/s] | Blake2bLong [H/s] | Argon2d [MB/s] | Aes1R [MB/s] | Aes4R [MB/s] | AesHash1R [H/s] | Superscalar [Prog/s] | Dataset [MB/s] | Hash [H/s] | Efficiency [H/Watt/s] |
 | ------------------------------ | :-----------: | :---------------: | :------------: | :----------: | :----------: | :-------------: | :------------------: | :------------: | :--------: | :-------------------: |
-| RandomX-1.2.1 (102f8acf)       |        3.231M |           103.46K |          881.4 |      47402.5 |      11473.4 |       **23702** |                 2754 |         ~838.7 |   **4554** |            **~84.33** |
-| modernRX 0.6.3                 |    **5.458M** |       **169.61K** |     **1208.1** |  **47430.5** |  **11890.3** |           23636 |             **9631** |     **1238.4** |      496.4 |                ~22.26 |
+| RandomX-1.2.1 (102f8acf)       |        3.231M |           103.46K |          881.4 |  **47402.5** |      11473.4 |           23702 |                 2754 |         ~838.7 |   **4554** |            **~84.33** |
+| modernRX 0.7.0                 |    **5.449M** |       **171.25K** |     **1235.4** |      47351.1 |  **11882.9** |       **23815** |             **9093** |     **1261.1** |       2863 |                ~59.89 |
 
 Original RandomX provides benchmark only for calculating final hashes. All other values were estimated (based on information benchmark provides) or some custom benchmarks were written on top of RandomX implementation, thus values may not be 100% accurate.
 
@@ -186,7 +199,7 @@ Project follows [zero-based versioning](https://0ver.org/) with several specific
 
 ## Changelog
 
-* **v0.6.3 - 16.11.2023:** optimize hash calculation (slightly faster JIT compilation)
+* **v0.7.0 - 17.11.2023:** optimize hash calculation with multi-threading
 * ...
 * **v0.1.3 - 29.10.2023:** bugfixes, benchmarks corrections, code cleanup
 * ...
@@ -202,11 +215,11 @@ $> gocloc /exclude-ext "xml,json,txt,exp" /not-match-d "3rdparty/*|x64/*|assets/
 -------------------------------------------------------------------------------
 Language                     files          blank        comment           code
 -------------------------------------------------------------------------------
-C++                             17            569            366           3295
-C++ Header                      33            504            569           2980
-Markdown                         3            168              0            488
+C++                             17            579            372           3380
+C++ Header                      34            515            572           3019
+Markdown                         3            174              0            510
 -------------------------------------------------------------------------------
-TOTAL                           53           1241            935           6763
+TOTAL                           54           1268            944           6909
 -------------------------------------------------------------------------------
 ```
 

@@ -104,7 +104,7 @@ void testBlake2bRandom();
 void testSuperscalarGenerate();
 void testReciprocal();
 void testDatasetGenerate();
-void testHasher();
+void testVM();
 
 
 <span style = "background-color:#dfd">int main() {
@@ -118,7 +118,7 @@ void testHasher();
     runTest("Reciprocal", true, testReciprocal);
     runTest("Superscalar::generate", true, testSuperscalarGenerate);
     runTest("Dataset::generate", true, testDatasetGenerate);
-    runTest("Hasher::run", true, testHasher);
+    runTest("VirtualMachine::execute", true, testVM);
 }</span>
 
 
@@ -584,46 +584,68 @@ void testHasher();
     testAssert(dt3[30000000][0] == 0x73ba6a6449e3d04e);
 }</span>
 
-<span style = "background-color:#dfd">void testHasher() {
-    auto expected{ byte_array(</span>
-        0x63, 0x91, 0x83, 0xaa, 0xe1, 0xbf, 0x4c, 0x9a, 0x35, 0x88, 0x4c, 0xb4, 0x6b, 0x09, 0xca, 0xd9,
-        0x17, 0x5f, 0x04, 0xef, 0xd7, 0x68, 0x4e, 0x72, 0x62, 0xa0, 0xac, 0x1c, 0x2f, 0x0b, 0x4e, 0x3f
-    ) };
+<span style = "background-color:#dfd">void testVM() {</span>
+    {
+        RxHash expected{
+<span style = "background-color:#dfd">            0x58, 0x16, 0xfd, 0xd8, 0xd8, 0xa3, 0x77, 0x78, 0x89, 0x63, 0x23, 0xf0, 0x9c, 0x65, 0x52, 0x94,
+            0x8e, 0xb5, 0x0a, 0xac, 0x12, 0x97, 0x23, 0x8b, 0xd7, 0x6e, 0xcd, 0xb5, 0x38, 0xc8, 0xc8, 0x57</span>
+        };
 
-<span style = "background-color:#dfd">    Hasher hasher(key);
-    auto actual{ hasher.run(input) };</span>
+<span style = "background-color:#dfd">        HeapArray&lt;argon2d::Block, 4096&gt; cache(Rx_Argon2d_Memory_Blocks);
+        argon2d::fillMemory(cache.buffer(), key);</span>
 
-<span style = "background-color:#dfd">    testAssert(actual == expected);</span>
+<span style = "background-color:#dfd">        blake2b::Random blakeRNG{ key, 0 };
+        Superscalar superscalar{ blakeRNG };</span>
 
-<span style = "background-color:#dfd">    expected = byte_array(</span>
-        0x30, 0x0a, 0x0a, 0xdb, 0x47, 0x60, 0x3d, 0xed, 0xb4, 0x22, 0x28, 0xcc, 0xb2, 0xb2, 0x11, 0x10,
-        0x4f, 0x4d, 0xa4, 0x5a, 0xf7, 0x09, 0xcd, 0x75, 0x47, 0xcd, 0x04, 0x9e, 0x94, 0x89, 0xc9, 0x69
-    );
+<span style = "background-color:#dfd">        std::array&lt;SuperscalarProgram, Rx_Cache_Accesses&gt; programs;
+        for (auto&amp; program : programs) {
+            program = superscalar.generate();
+        }</span>
 
-<span style = "background-color:#dfd">    hasher.reset(key); // This should have no effect.
-    actual = hasher.run(input2);</span>
+<span style = "background-color:#dfd">        auto dataset{ generateDataset(cache.view(), programs) };</span>
 
-<span style = "background-color:#dfd">    testAssert(actual == expected);</span>
+<span style = "background-color:#dfd">        VirtualMachine vm;</span>
+        BlockTemplate bt;
+<span style = "background-color:#dfd">        std::memcpy(bt.data, block_template.data(), sizeof(block_template));
+        vm.reset(bt, dataset);
+        vm.execute([&amp;expected](const RxHash&amp; hash) {
+            testAssert(hash == expected);
+        });
+    }</span>
 
-<span style = "background-color:#dfd">    expected = byte_array(</span>
-        0xc3, 0x6d, 0x4e, 0xd4, 0x19, 0x1e, 0x61, 0x73, 0x09, 0x86, 0x7e, 0xd6, 0x6a, 0x44, 0x3b, 0xe4, 
-        0x07, 0x50, 0x14, 0xe2, 0xb0, 0x61, 0xbc, 0xda, 0xf9, 0xce, 0x7b, 0x72, 0x1d, 0x2b, 0x77, 0xa8
-    );
+    {
+        RxHash expected{
+<span style = "background-color:#dfd">            0x9d, 0x9d, 0xbc, 0xb0, 0xe3, 0xbf, 0xb3, 0xf7, 0xae, 0x9d, 0xe8, 0xaf, 0x69, 0xf1, 0x48, 0x21,
+            0x86, 0x24, 0xfa, 0xd0, 0xe9, 0x27, 0xec, 0x44, 0x6a, 0x82, 0x3f, 0xcd, 0x03, 0x80, 0x99, 0x48</span>
+        };
 
-<span style = "background-color:#dfd">    hasher.reset(key); // This should have no effect.
-    actual = hasher.run(input3);</span>
+<span style = "background-color:#dfd">        HeapArray&lt;argon2d::Block, 4096&gt; cache(Rx_Argon2d_Memory_Blocks);
+        argon2d::fillMemory(cache.buffer(), key2);</span>
 
-<span style = "background-color:#dfd">    testAssert(actual == expected);</span>
+<span style = "background-color:#dfd">        blake2b::Random blakeRNG{ key2, 0 };
+        Superscalar superscalar{ blakeRNG };</span>
 
-<span style = "background-color:#dfd">    expected = byte_array(</span>
-        0xe9, 0xff, 0x45, 0x03, 0x20, 0x1c, 0x0c, 0x2c, 0xca, 0x26, 0xd2, 0x85, 0xc9, 0x3a, 0xe8, 0x83, 
-        0xf9, 0xb1, 0xd3, 0x0c, 0x9e, 0xb2, 0x40, 0xb8, 0x20, 0x75, 0x6f, 0x2d, 0x5a, 0x79, 0x05, 0xfc
-    );
+<span style = "background-color:#dfd">        std::array&lt;SuperscalarProgram, Rx_Cache_Accesses&gt; programs;
+        for (auto&amp; program : programs) {
+            program = superscalar.generate();
+        }</span>
 
-<span style = "background-color:#dfd">    hasher.reset(key2); // This should regenerate dataset.
-    actual = hasher.run(input3);</span>
+<span style = "background-color:#dfd">        auto dataset{ generateDataset(cache.view(), programs) };</span>
 
-<span style = "background-color:#dfd">    testAssert(actual == expected);
+<span style = "background-color:#dfd">        VirtualMachine vm;</span>
+        BlockTemplate bt;
+<span style = "background-color:#dfd">        std::memcpy(bt.data, block_template.data(), sizeof(block_template));
+        bt.data[42] = 1;
+        vm.reset(bt, dataset);
+        vm.execute([&amp;expected](const RxHash&amp; hash) {
+            testAssert(hash == expected);
+        });</span>
+
+        // Ensure that next hash is different.
+<span style = "background-color:#dfd">        vm.execute([&amp;expected](const RxHash&amp; hash) {
+            testAssert(hash != expected);
+        });
+    }
 }</span></pre>
         <hr />
         <table width="100%">

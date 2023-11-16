@@ -129,6 +129,12 @@
     <ClInclude Include="bytecodecompiler.hpp">
       <Filter>vm</Filter>
     </ClInclude>
+    <ClInclude Include="blocktemplate.hpp">
+      <Filter>modernRX</Filter>
+    </ClInclude>
+    <ClInclude Include="hash.hpp">
+      <Filter>modernRX</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="blake2b.cpp">
