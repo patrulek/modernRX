@@ -1,8 +1,18 @@
 ## modernRX - Changelog
 
+### v0.6.3 - 16.11.2023:
+
+Hash calculation optimization (slightly faster JIT compilation).
+All optimization decisions made in this version:
+* jit compilation speed improved:
+  * single initialization of code buffer for static part of code program (prologue and epilogue, that's equal for all programs)
+  * faster bytecode compiler (less instructions)
+* hand-write assembly for program context initialization (C++ code moved to hand-written assembly that align better with JIT-compiled programs)
+* improve loop begin and end of a program slightly (mostly as a result of hand-writing program context initialization)
+
 ### v0.6.2 - 11.11.2023:
 
-Hash calculation optimization ("insecure" mode, fewer allocations)
+Hash calculation optimization ("insecure" mode, fewer allocations).
 All optimization decisions made in this version:
 * remove unnecessary data allocations
 * insecure JIT mode (don't protect and reuse allocated virtual memory buffer for JIT code)

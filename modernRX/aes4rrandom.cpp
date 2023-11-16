@@ -45,6 +45,8 @@ namespace modernRX::aes {
         constexpr auto key3{ intrinsics::fromChars(0x63, 0x37, 0x62, 0x85, 0x08, 0x5d, 0x8f, 0xe7, 0x85, 0x37, 0x67, 0xcd, 0x91, 0xd2, 0xde, 0xd8) };
         constexpr auto key7{ intrinsics::fromChars(0x09, 0xd6, 0x7c, 0x7a, 0xde, 0x39, 0x58, 0x91, 0xfd, 0xd1, 0x06, 0x0c, 0x2d, 0x76, 0xb0, 0xc0) };
 
+        constexpr auto mask{ intrinsics::fromChars(0xff, 0x07, 0x07, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x07, 0x07, 0xff, 0xff, 0xff, 0xff, 0xff) };
+
         // Switch between fixed and variable output size. 
         for (size_t i = 0; i < (Fixed ? Rx_Program_Bytes_Size : output.size()); i += 64) {
             intrinsics::aes::decode(state0, key0);
@@ -72,10 +74,25 @@ namespace modernRX::aes {
             intrinsics::xmm128i_t& output2{ *reinterpret_cast<intrinsics::xmm128i_t*>(output.data() + i + 32) };
             intrinsics::xmm128i_t& output3{ *reinterpret_cast<intrinsics::xmm128i_t*>(output.data() + i + 48) };
 
-            output0 = state0;
-            output1 = state1;
-            output2 = state2;
-            output3 = state3;
+            
+            if constexpr (Fixed) {
+                if (i >= 128) {
+                    output0 = _mm_and_si128(state0, mask);
+                    output1 = _mm_and_si128(state1, mask);
+                    output2 = _mm_and_si128(state2, mask);
+                    output3 = _mm_and_si128(state3, mask);
+                } else {
+                    output0 = state0;
+                    output1 = state1;
+                    output2 = state2;
+                    output3 = state3;
+                }
+            } else {
+                output0 = state0;
+                output1 = state1;
+                output2 = state2;
+                output3 = state3;
+            }
         }
 
         seed0 = state0;

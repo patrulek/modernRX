@@ -84,15 +84,15 @@ Sample output:
 ```console
 [ 0] Blake2b::hash                            ... Passed (<1ms)
 [ 1] Argon2d::Blake2b::hash                   ... Passed (<1ms)
-[ 2] Argon2d::fillMemory                      ... Passed (19.665s)
+[ 2] Argon2d::fillMemory                      ... Passed (19.561s)
 [ 3] AesGenerator1R::fill                     ... Passed (<1ms)
 [ 4] AesGenerator4R::fill                     ... Passed (<1ms)
 [ 5] AesHash1R                                ... Passed (<1ms)
 [ 6] Blake2brandom::get                       ... Passed (<1ms)
 [ 7] Reciprocal                               ... Passed (<1ms)
 [ 8] Superscalar::generate                    ... Passed (0.010s)
-[ 9] Dataset::generate                        ... Passed (25.394s)
-[10] Hasher::run                              ... Passed (16.948s)
+[ 9] Dataset::generate                        ... Passed (25.904s)
+[10] Hasher::run                              ... Passed (17.148s)
 ```
 
 Ideally, tests should be run before every release in `Release` and `Debug` mode with `AddressSanitizer` enabled. `ReleaseAsan` and `DebugAsan` project configurations are provided for this purpose.
@@ -142,8 +142,8 @@ CPU temperature limit was set to 95°C.
 
 |                                | Blake2b [H/s] | Blake2bLong [H/s] | Argon2d [MB/s] | Aes1R [MB/s] | Aes4R [MB/s] | AesHash1R [H/s] | Superscalar [Prog/s] | Dataset [MB/s] | Hash [H/s] | Efficiency [H/Watt/s] |
 | ------------------------------ | :-----------: | :---------------: | :------------: | :----------: | :----------: | :-------------: | :------------------: | :------------: | :--------: | :-------------------: |
-| RandomX-1.2.1 (102f8acf)       |        3.231M |           103.46K |          881.4 |  **47402.5** |      11473.4 |       **23702** |                 2754 |         ~838.7 |   **4554** |            **~84.33** |
-| modernRX 0.6.2                 |    **5.453M** |       **171.76K** |     **1239.9** |      47324.0 |  **11862.1** |           23699 |             **9623** |     **1264.2** |      474.7 |                ~21.38 |
+| RandomX-1.2.1 (102f8acf)       |        3.231M |           103.46K |          881.4 |      47402.5 |      11473.4 |       **23702** |                 2754 |         ~838.7 |   **4554** |            **~84.33** |
+| modernRX 0.6.3                 |    **5.458M** |       **169.61K** |     **1208.1** |  **47430.5** |  **11890.3** |           23636 |             **9631** |     **1238.4** |      496.4 |                ~22.26 |
 
 Original RandomX provides benchmark only for calculating final hashes. All other values were estimated (based on information benchmark provides) or some custom benchmarks were written on top of RandomX implementation, thus values may not be 100% accurate.
 
@@ -186,7 +186,7 @@ Project follows [zero-based versioning](https://0ver.org/) with several specific
 
 ## Changelog
 
-* **v0.6.2 - 11.11.2023:** optimize hash calculation ("insecure" mode, fewer allocations)
+* **v0.6.3 - 16.11.2023:** optimize hash calculation (slightly faster JIT compilation)
 * ...
 * **v0.1.3 - 29.10.2023:** bugfixes, benchmarks corrections, code cleanup
 * ...
@@ -202,11 +202,11 @@ $> gocloc /exclude-ext "xml,json,txt,exp" /not-match-d "3rdparty/*|x64/*|assets/
 -------------------------------------------------------------------------------
 Language                     files          blank        comment           code
 -------------------------------------------------------------------------------
-C++ Header                      33            503            573           2977
-C++                             16            608            329           2621
-Markdown                         3            166              0            478
+C++                             17            569            366           3295
+C++ Header                      33            504            569           2980
+Markdown                         3            168              0            488
 -------------------------------------------------------------------------------
-TOTAL                           52           1277            902           6076
+TOTAL                           53           1241            935           6763
 -------------------------------------------------------------------------------
 ```
 

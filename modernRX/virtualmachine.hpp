@@ -11,7 +11,7 @@
 
 #include <span>
 
-#include "assembler.hpp"
+#include "bytecodecompiler.hpp"
 #include "dataset.hpp"
 #include "heaparray.hpp"
 
@@ -20,7 +20,7 @@ namespace modernRX {
     // ctx - pointer to ProgramContext.
     // scratchpad - pointer to Scratchpad.
     // dataset - pointer to Dataset.
-    using JITRxProgram = void(*)(const uintptr_t ctx, const uintptr_t scratchpad, const uintptr_t dataset);
+    using JITRxProgram = void(*)(const uintptr_t ctx, const uintptr_t scratchpad, const uintptr_t dataset, const uintptr_t program);
 
     // Forward declarations.
     struct ProgramContext;
@@ -28,7 +28,7 @@ namespace modernRX {
     struct RxProgram;
 
     // Defines RandomX VM bytecode executor.
-    class VirtualMachine {
+    class alignas(64) VirtualMachine {
     public:
         [[nodiscard]] explicit VirtualMachine();
 
@@ -41,15 +41,15 @@ namespace modernRX {
         [[nodiscard]] std::array<std::byte, 32> execute();
     private:
         // Generates program based on current seed value.
-        [[nodiscard]] std::pair<ProgramContext, RxProgram> generateProgram();
+        void generateProgram(RxProgram& program);
 
         // JIT-compile RandomX program.
-        void compileProgram(const ProgramContext& ctx, const RxProgram& program);
+        void compileProgram(const RxProgram& program);
 
         std::array<std::byte, 64> seed;
         std::span<const DatasetItem> dataset;
         HeapArray<std::byte, 4096> scratchpad;
-        assembler::Context asmb;
+        BytecodeCompiler compiler;
         jit_function_ptr<JITRxProgram> jit{ nullptr };
     };
 }

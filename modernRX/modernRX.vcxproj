@@ -317,6 +317,7 @@
     <ClCompile Include="virtualmachine.cpp" />
     <ClCompile Include="superscalar.cpp" />
     <ClCompile Include="bytecodecompiler.cpp" />
+    <ClCompile Include="virtualmachineprogram.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

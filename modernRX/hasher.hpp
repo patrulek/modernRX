@@ -23,9 +23,9 @@ namespace modernRX {
         // Resets Dataset with new key. Does nothing if key is equal to previous one.
         void reset(const_span<std::byte> key);
     private:
+        VirtualMachine vm; // Virtual machine used for program execution.
         std::vector<std::byte> key; // Latest key used for Dataset generation.
         HeapArray<DatasetItem, 4096> dataset; // Dataset used for program execution.
-        VirtualMachine vm; // Virtual machine used for program execution.
 
         void checkCPU() const; // Ensure CPU supports required features.
     };

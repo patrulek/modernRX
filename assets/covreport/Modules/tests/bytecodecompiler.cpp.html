@@ -21,578 +21,578 @@ namespace modernRX {
         constexpr uint32_t Scratchpad_L1_Mask{ (Rx_Scratchpad_L1_Size - 1) &amp; ~7 }; // L1 cache 8-byte alignment mask.
         constexpr uint32_t Scratchpad_L2_Mask{ (Rx_Scratchpad_L2_Size - 1) &amp; ~7 }; // L2 cache 8-byte alignment mask.
         constexpr uint32_t Scratchpad_L3_Mask{ (Rx_Scratchpad_L3_Size - 1) &amp; ~7 }; // L3 cache 8-byte alignment mask.
-
-        void setJmpPoint(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const uint32_t reg_idx, const uint32_t instr_idx);
-
-        template&lt;int Byte, typename Val&gt;
-<span style = "background-color:#dfd">        [[nodiscard]] constexpr int8_t b(const Val&amp; v) noexcept {</span>
-            static_assert(Byte &lt; sizeof(Val));
-<span style = "background-color:#dfd">            return *(reinterpret_cast&lt;const int8_t*&gt;(&amp;v) + Byte);
-        }</span>
+        constexpr uint8_t Sib_Reg_Idx{ 4 };
     }
 
-    using namespace assembler;
-    using namespace assembler::registers;
-
-<span style = "background-color:#dfd">    void iaddrs_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
+<span style = "background-color:#dfd">    void BytecodeCompiler::iaddrs_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
         constexpr uint8_t Displacement_Reg_Idx{ 5 };
-        const uint8_t dst_register{ instr.dst_register % Int_Register_Count };
-        const uint8_t src_register{ instr.src_register % Int_Register_Count };</span>
-        
-<span style = "background-color:#dfd">        const auto scale{ 64 * instr.modShift() };
+        const uint8_t dst_register{ instr.dst_register };
+        const uint8_t src_register{ instr.src_register };</span>
+
+<span style = "background-color:#dfd">        reg_usage[dst_register] = idx;
+        const auto scale{ 64 * instr.modShift() };
         const auto index{ 8 * src_register };
         const auto base{ dst_register };</span>
 
-<span style = "background-color:#dfd">        if (dst_register == Displacement_Reg_Idx) {
-            const auto imm{ instr.imm32 };
-            asmb.inject(char_array(</span>
-                /* LEA */ 0x4f, 0x8d, 0xac, scale | index | base, b&lt;0&gt;(imm), b&lt;1&gt;(imm), b&lt;2&gt;(imm), b&lt;3&gt;(imm)
-            ));
-<span style = "background-color:#dfd">        } else {
-            asmb.inject(char_array(</span>
-                /* LEA */ 0x4f, 0x8d, 0x04 + 8 * dst_register, scale | index | base
-            ));
-        }
-
-<span style = "background-color:#dfd">        setJmpPoint(asmb, reg_usage, dst_register, idx);
-    }</span>
-
-<span style = "background-color:#dfd">    void iaddm_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
-        const uint8_t dst_register{ instr.dst_register % Int_Register_Count };
-        const uint8_t src_register{ instr.src_register % Int_Register_Count };</span>
-
-<span style = "background-color:#dfd">        if (dst_register == src_register) {
-            const auto offset{ instr.imm32 &amp; Scratchpad_L3_Mask };
-            asmb.inject(char_array(</span>
-                /* ADD */ 0x4c, 0x03, 0x86 + 8 * dst_register, b&lt;0&gt;(offset), b&lt;1&gt;(offset), b&lt;2&gt;(offset), b&lt;3&gt;(offset)
-            ));
-<span style = "background-color:#dfd">        } else {
-            const auto imm{ instr.imm32 };
-            const auto mem_mask{ instr.modMask() ? Scratchpad_L1_Mask : Scratchpad_L2_Mask };</span>
-
-<span style = "background-color:#dfd">            if (src_register != RSP.idx) {
-                asmb.inject(char_array(</span>
-                    /* LEA */ 0x49, 0x8d, 0x80 + src_register, b&lt;0&gt;(imm), b&lt;1&gt;(imm), b&lt;2&gt;(imm), b&lt;3&gt;(imm),
-                    /* AND */ 0x48, 0x25, b&lt;0&gt;(mem_mask), b&lt;1&gt;(mem_mask), b&lt;2&gt;(mem_mask), b&lt;3&gt;(mem_mask),
-                    /* ADD */ 0x4c, 0x03, 0x04 + 8 * dst_register, 0x06
-                ));
-<span style = "background-color:#dfd">            } else {
-                asmb.inject(char_array(</span>
-                    /* LEA */ 0x49, 0x8d, 0x80 + src_register, 0x24, b&lt;0&gt;(imm), b&lt;1&gt;(imm), b&lt;2&gt;(imm), b&lt;3&gt;(imm),
-                    /* AND */ 0x48, 0x25, b&lt;0&gt;(mem_mask), b&lt;1&gt;(mem_mask), b&lt;2&gt;(mem_mask), b&lt;3&gt;(mem_mask),
-                    /* ADD */ 0x4c, 0x03, 0x04 + 8 * dst_register, 0x06
-                ));
-            }
-        }
-
-<span style = "background-color:#dfd">        setJmpPoint(asmb, reg_usage, dst_register, idx);
-    }</span>
-
-<span style = "background-color:#dfd">    void isubr_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
-        const uint8_t dst_register{ instr.dst_register % Int_Register_Count };
-        const uint8_t src_register{ instr.src_register % Int_Register_Count };</span>
-
-<span style = "background-color:#dfd">        if (dst_register == src_register) {
-            const auto imm{ static_cast&lt;int32_t&gt;(instr.imm32) };
-            asmb.inject(char_array(</span>
-                /* SUB */ 0x49, 0x81, 0xe8 + dst_register, b&lt;0&gt;(imm), b&lt;1&gt;(imm), b&lt;2&gt;(imm), b&lt;3&gt;(imm)
-            ));
-<span style = "background-color:#dfd">        } else {
-            asmb.inject(char_array(</span>
-                /* SUB */ 0x4d, 0x29, 0xc0 + dst_register + 8 * src_register
-            ));
-        }
-
-<span style = "background-color:#dfd">        setJmpPoint(asmb, reg_usage, dst_register, idx);
-    }</span>
-
-<span style = "background-color:#dfd">    void isubm_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
-        const uint8_t dst_register{ instr.dst_register % Int_Register_Count };
-        const uint8_t src_register{ instr.src_register % Int_Register_Count };</span>
-
-<span style = "background-color:#dfd">        if (dst_register == src_register) {
-            const auto offset{ instr.imm32 &amp; Scratchpad_L3_Mask };
-            asmb.inject(char_array(</span>
-                /* SUB */ 0x4c, 0x2b, 0x86 + 8 * dst_register, b&lt;0&gt;(offset), b&lt;1&gt;(offset), b&lt;2&gt;(offset), b&lt;3&gt;(offset)
-            ));
-<span style = "background-color:#dfd">        } else {
-            const auto imm{ instr.imm32 };
-            const auto mem_mask{ instr.modMask() ? Scratchpad_L1_Mask : Scratchpad_L2_Mask };</span>
-
-<span style = "background-color:#dfd">            if (src_register != RSP.idx) {
-                asmb.inject(char_array(</span>
-                    /* LEA */ 0x49, 0x8d, 0x80 + src_register, b&lt;0&gt;(imm), b&lt;1&gt;(imm), b&lt;2&gt;(imm), b&lt;3&gt;(imm),
-                    /* AND */ 0x48, 0x25, b&lt;0&gt;(mem_mask), b&lt;1&gt;(mem_mask), b&lt;2&gt;(mem_mask), b&lt;3&gt;(mem_mask),
-                    /* SUB */ 0x4c, 0x2b, 0x04 + 8 * dst_register, 0x06
-                ));
-<span style = "background-color:#dfd">            } else {
-                asmb.inject(char_array(</span>
-                    /* LEA */ 0x49, 0x8d, 0x80 + src_register, 0x24, b&lt;0&gt;(imm), b&lt;1&gt;(imm), b&lt;2&gt;(imm), b&lt;3&gt;(imm),
-                    /* AND */ 0x48, 0x25, b&lt;0&gt;(mem_mask), b&lt;1&gt;(mem_mask), b&lt;2&gt;(mem_mask), b&lt;3&gt;(mem_mask),
-                    /* SUB */ 0x4c, 0x2b, 0x04 + 8 * dst_register, 0x06
-                ));
-            }
-        }
-
-<span style = "background-color:#dfd">        setJmpPoint(asmb, reg_usage, dst_register, idx);
-    }</span>
-
-<span style = "background-color:#dfd">    void imulr_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
-        const uint8_t dst_register{ instr.dst_register % Int_Register_Count };
-        const uint8_t src_register{ instr.src_register % Int_Register_Count };</span>
-
-<span style = "background-color:#dfd">        if (dst_register == src_register) {
-            const auto imm{ static_cast&lt;int32_t&gt;(instr.imm32) };
-            asmb.inject(char_array(</span>
-                /* IMUL */ 0x4d, 0x69, 0xc0 + 9 * dst_register, b&lt;0&gt;(imm), b&lt;1&gt;(imm), b&lt;2&gt;(imm), b&lt;3&gt;(imm)
-            ));
-<span style = "background-color:#dfd">        } else {
-            asmb.inject(char_array(</span>
-                /* IMUL */ 0x4d, 0x0f, 0xaf, 0xc0 + 8 * dst_register + src_register
-            ));
-        }
-
-<span style = "background-color:#dfd">        setJmpPoint(asmb, reg_usage, dst_register, idx);
-    }</span>
-
-<span style = "background-color:#dfd">    void imulm_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
-        const uint8_t dst_register{ instr.dst_register % Int_Register_Count };
-        const uint8_t src_register{ instr.src_register % Int_Register_Count };</span>
-
-<span style = "background-color:#dfd">        if (dst_register == src_register) {
-            const auto offset{ instr.imm32 &amp; Scratchpad_L3_Mask };
-            asmb.inject(char_array(</span>
-                /* IMUL */ 0x4c, 0x0f, 0xaf, 0x86 + 8 * dst_register, b&lt;0&gt;(offset), b&lt;1&gt;(offset), b&lt;2&gt;(offset), b&lt;3&gt;(offset)
-            ));
-<span style = "background-color:#dfd">        } else {
-            const auto imm{ instr.imm32 };
-            const auto mem_mask{ instr.modMask() ? Scratchpad_L1_Mask : Scratchpad_L2_Mask };</span>
-
-<span style = "background-color:#dfd">            if (src_register != RSP.idx) {
-                asmb.inject(char_array(</span>
-                    /* LEA */ 0x49, 0x8d, 0x88 + src_register, b&lt;0&gt;(imm), b&lt;1&gt;(imm), b&lt;2&gt;(imm), b&lt;3&gt;(imm),
-                    /* AND */ 0x48, 0x81, 0xe1, b&lt;0&gt;(mem_mask), b&lt;1&gt;(mem_mask), b&lt;2&gt;(mem_mask), b&lt;3&gt;(mem_mask),
-                    /* IMUL */ 0x4c, 0x0f, 0xaf, 0x04 + 8 * dst_register, 0x0e
-                ));
-<span style = "background-color:#dfd">            } else {
-                asmb.inject(char_array(</span>
-                    /* LEA */ 0x49, 0x8d, 0x88 + src_register, 0x24, b&lt;0&gt;(imm), b&lt;1&gt;(imm), b&lt;2&gt;(imm), b&lt;3&gt;(imm),
-                    /* AND */ 0x48, 0x81, 0xe1, b&lt;0&gt;(mem_mask), b&lt;1&gt;(mem_mask), b&lt;2&gt;(mem_mask), b&lt;3&gt;(mem_mask),
-                    /* IMUL */ 0x4c, 0x0f, 0xaf, 0x04 + 8 * dst_register, 0x0e
-                ));
-            }
-        }
-
-<span style = "background-color:#dfd">        setJmpPoint(asmb, reg_usage, dst_register, idx);
-    }</span>
-
-<span style = "background-color:#dfd">    void imulhr_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
-        const uint8_t dst_register{ instr.dst_register % Int_Register_Count };
-        const uint8_t src_register{ instr.src_register % Int_Register_Count };</span>
-
-<span style = "background-color:#dfd">        asmb.inject(char_array(</span>
-            /* MOV */ 0x4c, 0x89, 0xc0 + 8 * dst_register,
-            /* MULH */ 0x49, 0xf7, 0xe0 + src_register,
-            /* MOV */ 0x49, 0x89, 0xd0 + dst_register
-        ));
-
-<span style = "background-color:#dfd">        setJmpPoint(asmb, reg_usage, dst_register, idx);
-    }</span>
-
-<span style = "background-color:#dfd">    void imulhm_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
-        const uint8_t dst_register{ instr.dst_register % Int_Register_Count };
-        const uint8_t src_register{ instr.src_register % Int_Register_Count };</span>
-
-<span style = "background-color:#dfd">        if (dst_register == src_register) {
-            const auto offset{ instr.imm32 &amp; Scratchpad_L3_Mask };
-            asmb.inject(char_array(</span>
-                /* MOV */ 0x4c, 0x89, 0xc0 + 8 * dst_register, 
-                /* MULH */ 0x48, 0xf7, 0xa6, b&lt;0&gt;(offset), b&lt;1&gt;(offset), b&lt;2&gt;(offset), b&lt;3&gt;(offset),
-                /* MOV */ 0x49, 0x89, 0xd0 + dst_register
-            ));
-<span style = "background-color:#dfd">        } else {
-            const auto imm{ instr.imm32 };
-            const auto mem_mask{ instr.modMask() ? Scratchpad_L1_Mask : Scratchpad_L2_Mask };</span>
-
-<span style = "background-color:#dfd">            if (src_register != RSP.idx) {
-                asmb.inject(char_array(</span>
-                    /* LEA */ 0x49, 0x8d, 0x88 + src_register, b&lt;0&gt;(imm), b&lt;1&gt;(imm), b&lt;2&gt;(imm), b&lt;3&gt;(imm),
-                    /* AND */ 0x48, 0x81, 0xe1, b&lt;0&gt;(mem_mask), b&lt;1&gt;(mem_mask), b&lt;2&gt;(mem_mask), b&lt;3&gt;(mem_mask),
-                    /* MOV */ 0x4c, 0x89, 0xc0 + 8 * dst_register,
-                    /* MULH */ 0x48, 0xf7, 0x24, 0x0e,
-                    /* MOV */ 0x49, 0x89, 0xd0 + dst_register
-                ));
-<span style = "background-color:#dfd">            } else {
-                asmb.inject(char_array(</span>
-                    /* LEA */ 0x49, 0x8d, 0x88 + src_register, 0x24, b&lt;0&gt;(imm), b&lt;1&gt;(imm), b&lt;2&gt;(imm), b&lt;3&gt;(imm),
-                    /* AND */ 0x48, 0x81, 0xe1, b&lt;0&gt;(mem_mask), b&lt;1&gt;(mem_mask), b&lt;2&gt;(mem_mask), b&lt;3&gt;(mem_mask),
-                    /* MOV */ 0x4c, 0x89, 0xc0 + 8 * dst_register,
-                    /* MULH */ 0x48, 0xf7, 0x24, 0x0e,
-                    /* MOV */ 0x49, 0x89, 0xd0 + dst_register
-                ));
-            }
-        }
-
-<span style = "background-color:#dfd">        setJmpPoint(asmb, reg_usage, dst_register, idx);
-    }</span>
-
-<span style = "background-color:#dfd">    void ismulhr_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
-        const uint8_t dst_register{ instr.dst_register % Int_Register_Count };
-        const uint8_t src_register{ instr.src_register % Int_Register_Count };</span>
-
-<span style = "background-color:#dfd">        asmb.inject(char_array(</span>
-            /* MOV */ 0x4c, 0x89, 0xc0 + 8 * dst_register,
-            /* IMULH */ 0x49, 0xf7, 0xe8 + src_register,
-            /* MOV */ 0x49, 0x89, 0xd0 + dst_register
-        ));
-
-<span style = "background-color:#dfd">        setJmpPoint(asmb, reg_usage, dst_register, idx);
-    }</span>
-
-<span style = "background-color:#dfd">    void ismulhm_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
-        const uint8_t dst_register{ instr.dst_register % Int_Register_Count };
-        const uint8_t src_register{ instr.src_register % Int_Register_Count };</span>
-
-<span style = "background-color:#dfd">        if (dst_register == src_register) {
-            const auto offset{ instr.imm32 &amp; Scratchpad_L3_Mask };
-            asmb.inject(char_array(</span>
-                /* MOV */ 0x4c, 0x89, 0xc0 + 8 * dst_register,
-                /* IMULH */ 0x48, 0xf7, 0xae, b&lt;0&gt;(offset), b&lt;1&gt;(offset), b&lt;2&gt;(offset), b&lt;3&gt;(offset),
-                /* MOV */ 0x49, 0x89, 0xd0 + dst_register
-            ));
-<span style = "background-color:#dfd">        } else {
-            const auto imm{ instr.imm32 };
-            const auto mem_mask{ instr.modMask() ? Scratchpad_L1_Mask : Scratchpad_L2_Mask };</span>
-
-<span style = "background-color:#dfd">            if (src_register != RSP.idx) {
-                asmb.inject(char_array(</span>
-                    /* LEA */ 0x49, 0x8d, 0x88 + src_register, b&lt;0&gt;(imm), b&lt;1&gt;(imm), b&lt;2&gt;(imm), b&lt;3&gt;(imm),
-                    /* AND */ 0x48, 0x81, 0xe1, b&lt;0&gt;(mem_mask), b&lt;1&gt;(mem_mask), b&lt;2&gt;(mem_mask), b&lt;3&gt;(mem_mask),
-                    /* MOV */ 0x4c, 0x89, 0xc0 + 8 * dst_register,
-                    /* IMULH */ 0x48, 0xf7, 0x2c, 0x0e,
-                    /* MOV */ 0x49, 0x89, 0xd0 + dst_register
-                ));
-<span style = "background-color:#dfd">            } else {
-                asmb.inject(char_array(</span>
-                    /* LEA */ 0x49, 0x8d, 0x88 + src_register, 0x24, b&lt;0&gt;(imm), b&lt;1&gt;(imm), b&lt;2&gt;(imm), b&lt;3&gt;(imm),
-                    /* AND */ 0x48, 0x81, 0xe1, b&lt;0&gt;(mem_mask), b&lt;1&gt;(mem_mask), b&lt;2&gt;(mem_mask), b&lt;3&gt;(mem_mask),
-                    /* MOV */ 0x4c, 0x89, 0xc0 + 8 * dst_register,
-                    /* IMULH */ 0x48, 0xf7, 0x2c, 0x0e,
-                    /* MOV */ 0x49, 0x89, 0xd0 + dst_register
-                ));
-            }
-        }
-
-<span style = "background-color:#dfd">        setJmpPoint(asmb, reg_usage, dst_register, idx);
-    }</span>
-
-<span style = "background-color:#dfd">    void inegr_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
-        const uint8_t dst_register{ instr.dst_register % Int_Register_Count };
-        asmb.inject(char_array(</span>
-            /* NEG */ 0x49, 0xf7, 0xd8 + dst_register
-        ));
-<span style = "background-color:#dfd">        setJmpPoint(asmb, reg_usage, dst_register, idx);
-    }</span>
-
-<span style = "background-color:#dfd">    void ixorr_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
-        const uint8_t dst_register{ instr.dst_register % Int_Register_Count };
-        const uint8_t src_register{ instr.src_register % Int_Register_Count };</span>
-
-<span style = "background-color:#dfd">        if (dst_register == src_register) {
-            const auto imm{ static_cast&lt;int32_t&gt;(instr.imm32) };
-            asmb.inject(char_array(</span>
-                /* XOR */ 0x49, 0x81, 0xf0 + dst_register, b&lt;0&gt;(imm), b&lt;1&gt;(imm), b&lt;2&gt;(imm), b&lt;3&gt;(imm)
-            ));
-<span style = "background-color:#dfd">        } else {
-            asmb.inject(char_array(</span>
-                /* XOR */ 0x4d, 0x31, 0xc0 + dst_register + 8 * src_register
-            ));
-        }
-
-<span style = "background-color:#dfd">        setJmpPoint(asmb, reg_usage, dst_register, idx);
-    }</span>
-
-<span style = "background-color:#dfd">    void ixorm_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
-        const uint8_t dst_register{ instr.dst_register % Int_Register_Count };
-        const uint8_t src_register{ instr.src_register % Int_Register_Count };</span>
-
-<span style = "background-color:#dfd">        if (dst_register == src_register) {
-            const auto offset{ instr.imm32 &amp; Scratchpad_L3_Mask };
-            asmb.inject(char_array(</span>
-                /* XOR */ 0x4c, 0x33, 0x86 + 8 * dst_register, b&lt;0&gt;(offset), b&lt;1&gt;(offset), b&lt;2&gt;(offset), b&lt;3&gt;(offset)
-            ));
-<span style = "background-color:#dfd">        } else {
-            const auto imm{ instr.imm32 };
-            const auto mem_mask{ instr.modMask() ? Scratchpad_L1_Mask : Scratchpad_L2_Mask };</span>
+<span style = "background-color:#dfd">        if (dst_register != Displacement_Reg_Idx) {
+            const uint32_t lea{ 0x00'04'8d'4f | uint32_t(scale | index | base) &lt;&lt; 24 | uint32_t(8 * dst_register) &lt;&lt; 16 };
+            std::memcpy(code_buffer + code_size, &amp;lea, sizeof(lea));
+            code_size += 4;</span>
             
-<span style = "background-color:#dfd">            if (src_register != RSP.idx) {
-                asmb.inject(char_array(</span>
-                    /* LEA */ 0x49, 0x8d, 0x80 + src_register, b&lt;0&gt;(imm), b&lt;1&gt;(imm), b&lt;2&gt;(imm), b&lt;3&gt;(imm),
-                    /* AND */ 0x48, 0x25, b&lt;0&gt;(mem_mask), b&lt;1&gt;(mem_mask), b&lt;2&gt;(mem_mask), b&lt;3&gt;(mem_mask),
-                    /* XOR */ 0x4c, 0x33, 0x04 + 8 * dst_register, 0x06
-                ));
-<span style = "background-color:#dfd">            } else {
-                asmb.inject(char_array(</span>
-                    /* LEA */ 0x49, 0x8d, 0x80 + src_register, 0x24, b&lt;0&gt;(imm), b&lt;1&gt;(imm), b&lt;2&gt;(imm), b&lt;3&gt;(imm),
-                    /* AND */ 0x48, 0x25, b&lt;0&gt;(mem_mask), b&lt;1&gt;(mem_mask), b&lt;2&gt;(mem_mask), b&lt;3&gt;(mem_mask),
-                    /* XOR */ 0x4c, 0x33, 0x04 + 8 * dst_register, 0x06
-                ));
-            }
+<span style = "background-color:#dfd">        } else {
+            const uint64_t imm{ instr.imm32 };
+            const uint64_t lea{ 0x00'00'00'00'00'ac'8d'4f | uint64_t(scale | index | base) &lt;&lt; 24 | imm &lt;&lt; 32 };
+            std::memcpy(code_buffer + code_size, &amp;lea, sizeof(lea));
+            code_size += 8;</span>
         }
 
-<span style = "background-color:#dfd">        setJmpPoint(asmb, reg_usage, dst_register, idx);
-    }</span>
+<span style = "background-color:#dfd">    }</span>
 
-<span style = "background-color:#dfd">    void irorr_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
-        const uint8_t dst_register{ instr.dst_register % Int_Register_Count };
-        const uint8_t src_register{ instr.src_register % Int_Register_Count };</span>
+<span style = "background-color:#dfd">    void BytecodeCompiler::iaddm_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
+        const uint8_t dst_register{ instr.dst_register };
+        const uint8_t src_register{ instr.src_register };
+        reg_usage[dst_register] = idx;</span>
 
-<span style = "background-color:#dfd">        if (dst_register == src_register) {
-            if (const auto imm = instr.imm32 % 64; imm != 0) {
-                asmb.inject(char_array(</span>
-                    /* ROR */ 0x49, 0xc1, 0xc8 + dst_register, b&lt;0&gt;(imm)
-                ));
+<span style = "background-color:#dfd">        if (dst_register != src_register) {
+            const uint64_t imm{ instr.imm32 };
+            const auto mem_mask{ instr.modMask() ? Scratchpad_L1_Mask : Scratchpad_L2_Mask };</span>
+
+<span style = "background-color:#dfd">            if (src_register != Sib_Reg_Idx) {
+                const uint64_t lea{ 0x48'00'00'00'00'80'8d'49 | uint64_t(src_register) &lt;&lt; 16 | uint64_t(imm) &lt;&lt; 24 };
+                std::memcpy(code_buffer + code_size, &amp;lea, sizeof(lea));
+                const uint64_t and_{ 0x04'03'4c'00'00'00'00'25 | uint64_t(mem_mask) &lt;&lt; 8 | uint64_t(8 * dst_register) &lt;&lt; 56 };
+                std::memcpy(code_buffer + code_size + 8, &amp;and_, sizeof(and_));
+                const uint8_t mov{ static_cast&lt;uint8_t&gt;(0x06) };
+                std::memcpy(code_buffer + code_size + 16, &amp;mov, 1);
+                code_size += 17;
+            } else {
+                const uint64_t lea{ 0x00'00'00'00'24'80'8d'49 | uint64_t(src_register) &lt;&lt; 16 | uint64_t(imm) &lt;&lt; 32 };
+                std::memcpy(code_buffer + code_size, &amp;lea, sizeof(lea));
+                const uint64_t and_{ 0x03'4c'00'00'00'00'25'48 | uint64_t(mem_mask) &lt;&lt; 16 };
+                std::memcpy(code_buffer + code_size + 8, &amp;and_, sizeof(and_));
+                const uint16_t mov{ static_cast&lt;uint16_t&gt;(0x06'04 | uint16_t(8 * dst_register)) };
+                std::memcpy(code_buffer + code_size + 16, &amp;mov, 2);
+                code_size += 18;</span>
             }
 <span style = "background-color:#dfd">        } else {
-            asmb.inject(char_array(</span>
-                /* MOV */ 0x4c, 0x89, 0xc1 + 8 * src_register,
-                /* ROR */ 0x49, 0xd3, 0xc8 + dst_register
-            ));
-        }
-
-        // Set even for rotate == 0.
-<span style = "background-color:#dfd">        setJmpPoint(asmb, reg_usage, dst_register, idx);
-    }</span>
-
-<span style = "background-color:#dfd">    void irolr_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
-        const uint8_t dst_register{ instr.dst_register % Int_Register_Count };
-        const uint8_t src_register{ instr.src_register % Int_Register_Count };</span>
-
-<span style = "background-color:#dfd">        if (dst_register == src_register) {
-            if (const auto imm = instr.imm32 % 64; imm != 0) {
-                asmb.inject(char_array(</span>
-                    /* ROL */ 0x49, 0xc1, 0xc0 + dst_register, b&lt;0&gt;(imm)
-                ));
-            }
-<span style = "background-color:#dfd">        } else {
-            asmb.inject(char_array(</span>
-                /* MOV */ 0x4c, 0x89, 0xc1 + 8 * src_register,
-                /* ROL */ 0x49, 0xd3, 0xc0 + dst_register
-            ));
-        }
-
-        // Set even for rotate == 0.
-<span style = "background-color:#dfd">        setJmpPoint(asmb, reg_usage, dst_register, idx);
-    }</span>
-
-<span style = "background-color:#dfd">    void imulrcp_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
-        const uint8_t dst_register{ instr.dst_register % Int_Register_Count };</span>
-
-<span style = "background-color:#dfd">        if (const auto imm = instr.imm32; imm != 0 &amp;&amp; !std::has_single_bit(imm)) {
-            const auto rcp{ reciprocal(imm) };
-            asmb.inject(char_array(</span>
-                /* MOV */ 0x48, 0xb8, b&lt;0&gt;(rcp), b&lt;1&gt;(rcp), b&lt;2&gt;(rcp), b&lt;3&gt;(rcp), b&lt;4&gt;(rcp), b&lt;5&gt;(rcp), b&lt;6&gt;(rcp), b&lt;7&gt;(rcp),
-                /* IMUL */ 0x4c, 0x0f, 0xaf, 0xc0 + 8 * dst_register
-            ));
-<span style = "background-color:#dfd">            setJmpPoint(asmb, reg_usage, dst_register, idx);</span>
+            const uint64_t offset{ instr.imm32 &amp; Scratchpad_L3_Mask };
+            const uint64_t add{ 0x00'00'00'00'00'86'03'4c | uint64_t(8 * dst_register) &lt;&lt; 16 | offset &lt;&lt; 24 };
+            std::memcpy(code_buffer + code_size, &amp;add, sizeof(add));
+            code_size += 7;</span>
         }
 <span style = "background-color:#dfd">    }</span>
 
-<span style = "background-color:#dfd">    void iswapr_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
-        const uint8_t dst_register{ instr.dst_register % Int_Register_Count };
-        const uint8_t src_register{ instr.src_register % Int_Register_Count };</span>
+<span style = "background-color:#dfd">    void BytecodeCompiler::isubr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
+        const uint8_t dst_register{ instr.dst_register };
+        const uint8_t src_register{ instr.src_register };
+        reg_usage[dst_register] = idx;</span>
+
+<span style = "background-color:#dfd">        if (dst_register != src_register) {
+            const uint32_t sub{ 0x00'c0'29'4d | uint32_t(dst_register + 8 * src_register) &lt;&lt; 16 };
+            std::memcpy(code_buffer + code_size, &amp;sub, sizeof(sub));
+            code_size += 3;
+        } else {
+            const uint64_t imm{ instr.imm32 };
+            const uint64_t sub{ 0x00'00'00'00'00'e8'81'49 | uint64_t(dst_register) &lt;&lt; 16 | imm &lt;&lt; 24 };
+            std::memcpy(code_buffer + code_size, &amp;sub, sizeof(sub));
+            code_size += 7;</span>
+        }
+<span style = "background-color:#dfd">    }</span>
+
+<span style = "background-color:#dfd">    void BytecodeCompiler::isubm_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
+        const uint8_t dst_register{ instr.dst_register };
+        const uint8_t src_register{ instr.src_register };
+        reg_usage[dst_register] = idx;</span>
+
+<span style = "background-color:#dfd">        if (dst_register != src_register) {
+            const auto imm{ instr.imm32 };
+            const auto mem_mask{ instr.modMask() ? Scratchpad_L1_Mask : Scratchpad_L2_Mask };</span>
+
+<span style = "background-color:#dfd">            if (src_register != Sib_Reg_Idx) {
+                const uint64_t lea{ 0x48'00'00'00'00'80'8d'49 | uint64_t(src_register) &lt;&lt; 16 | uint64_t(imm) &lt;&lt; 24 };
+                std::memcpy(code_buffer + code_size, &amp;lea, sizeof(lea));
+                const uint64_t and_{ 0x04'2b'4c'00'00'00'00'25 | uint64_t(mem_mask) &lt;&lt; 8 | uint64_t(8 * dst_register) &lt;&lt; 56 };
+                std::memcpy(code_buffer + code_size + 8, &amp;and_, sizeof(and_));
+                const uint8_t mov{ static_cast&lt;uint8_t&gt;(0x06) };
+                std::memcpy(code_buffer + code_size + 16, &amp;mov, 1);
+                code_size += 17;
+            } else {
+                const uint64_t lea{ 0x00'00'00'00'24'80'8d'49 | uint64_t(src_register) &lt;&lt; 16 | uint64_t(imm) &lt;&lt; 32 };
+                std::memcpy(code_buffer + code_size, &amp;lea, sizeof(lea));
+                const uint64_t and_{ 0x2b'4c'00'00'00'00'25'48 | uint64_t(mem_mask) &lt;&lt; 16 };
+                std::memcpy(code_buffer + code_size + 8, &amp;and_, sizeof(and_));
+                const uint16_t mov{ static_cast&lt;uint16_t&gt;(0x06'04 | uint16_t(8 * dst_register)) };
+                std::memcpy(code_buffer + code_size + 16, &amp;mov, 2);
+                code_size += 18;</span>
+            }
+<span style = "background-color:#dfd">        } else {
+            const uint64_t offset{ instr.imm32 &amp; Scratchpad_L3_Mask };
+            const uint64_t add{ 0x00'00'00'00'00'86'2b'4c | uint64_t(8 * dst_register) &lt;&lt; 16 | offset &lt;&lt; 24 };
+            std::memcpy(code_buffer + code_size, &amp;add, sizeof(add));
+            code_size += 7;</span>
+        }
+<span style = "background-color:#dfd">    }</span>
+
+<span style = "background-color:#dfd">    void BytecodeCompiler::imulr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
+        const uint8_t dst_register{ instr.dst_register };
+        const uint8_t src_register{ instr.src_register };</span>
+
+<span style = "background-color:#dfd">        reg_usage[dst_register] = idx;</span>
+
+<span style = "background-color:#dfd">        if (dst_register != src_register) {
+            const uint32_t imul{ 0xc0'af'0f'4d | uint32_t(8 * dst_register + src_register) &lt;&lt; 24 };
+            std::memcpy(code_buffer + code_size, &amp;imul, sizeof(imul));
+            code_size += 4;
+        } else {
+            const uint64_t imm{ instr.imm32 };
+            const uint64_t imul{ 0x00'00'00'00'00'c0'69'4d | imm &lt;&lt; 24 | uint64_t(9 * dst_register) &lt;&lt; 16 };
+            std::memcpy(code_buffer + code_size, &amp;imul, sizeof(imul));
+            code_size += 7;</span>
+        }
+<span style = "background-color:#dfd">    }</span>
+
+<span style = "background-color:#dfd">    void BytecodeCompiler::imulm_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
+        const uint8_t dst_register{ instr.dst_register };
+        const uint8_t src_register{ instr.src_register };</span>
+
+<span style = "background-color:#dfd">        reg_usage[dst_register] = idx;</span>
+
+<span style = "background-color:#dfd">        if (dst_register != src_register) {
+            const auto imm{ instr.imm32 };
+            const auto mem_mask{ instr.modMask() ? Scratchpad_L1_Mask : Scratchpad_L2_Mask };</span>
+
+<span style = "background-color:#dfd">            if (src_register != Sib_Reg_Idx) {
+                const uint64_t lea{ 0x48'00'00'00'00'88'8d'49 | uint64_t(src_register) &lt;&lt; 16 | uint64_t(imm) &lt;&lt; 24 };
+                std::memcpy(code_buffer + code_size, &amp;lea, sizeof(lea));
+                const uint64_t and_{ 0x0f'4c'00'00'00'00'e1'81 | uint64_t(mem_mask) &lt;&lt; 16 };
+                std::memcpy(code_buffer + code_size + 8, &amp;and_, sizeof(and_));
+                const uint32_t mov{ uint32_t(0x00'0e'04'af) | uint32_t(8 * dst_register) &lt;&lt; 8 };
+                std::memcpy(code_buffer + code_size + 16, &amp;mov, sizeof(mov));
+                code_size += 19;
+            } else {
+                const uint64_t lea{ 0x00'00'00'00'24'88'8d'49 | uint64_t(src_register) &lt;&lt; 16 | uint64_t(imm) &lt;&lt; 32 };
+                std::memcpy(code_buffer + code_size, &amp;lea, sizeof(lea));
+                const uint64_t and_{ 0x4c'00'00'00'00'e1'81'48 | uint64_t(mem_mask) &lt;&lt; 24 };
+                std::memcpy(code_buffer + code_size + 8, &amp;and_, sizeof(and_));
+                const uint32_t mov{ uint32_t(0x0e'04'af'0f) | uint32_t(8 * dst_register) &lt;&lt; 16 };
+                std::memcpy(code_buffer + code_size + 16, &amp;mov, sizeof(mov));
+                code_size += 20;</span>
+            }
+<span style = "background-color:#dfd">        } else {
+            const uint64_t offset{ instr.imm32 &amp; Scratchpad_L3_Mask };
+            const uint64_t imul{ 0x00'00'00'00'86'af'0f'4c | uint64_t(8 * dst_register) &lt;&lt; 24 | offset &lt;&lt; 32 };
+            std::memcpy(code_buffer + code_size, &amp;imul, sizeof(imul));
+            code_size += 8;</span>
+        }
+<span style = "background-color:#dfd">    }</span>
+
+<span style = "background-color:#dfd">    void BytecodeCompiler::imulhr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
+        const uint8_t dst_register{ instr.dst_register };
+        const uint8_t src_register{ instr.src_register };
+        reg_usage[dst_register] = idx;</span>
+
+<span style = "background-color:#dfd">        const uint64_t imulhr{ 0x89'49'e0'f7'49'c0'89'4c | uint64_t(src_register) &lt;&lt; 40 | uint64_t(8 * dst_register) &lt;&lt; 16 };
+        std::memcpy(code_buffer + code_size, &amp;imulhr, sizeof(imulhr));
+        const uint8_t mov{ static_cast&lt;uint8_t&gt;(0xd0 + dst_register) };
+        std::memcpy(code_buffer + code_size + 8, &amp;mov, 1);
+        code_size += 9;</span>
+
+<span style = "background-color:#dfd">    }</span>
+
+<span style = "background-color:#dfd">    void BytecodeCompiler::imulhm_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
+        const uint8_t dst_register{ instr.dst_register };
+        const uint8_t src_register{ instr.src_register };</span>
+
+<span style = "background-color:#dfd">        reg_usage[dst_register] = idx;</span>
+
+<span style = "background-color:#dfd">        if (dst_register != src_register) {
+            const uint64_t imm{ instr.imm32 };
+            const uint64_t mem_mask{ instr.modMask() ? Scratchpad_L1_Mask : Scratchpad_L2_Mask };</span>
+
+<span style = "background-color:#dfd">            if (src_register != Sib_Reg_Idx) {
+                const uint64_t lea{ 0x48'00'00'00'00'88'8d'49 | uint64_t(src_register) &lt;&lt; 16 | uint64_t(imm) &lt;&lt; 24 };
+                std::memcpy(code_buffer + code_size, &amp;lea, sizeof(lea));
+                const uint64_t and_{ 0x89'4c'00'00'00'00'e1'81 | uint64_t(mem_mask) &lt;&lt; 16 };
+                std::memcpy(code_buffer + code_size + 8, &amp;and_, sizeof(and_));
+                const uint64_t mov{ 0xd0'89'49'0e'24'f7'48'c0 | uint64_t(dst_register) &lt;&lt; 56 | uint64_t(8 * dst_register) };
+                std::memcpy(code_buffer + code_size + 16, &amp;mov, sizeof(mov));
+                code_size += 24;
+            } else {
+                const uint64_t lea{ 0x00'00'00'00'24'88'8d'49 | uint64_t(src_register) &lt;&lt; 16 | uint64_t(imm) &lt;&lt; 32 };
+                std::memcpy(code_buffer + code_size, &amp;lea, sizeof(lea));
+                const uint64_t and_{ 0x4c'00'00'00'00'e1'81'48 | uint64_t(mem_mask) &lt;&lt; 24 };
+                std::memcpy(code_buffer + code_size + 8, &amp;and_, sizeof(and_));
+                const uint64_t mov{ 0x89'49'0e'24'f7'48'c0'89 | uint64_t(8 * dst_register) &lt;&lt; 8 };
+                std::memcpy(code_buffer + code_size + 16, &amp;mov, sizeof(mov));
+                const uint8_t mov2{ uint8_t(0xd0 + dst_register) };
+                std::memcpy(code_buffer + code_size + 24, &amp;mov2, 1);
+                code_size += 25;</span>
+            }
+<span style = "background-color:#dfd">        } else {
+            const uint64_t offset{ instr.imm32 &amp; Scratchpad_L3_Mask };
+            const uint64_t mov{ 0x00'00'a6'f7'48'c0'89'4c | uint64_t(8 * dst_register) &lt;&lt; 16 | offset &lt;&lt; 48 };
+            std::memcpy(code_buffer + code_size, &amp;mov, sizeof(mov));
+            const uint64_t mulh{ 0x00'00'00'd0'89'49'00'00 | uint64_t(dst_register) &lt;&lt; 32 | offset &gt;&gt; 16 };
+            std::memcpy(code_buffer + code_size + 8, &amp;mulh, sizeof(mulh));
+            code_size += 13;</span>
+        }
+<span style = "background-color:#dfd">    }</span>
+
+<span style = "background-color:#dfd">    void BytecodeCompiler::ismulhr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
+        const uint8_t dst_register{ instr.dst_register };
+        const uint8_t src_register{ instr.src_register };</span>
+
+<span style = "background-color:#dfd">        reg_usage[dst_register] = idx;</span>
+
+<span style = "background-color:#dfd">        const uint64_t imulhr{ 0x89'49'e8'f7'49'c0'89'4c | uint64_t(src_register) &lt;&lt; 40 | uint64_t(8 * dst_register) &lt;&lt; 16 };
+        std::memcpy(code_buffer + code_size, &amp;imulhr, sizeof(imulhr));
+        const uint8_t mov{ static_cast&lt;uint8_t&gt;(0xd0 + dst_register) };
+        std::memcpy(code_buffer + code_size + 8, &amp;mov, 1);
+        code_size += 9;
+    }</span>
+
+<span style = "background-color:#dfd">    void BytecodeCompiler::ismulhm_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
+        const uint8_t dst_register{ instr.dst_register };
+        const uint8_t src_register{ instr.src_register };
+        reg_usage[dst_register] = idx;</span>
+
+<span style = "background-color:#dfd">        if (dst_register != src_register) {
+            const uint64_t imm{ instr.imm32 };
+            const uint64_t mem_mask{ instr.modMask() ? Scratchpad_L1_Mask : Scratchpad_L2_Mask };</span>
+
+<span style = "background-color:#dfd">            if (src_register != Sib_Reg_Idx) {
+                const uint64_t lea{ 0x48'00'00'00'00'88'8d'49 | uint64_t(src_register) &lt;&lt; 16 | uint64_t(imm) &lt;&lt; 24 };
+                std::memcpy(code_buffer + code_size, &amp;lea, sizeof(lea));
+                const uint64_t and_{ 0x89'4c'00'00'00'00'e1'81 | uint64_t(mem_mask) &lt;&lt; 16 };
+                std::memcpy(code_buffer + code_size + 8, &amp;and_, sizeof(and_));
+                const uint64_t mov{ 0xd0'89'49'0e'2c'f7'48'c0 | uint64_t(dst_register) &lt;&lt; 56 | uint64_t(8 * dst_register) };
+                std::memcpy(code_buffer + code_size + 16, &amp;mov, sizeof(mov));
+                code_size += 24;
+            } else {
+                const uint64_t lea{ 0x00'00'00'00'24'88'8d'49 | uint64_t(src_register) &lt;&lt; 16 | uint64_t(imm) &lt;&lt; 32 };
+                std::memcpy(code_buffer + code_size, &amp;lea, sizeof(lea));
+                const uint64_t and_{ 0x4c'00'00'00'00'e1'81'48 | uint64_t(mem_mask) &lt;&lt; 24 };
+                std::memcpy(code_buffer + code_size + 8, &amp;and_, sizeof(and_));
+                const uint64_t mov{ 0x89'49'0e'2c'f7'48'c0'89 | uint64_t(8 * dst_register) &lt;&lt; 8 };
+                std::memcpy(code_buffer + code_size + 16, &amp;mov, sizeof(mov));
+                const uint8_t mov2{ uint8_t(0xd0 + dst_register) };
+                std::memcpy(code_buffer + code_size + 24, &amp;mov2, 1);
+                code_size += 25;</span>
+            }
+<span style = "background-color:#dfd">        } else {
+            const uint64_t offset{ instr.imm32 &amp; Scratchpad_L3_Mask };</span>
+
+<span style = "background-color:#dfd">            const uint64_t mov{ 0x00'00'ae'f7'48'c0'89'4c | uint64_t(8 * dst_register) &lt;&lt; 16 | offset &lt;&lt; 48 };
+            std::memcpy(code_buffer + code_size, &amp;mov, sizeof(mov));
+            const uint64_t mulh{ 0x00'00'00'd0'89'49'00'00 | uint64_t(dst_register) &lt;&lt; 32 | offset &gt;&gt; 16 };
+            std::memcpy(code_buffer + code_size + 8, &amp;mulh, sizeof(mulh));
+            code_size += 13;</span>
+        }
+<span style = "background-color:#dfd">    }</span>
+
+<span style = "background-color:#dfd">    void BytecodeCompiler::inegr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
+        const uint8_t dst_register{ instr.dst_register };
+        reg_usage[dst_register] = idx;
+        const uint32_t neg{ 0x00'd8'f7'49 | uint32_t(dst_register) &lt;&lt; 16 };
+        std::memcpy(code_buffer + code_size, &amp;neg, sizeof(neg));
+        code_size += 3;
+    }</span>
+
+<span style = "background-color:#dfd">    void BytecodeCompiler::ixorr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
+        const uint8_t dst_register{ instr.dst_register };
+        const uint8_t src_register{ instr.src_register };
+        reg_usage[dst_register] = idx;</span>
+
+<span style = "background-color:#dfd">        if (dst_register != src_register) {
+            const uint32_t xor_{ 0x00'c0'31'4d | uint32_t(dst_register + 8 * src_register) &lt;&lt; 16 };
+            std::memcpy(code_buffer + code_size, &amp;xor_, sizeof(xor_));
+            code_size += 3;
+        } else {
+            const uint64_t imm{ instr.imm32 };
+            const uint64_t xor_{ 0x00'00'00'00'00'f0'81'49 | uint64_t(dst_register) &lt;&lt; 16 | imm &lt;&lt; 24 };
+            std::memcpy(code_buffer + code_size, &amp;xor_, sizeof(xor_));
+            code_size += 7;</span>
+        }
+<span style = "background-color:#dfd">    }</span>
+
+<span style = "background-color:#dfd">    void BytecodeCompiler::ixorm_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
+        const uint8_t dst_register{ instr.dst_register };
+        const uint8_t src_register{ instr.src_register };</span>
+
+<span style = "background-color:#dfd">        reg_usage[dst_register] = idx;</span>
+
+<span style = "background-color:#dfd">        if (dst_register != src_register) {
+            const uint64_t imm{ instr.imm32 };
+            const uint64_t mem_mask{ instr.modMask() ? Scratchpad_L1_Mask : Scratchpad_L2_Mask };</span>
+
+<span style = "background-color:#dfd">            if (src_register != Sib_Reg_Idx) {
+                const uint64_t lea{ 0x48'00'00'00'00'80'8d'49 | uint64_t(src_register) &lt;&lt; 16 | uint64_t(imm) &lt;&lt; 24 };
+                std::memcpy(code_buffer + code_size, &amp;lea, sizeof(lea));
+                const uint64_t and_{ 0x04'33'4c'00'00'00'00'25 | uint64_t(mem_mask) &lt;&lt; 8 | uint64_t(8 * dst_register) &lt;&lt; 56 };
+                std::memcpy(code_buffer + code_size + 8, &amp;and_, sizeof(and_));
+                const uint8_t mov{ static_cast&lt;uint8_t&gt;(0x06) };
+                std::memcpy(code_buffer + code_size + 16, &amp;mov, 1);
+                code_size += 17;
+            } else {
+                const uint64_t lea{ 0x00'00'00'00'24'80'8d'49 | uint64_t(src_register) &lt;&lt; 16 | uint64_t(imm) &lt;&lt; 32 };
+                std::memcpy(code_buffer + code_size, &amp;lea, sizeof(lea));
+                const uint64_t and_{ 0x33'4c'00'00'00'00'25'48 | uint64_t(mem_mask) &lt;&lt; 16 };
+                std::memcpy(code_buffer + code_size + 8, &amp;and_, sizeof(and_));
+                const uint16_t mov{ static_cast&lt;uint16_t&gt;(0x06'04 | uint16_t(8 * dst_register)) };
+                std::memcpy(code_buffer + code_size + 16, &amp;mov, 2);
+                code_size += 18;</span>
+            }
+<span style = "background-color:#dfd">        } else {
+            const uint64_t offset{ instr.imm32 &amp; Scratchpad_L3_Mask };
+            const uint64_t xor_{ 0x00'00'00'00'00'86'33'4c | uint64_t(8 * dst_register) &lt;&lt; 16 | offset &lt;&lt; 24 };
+            std::memcpy(code_buffer + code_size, &amp;xor_, sizeof(xor_));
+            code_size += 7;</span>
+        }
+<span style = "background-color:#dfd">    }</span>
+
+<span style = "background-color:#dfd">    void BytecodeCompiler::irorr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
+        const uint8_t dst_register{ instr.dst_register };
+        const uint8_t src_register{ instr.src_register };</span>
+
+        // Set even for rotate == 0.
+<span style = "background-color:#dfd">        reg_usage[dst_register] = idx;</span>
+
+<span style = "background-color:#dfd">        if (dst_register != src_register) {
+            const uint64_t ror{ 0x00'00'c8'd3'49'c1'89'4c | uint64_t(8 * src_register) &lt;&lt; 16 | uint64_t(dst_register) &lt;&lt; 40 };
+            std::memcpy(code_buffer + code_size, &amp;ror, sizeof(ror));
+            code_size += 6;
+        } else if (const uint32_t imm = instr.imm32 % 64; imm != 0) {
+            const uint32_t ror{ 0x00'c8'c1'49 | uint32_t(dst_register) &lt;&lt; 16 | imm &lt;&lt; 24 };
+            std::memcpy(code_buffer + code_size, &amp;ror, sizeof(ror));
+            code_size += 4;</span>
+        }
+<span style = "background-color:#dfd">    }</span>
+
+<span style = "background-color:#dfd">    void BytecodeCompiler::irolr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
+        const uint8_t dst_register{ instr.dst_register };
+        const uint8_t src_register{ instr.src_register };</span>
+        // Set even for rotate == 0.
+<span style = "background-color:#dfd">        reg_usage[dst_register] = idx;</span>
+
+<span style = "background-color:#dfd">        if (dst_register != src_register) {
+            const uint64_t rol{ 0x00'00'c0'd3'49'c1'89'4c | uint64_t(8 * src_register) &lt;&lt; 16 | uint64_t(dst_register) &lt;&lt; 40 };
+            std::memcpy(code_buffer + code_size, &amp;rol, sizeof(rol));
+            code_size += 6;
+        } else if (const uint32_t imm = instr.imm32 % 64; imm != 0) {
+            const uint32_t rol{ 0x00'c0'c1'49 | uint32_t(dst_register) &lt;&lt; 16 | imm &lt;&lt; 24 };
+            std::memcpy(code_buffer + code_size, &amp;rol, sizeof(rol));
+            code_size += 4;</span>
+        }
+<span style = "background-color:#dfd">    }</span>
+
+<span style = "background-color:#dfd">    void BytecodeCompiler::imulrcp_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
+        if (const uint32_t imm = instr.imm32; imm != 0 &amp;&amp; !std::has_single_bit(imm)) {
+            const uint8_t dst_register{ instr.dst_register };
+            reg_usage[dst_register] = idx;
+            const auto rcp{ reciprocal(imm) };</span>
+
+<span style = "background-color:#dfd">            const uint64_t mov{ 0x00'00'00'00'00'00'b8'48 | rcp &lt;&lt; 16 };
+            std::memcpy(code_buffer + code_size, &amp;mov, sizeof(mov));
+            const uint64_t imul{ 0x00'00'c0'af'0f'4c'00'00 | rcp &gt;&gt; 48 | uint64_t(8 * dst_register) &lt;&lt; 40 };
+            std::memcpy(code_buffer + code_size + 8, &amp;imul, sizeof(imul));
+            code_size += 14;</span>
+        }
+<span style = "background-color:#dfd">    }</span>
+
+<span style = "background-color:#dfd">    void BytecodeCompiler::iswapr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
+        const uint8_t dst_register{ instr.dst_register };
+        const uint8_t src_register{ instr.src_register };</span>
 
 <span style = "background-color:#dfd">        if (src_register != dst_register) {
-            asmb.inject(char_array(</span>
-                /* XCHG */ 0x4d, 0x87, 0xc0 + dst_register + 8 * src_register
-            ));
-<span style = "background-color:#dfd">            setJmpPoint(asmb, reg_usage, src_register, idx);
-            setJmpPoint(asmb, reg_usage, dst_register, idx);</span>
+            reg_usage[src_register] = idx;
+            reg_usage[dst_register] = idx;</span>
+
+<span style = "background-color:#dfd">            const uint32_t xchg{ 0x00'c0'87'4d | uint32_t(dst_register + 8 * src_register) &lt;&lt; 16 };
+            std::memcpy(code_buffer + code_size, &amp;xchg, sizeof(xchg));
+            code_size += 3;</span>
         }
 <span style = "background-color:#dfd">    }</span>
 
-<span style = "background-color:#dfd">    void cbranch_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
-        const uint8_t dst_register{ instr.dst_register % Int_Register_Count };
-        const uint8_t src_register{ instr.src_register % Int_Register_Count };</span>
+<span style = "background-color:#dfd">    void BytecodeCompiler::cbranch_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
+        const uint8_t dst_register{ instr.dst_register };
+        const uint8_t src_register{ instr.src_register };</span>
 
 <span style = "background-color:#dfd">        constexpr uint32_t Condition_Mask{ (1 &lt;&lt; Rx_Jump_Bits) - 1 };
         const auto shift{ instr.modCond() + Rx_Jump_Offset };
         const auto mem_mask{ Condition_Mask &lt;&lt; shift };</span>
 
         static_assert(Rx_Jump_Offset &gt; 0, "Below simplification requires this assertion");
-<span style = "background-color:#dfd">        int32_t imm{ static_cast&lt;int32_t&gt;(instr.imm32) | (1 &lt;&lt; shift) };
+<span style = "background-color:#dfd">        uint32_t imm{ instr.imm32 | (1 &lt;&lt; shift) };
         imm &amp;= ~(1ULL &lt;&lt; (shift - 1)); // Clear the bit below the condition mask - this limits the number of successive jumps to 2.</span>
 
 <span style = "background-color:#dfd">        const auto jmp_target{ reg_usage[dst_register] + 1 };
-        const auto jmp_offset{ asmb.labelOffset(jmp_target) - 20 };</span>
+        const int32_t jmp_offset{ instr_offset[jmp_target] - instr_offset[idx] - 20};</span>
 
-<span style = "background-color:#dfd">        asmb.inject(char_array(</span>
-            /* ADD */ 0x49, 0x81, 0xc0 + dst_register, b&lt;0&gt;(imm), b&lt;1&gt;(imm), b&lt;2&gt;(imm), b&lt;3&gt;(imm),
-            /* TEST */ 0x49, 0xf7, 0xc0 + dst_register, b&lt;0&gt;(mem_mask), b&lt;1&gt;(mem_mask), b&lt;2&gt;(mem_mask), b&lt;3&gt;(mem_mask),
-            /* JZ */  0x0f, 0x84, b&lt;0&gt;(jmp_offset), b&lt;1&gt;(jmp_offset), b&lt;2&gt;(jmp_offset), b&lt;3&gt;(jmp_offset)
-        ));
+<span style = "background-color:#dfd">        const uint64_t add{ 0x49'00'00'00'00'c0'81'49 | uint64_t(dst_register) &lt;&lt; 16 | uint64_t(imm) &lt;&lt; 24 };
+        std::memcpy(code_buffer + code_size, &amp;add, sizeof(add));
+        const uint64_t test{ 0x84'0f'00'00'00'00'c0'f7 | uint64_t(dst_register) &lt;&lt; 8 | uint64_t(mem_mask) &lt;&lt; 16};
+        std::memcpy(code_buffer + code_size + 8, &amp;test, sizeof(test));
+        std::memcpy(code_buffer + code_size + 16, &amp;jmp_offset, sizeof(jmp_offset));
+        code_size += 20;</span>
 
-<span style = "background-color:#dfd">        asmb.label&lt;false&gt;(idx + 1);
-        for (auto&amp; reg : reg_usage) reg = idx; // Set all registers as used.
+<span style = "background-color:#dfd">        for (int i = 0; i &lt; Int_Register_Count; ++i) {
+            reg_usage[i] = idx; // Set all registers as used.
+        }
     }</span>
 
-<span style = "background-color:#dfd">    void fswapr_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
-        const uint8_t dst_register{ instr.dst_register % Int_Register_Count };</span>
+<span style = "background-color:#dfd">    void BytecodeCompiler::fswapr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
+        const uint8_t dst_register{ instr.dst_register };
+        const uint64_t vshufpd{ 0x00'00'00'01'c0'c6'c1'c5 | uint64_t(56 - 8 * dst_register) &lt;&lt; 8 | uint64_t(9 * dst_register) &lt;&lt; 24 };
+        std::memcpy(code_buffer + code_size, &amp;vshufpd, sizeof(vshufpd));
+        code_size += 5;
+    }</span>
 
-<span style = "background-color:#dfd">        asmb.inject(char_array(</span>
-            /* VSHUFPD */ 0xc5, 0xf9 - 8 * dst_register, 0xc6, 0xc0 + 9 * dst_register, 0x01
-        ));
-<span style = "background-color:#dfd">    }</span>
-
-<span style = "background-color:#dfd">    void faddr_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
+<span style = "background-color:#dfd">    void BytecodeCompiler::faddr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
         const uint8_t dst_register{ instr.dst_register % Float_Register_Count };
-        const uint8_t src_register{ 8 + instr.src_register % Float_Register_Count };</span>
+        const uint8_t src_register{ instr.src_register % Float_Register_Count };
+        const uint32_t vaddpd{ 0xc0'58'a1'c5 | uint32_t(24 - 8 * src_register) &lt;&lt; 8 | uint32_t(9 * dst_register) &lt;&lt; 24 };
+        std::memcpy(code_buffer + code_size, &amp;vaddpd, sizeof(vaddpd));
+        code_size += 4;
+    }</span>
 
-<span style = "background-color:#dfd">        asmb.inject(char_array(</span>
-            /* VADDPD */ 0xc5, 0xf9 - 8 * src_register, 0x58, 0xc0 + 9 * dst_register
-        ));
-<span style = "background-color:#dfd">    }</span>
-
-<span style = "background-color:#dfd">    void faddm_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
-        const uint8_t src_register{ instr.src_register % Int_Register_Count };
+<span style = "background-color:#dfd">    void BytecodeCompiler::faddm_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
+        const uint8_t src_register{ instr.src_register };
         const uint8_t f_dst_register{ instr.dst_register % Float_Register_Count };
-        const auto mem_mask{ instr.modMask() ? Scratchpad_L1_Mask : Scratchpad_L2_Mask };
-        const auto imm{ instr.imm32 };</span>
+        const uint64_t mem_mask{ instr.modMask() ? Scratchpad_L1_Mask : Scratchpad_L2_Mask };
+        const uint64_t imm{ instr.imm32 };</span>
 
-<span style = "background-color:#dfd">        if (src_register != RSP.idx) {
-            asmb.inject(char_array(</span>
-                /* LEA */ 0x49, 0x8d, 0x80 + src_register, b&lt;0&gt;(imm), b&lt;1&gt;(imm), b&lt;2&gt;(imm), b&lt;3&gt;(imm),
-                /* AND */ 0x48, 0x25, b&lt;0&gt;(mem_mask), b&lt;1&gt;(mem_mask), b&lt;2&gt;(mem_mask), b&lt;3&gt;(mem_mask),
-                /* VCVTDQ2PD */ 0xc5, 0x7a, 0xe6, 0x24, 0x06,
-                /* VADDPD */ 0xc5, 0x99, 0x58, 0xc0 + 9 * f_dst_register
-            ));
-<span style = "background-color:#dfd">        } else {
-            asmb.inject(char_array(</span>
-                /* LEA */ 0x49, 0x8d, 0x80 + src_register, 0x24, b&lt;0&gt;(imm), b&lt;1&gt;(imm), b&lt;2&gt;(imm), b&lt;3&gt;(imm),
-                /* AND */ 0x48, 0x25, b&lt;0&gt;(mem_mask), b&lt;1&gt;(mem_mask), b&lt;2&gt;(mem_mask), b&lt;3&gt;(mem_mask),
-                /* VCVTDQ2PD */ 0xc5, 0x7a, 0xe6, 0x24, 0x06,
-                /* VADDPD */ 0xc5, 0x99, 0x58, 0xc0 + 9 * f_dst_register
-            ));
+<span style = "background-color:#dfd">        if (src_register != Sib_Reg_Idx) {
+            const uint64_t lea{ 0x48'00'00'00'00'80'8d'49 | uint64_t(src_register) &lt;&lt; 16 | uint64_t(imm) &lt;&lt; 24 };
+            std::memcpy(code_buffer + code_size, &amp;lea, sizeof(lea));
+            const uint64_t and_{ 0xe6'7a'c5'00'00'00'00'25 | uint64_t(mem_mask) &lt;&lt; 8 };
+            std::memcpy(code_buffer + code_size + 8, &amp;and_, sizeof(and_));
+            const uint64_t mov{ 0x00'00'c0'58'99'c5'06'24 | uint64_t(9 * f_dst_register) &lt;&lt; 40 };
+            std::memcpy(code_buffer + code_size + 16, &amp;mov, sizeof(mov));
+            code_size += 22;
+        } else {
+            const uint64_t lea{ 0x00'00'00'00'24'80'8d'49 | uint64_t(src_register) &lt;&lt; 16 | uint64_t(imm) &lt;&lt; 32 };
+            std::memcpy(code_buffer + code_size, &amp;lea, sizeof(lea));
+            const uint64_t and_{ 0x7a'c5'00'00'00'00'25'48 | uint64_t(mem_mask) &lt;&lt; 16 };
+            std::memcpy(code_buffer + code_size + 8, &amp;and_, sizeof(and_));
+            const uint64_t mov{ 0x00'c0'58'99'c5'06'24'e6 | uint64_t(9 * f_dst_register) &lt;&lt; 48 };
+            std::memcpy(code_buffer + code_size + 16, &amp;mov, sizeof(mov));
+            code_size += 23;</span>
         }
 <span style = "background-color:#dfd">    }</span>
 
-<span style = "background-color:#dfd">    void fsubr_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
+<span style = "background-color:#dfd">    void BytecodeCompiler::fsubr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
         const uint8_t dst_register{ instr.dst_register % Float_Register_Count };
-        const uint8_t src_register{ instr.src_register % Float_Register_Count };</span>
+        const uint8_t src_register{ instr.src_register % Float_Register_Count };
+        const uint64_t vsubpd{ 0x00'00'00'c0'5c'61'c1'c4 | uint64_t(24 - 8 * dst_register) &lt;&lt; 16 | uint64_t(8 * dst_register + src_register) &lt;&lt; 32 };
+        std::memcpy(code_buffer + code_size, &amp;vsubpd, sizeof(vsubpd));
+        code_size += 5;
+    }</span>
 
-<span style = "background-color:#dfd">        asmb.inject(char_array(</span>
-            /* VSUBPD */ 0xc4, 0xc1, 0x79 - 8 * dst_register, 0x5c, 0xc0 + 8 * dst_register + src_register
-        ));
-<span style = "background-color:#dfd">    }</span>
-
-<span style = "background-color:#dfd">    void fsubm_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
-        const uint8_t src_register{ instr.src_register % Int_Register_Count };
+<span style = "background-color:#dfd">    void BytecodeCompiler::fsubm_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
+        const uint8_t src_register{ instr.src_register };
         const uint8_t f_dst_register{ instr.dst_register % Float_Register_Count };
-        const auto mem_mask{ instr.modMask() ? Scratchpad_L1_Mask : Scratchpad_L2_Mask };
-        const auto imm{ instr.imm32 };</span>
+        const uint64_t mem_mask{ instr.modMask() ? Scratchpad_L1_Mask : Scratchpad_L2_Mask };
+        const uint64_t imm{ instr.imm32 };</span>
 
-<span style = "background-color:#dfd">        if (src_register != RSP.idx) {
-            asmb.inject(char_array(</span>
-                /* LEA */ 0x49, 0x8d, 0x80 + src_register, b&lt;0&gt;(imm), b&lt;1&gt;(imm), b&lt;2&gt;(imm), b&lt;3&gt;(imm),
-                /* AND */ 0x48, 0x25, b&lt;0&gt;(mem_mask), b&lt;1&gt;(mem_mask), b&lt;2&gt;(mem_mask), b&lt;3&gt;(mem_mask),
-                /* VCVTDQ2PD */ 0xc5, 0x7a, 0xe6, 0x24, 0x06,
-                /* VSUBPD */ 0xc4, 0xc1, 0x79 - 8 * f_dst_register, 0x5c, 0xc4 + 8 * f_dst_register
-            ));
-<span style = "background-color:#dfd">        } else {
-            asmb.inject(char_array(</span>
-                /* LEA */ 0x49, 0x8d, 0x80 + src_register, 0x24, b&lt;0&gt;(imm), b&lt;1&gt;(imm), b&lt;2&gt;(imm), b&lt;3&gt;(imm),
-                /* AND */ 0x48, 0x25, b&lt;0&gt;(mem_mask), b&lt;1&gt;(mem_mask), b&lt;2&gt;(mem_mask), b&lt;3&gt;(mem_mask),
-                /* VCVTDQ2PD */ 0xc5, 0x7a, 0xe6, 0x24, 0x06,
-                /* VSUBPD */ 0xc4, 0xc1, 0x79 - 8 * f_dst_register, 0x5c, 0xc4 + 8 * f_dst_register
-            ));
+<span style = "background-color:#dfd">        if (src_register != Sib_Reg_Idx) {
+            const uint64_t lea{ 0x48'00'00'00'00'80'8d'49 | uint64_t(src_register) &lt;&lt; 16 | uint64_t(imm) &lt;&lt; 24 };
+            std::memcpy(code_buffer + code_size, &amp;lea, sizeof(lea));
+            const uint64_t and_{ 0xe6'7a'c5'00'00'00'00'25 | uint64_t(mem_mask) &lt;&lt; 8 };
+            std::memcpy(code_buffer + code_size + 8, &amp;and_, sizeof(and_));
+            const uint64_t mov{ 0x00'c4'5c'61'c1'c4'06'24 | uint64_t(8 * f_dst_register) &lt;&lt; 48 | uint64_t(24 - 8 * f_dst_register) &lt;&lt; 32 };
+            std::memcpy(code_buffer + code_size + 16, &amp;mov, sizeof(mov));
+            code_size += 23;
+        } else {
+            const uint64_t lea{ 0x00'00'00'00'24'80'8d'49 | uint64_t(src_register) &lt;&lt; 16 | uint64_t(imm) &lt;&lt; 32 };
+            std::memcpy(code_buffer + code_size, &amp;lea, sizeof(lea));
+            const uint64_t and_{ 0x7a'c5'00'00'00'00'25'48 | uint64_t(mem_mask) &lt;&lt; 16 };
+            std::memcpy(code_buffer + code_size + 8, &amp;and_, sizeof(and_));
+            const uint64_t mov{ 0xc4'5c'61'c1'c4'06'24'e6 | uint64_t(8 * f_dst_register) &lt;&lt; 56 | uint64_t(24 - 8 * f_dst_register) &lt;&lt; 40 };
+            std::memcpy(code_buffer + code_size + 16, &amp;mov, sizeof(mov));
+            code_size += 24;</span>
         }
 <span style = "background-color:#dfd">    }</span>
 
-<span style = "background-color:#dfd">    void fscalr_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
-        const uint8_t dst_register{ instr.dst_register % Float_Register_Count };</span>
-
-<span style = "background-color:#dfd">        asmb.inject(char_array(</span>
-            /* VPXOR */ 0xc5, 0x89, 0xef, 0xc0 + 9 * dst_register
-        ));
-<span style = "background-color:#dfd">    }</span>
-
-<span style = "background-color:#dfd">    void fmulr_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
+<span style = "background-color:#dfd">    void BytecodeCompiler::fscalr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
         const uint8_t dst_register{ instr.dst_register % Float_Register_Count };
-        const uint8_t src_register{ instr.src_register % Float_Register_Count };</span>
+        const uint32_t xorps{ 0xc6'57'0f'41 | uint32_t(8 * dst_register) &lt;&lt; 24 };
+        std::memcpy(code_buffer + code_size, &amp;xorps, sizeof(xorps));
+        code_size += 4;
+    }</span>
 
-<span style = "background-color:#dfd">        asmb.inject(char_array(</span>
-            /* VMULPD */ 0xc5, 0xb9 - 8 * src_register, 0x59, 0xe4 + 9 * dst_register
-        ));
-<span style = "background-color:#dfd">    }</span>
+<span style = "background-color:#dfd">    void BytecodeCompiler::fmulr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
+        const uint8_t dst_register{ instr.dst_register % Float_Register_Count };
+        const uint8_t src_register{ instr.src_register % Float_Register_Count };
+        const uint32_t vmulpd{ 0xe4'59'81'c5 | uint32_t(56 - 8 * src_register) &lt;&lt; 8 | uint32_t(9 * dst_register) &lt;&lt; 24 };
+        std::memcpy(code_buffer + code_size, &amp;vmulpd, sizeof(vmulpd));
+        code_size += 4;
+    }</span>
 
-<span style = "background-color:#dfd">    void fdivm_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
-        const uint8_t src_register{ instr.src_register % Int_Register_Count };
+<span style = "background-color:#dfd">    void BytecodeCompiler::fdivm_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
+        const uint8_t src_register{ instr.src_register };
         const uint8_t f_dst_register{ instr.dst_register % Float_Register_Count };
-        const auto mem_mask{ instr.modMask() ? Scratchpad_L1_Mask : Scratchpad_L2_Mask };
-        const auto imm{ instr.imm32 };</span>
+        const uint64_t mem_mask{ instr.modMask() ? Scratchpad_L1_Mask : Scratchpad_L2_Mask };
+        const uint64_t imm{ instr.imm32 };</span>
 
-<span style = "background-color:#dfd">        if (src_register != registers::RSP.idx) {
-            asmb.inject(char_array(</span>
-                /* VMOVDQU */ 0xc5, 0x7a, 0x6f, 0xaf, 0x18, 0x01, 0x00, 0x00,
-                /* LEA */ 0x49, 0x8d, 0x80 + src_register, b&lt;0&gt;(imm), b&lt;1&gt;(imm), b&lt;2&gt;(imm), b&lt;3&gt;(imm),
-                /* AND */ 0x48, 0x25, b&lt;0&gt;(mem_mask), b&lt;1&gt;(mem_mask), b&lt;2&gt;(mem_mask), b&lt;3&gt;(mem_mask),
-                /* VCVTDQ2PD */ 0xc5, 0x7a, 0xe6, 0x24, 0x06,
-                /* VPAND */ 0xc4, 0x41, 0x19, 0xdb, 0xe7,
-                /* VPOR */ 0xc4, 0x41, 0x19, 0xeb, 0xe5,
-                /* VDIVPD */ 0xc4, 0xc1, 0x59 - 8 * f_dst_register, 0x5e, 0xe4 + 8 * f_dst_register
-            ));
+<span style = "background-color:#dfd">        if (src_register != Sib_Reg_Idx) {
+            const uint64_t lea{ 0x48'00'00'00'00'80'8d'49 | uint64_t(src_register) &lt;&lt; 16 | uint64_t(imm) &lt;&lt; 24 };
+            std::memcpy(code_buffer + code_size, &amp;lea, sizeof(lea));
+            const uint64_t and_{ 0xe6'7a'c5'00'00'00'00'25 | uint64_t(mem_mask) &lt;&lt; 8 };
+            std::memcpy(code_buffer + code_size + 8, &amp;and_, sizeof(and_));
+            const uint64_t andps{ 0x0f'45'e7'54'0f'45'06'24 };
+            std::memcpy(code_buffer + code_size + 16, &amp;andps, sizeof(andps));
+            const uint64_t orps{ 0x00'e4'5e'41'c1'c4'e5'56 | uint64_t(8 * f_dst_register) &lt;&lt; 48 | uint64_t(24 - 8 * f_dst_register) &lt;&lt; 32 };
+            std::memcpy(code_buffer + code_size + 24, &amp;orps, sizeof(orps));
+            code_size += 31;</span>
+            
 <span style = "background-color:#dfd">        } else {
-            asmb.inject(char_array(</span>
-                /* VMOVDQU */ 0xc5, 0x7a, 0x6f, 0xaf, 0x18, 0x01, 0x00, 0x00,
-                /* LEA */ 0x49, 0x8d, 0x80 + src_register, 0x24, b&lt;0&gt;(imm), b&lt;1&gt;(imm), b&lt;2&gt;(imm), b&lt;3&gt;(imm),
-                /* AND */ 0x48, 0x25, b&lt;0&gt;(mem_mask), b&lt;1&gt;(mem_mask), b&lt;2&gt;(mem_mask), b&lt;3&gt;(mem_mask),
-                /* VCVTDQ2PD */ 0xc5, 0x7a, 0xe6, 0x24, 0x06,
-                /* VPAND */ 0xc4, 0x41, 0x19, 0xdb, 0xe7,
-                /* VPOR */ 0xc4, 0x41, 0x19, 0xeb, 0xe5,
-                /* VDIVPD */ 0xc4, 0xc1, 0x59 - 8 * f_dst_register, 0x5e, 0xe4 + 8 * f_dst_register
-            ));
+            const uint64_t lea{ 0x00'00'00'00'24'80'8d'49 | uint64_t(src_register) &lt;&lt; 16 | uint64_t(imm) &lt;&lt; 32 };
+            std::memcpy(code_buffer + code_size, &amp;lea, sizeof(lea));
+            const uint64_t and_{ 0x7a'c5'00'00'00'00'25'48 | uint64_t(mem_mask) &lt;&lt; 16 };
+            std::memcpy(code_buffer + code_size + 8, &amp;and_, sizeof(and_));
+            const uint64_t andps{ 0x45'e7'54'0f'45'06'24'e6 };
+            std::memcpy(code_buffer + code_size + 16, &amp;andps, sizeof(andps));
+            const uint64_t orps{ 0xe4'5e'41'c1'c4'e5'56'0f | uint64_t(8 * f_dst_register) &lt;&lt; 56 | uint64_t(24 - 8 * f_dst_register) &lt;&lt; 40 };
+            std::memcpy(code_buffer + code_size + 24, &amp;orps, sizeof(orps));
+            code_size += 32;</span>
         }
 <span style = "background-color:#dfd">    }</span>
 
-<span style = "background-color:#dfd">    void fsqrtr_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
-        const uint8_t dst_register{ instr.dst_register % Float_Register_Count };</span>
+<span style = "background-color:#dfd">    void BytecodeCompiler::fsqrtr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
+        const uint8_t dst_register{ instr.dst_register % Float_Register_Count };
+        const uint32_t vsqrtpd{ 0xe4'51'f9'c5 | uint32_t(9 * dst_register) &lt;&lt; 24 };
+        std::memcpy(code_buffer + code_size, &amp;vsqrtpd, sizeof(vsqrtpd));
+        code_size += 4;
+    }</span>
 
-<span style = "background-color:#dfd">        asmb.inject(char_array(</span>
-            /* VSQRTPD */ 0xc5, 0xf9, 0x51, 0xe4 + 9 * dst_register
-        ));
-<span style = "background-color:#dfd">    }</span>
+<span style = "background-color:#dfd">    void BytecodeCompiler::cfround_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
+        const uint8_t src_register{ instr.src_register };</span>
 
-<span style = "background-color:#dfd">    void cfround_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
-        const uint8_t src_register{ instr.src_register % Int_Register_Count };</span>
-
-<span style = "background-color:#dfd">        if (const auto imm{ instr.imm32 % 64 }; imm != 0) {
-            asmb.inject(char_array(</span>
-                /* MOV */ 0x4c, 0x89, 0xc0 + 8 * src_register,
-                /* ROR */ 0x48, 0xc1, 0xc8, b&lt;0&gt;(imm),
-                /* AND */ 0x48, 0x83, 0xe0, 0x03,
-                /* ROL */ 0x48, 0xc1, 0xc0, 0x0d,
-                /* OR */ 0x48, 0x0d, 0xc0, 0x9f, 0x00, 0x00,
-                /* PUSH */ 0x50,
-                /* LDMXCSR */ 0x0f, 0xae, 0x14, 0x24,
-                /* POP */ 0x58
-            ));
-<span style = "background-color:#dfd">        } else {</span>
-<span style = "background-color:#fdd">            asmb.inject(char_array(</span>
-                /* MOV */ 0x4c, 0x89, 0xc0 + 8 * src_register,
-                /* AND */ 0x48, 0x83, 0xe0, 0x03,
-                /* ROL */ 0x48, 0xc1, 0xc0, 0x0d,
-                /* OR */ 0x48, 0x0d, 0xc0, 0x9f, 0x00, 0x00,
-                /* PUSH */ 0x50,
-                /* LDMXCSR */ 0x0f, 0xae, 0x14, 0x24,
-                /* POP */ 0x58
-            ));
+<span style = "background-color:#dfd">        if (const uint64_t imm{ instr.imm32 % 64 }; imm != 0) {
+            const uint64_t mov{ 0x48'00'c8'c1'48'c0'89'4c | imm &lt;&lt; 48 | uint64_t(8 * src_register) &lt;&lt; 16 };
+            std::memcpy(code_buffer + code_size, &amp;mov, sizeof(mov));
+            const uint64_t and_{ 0x48'0d'c0'c1'48'03'e0'83 };
+            std::memcpy(code_buffer + code_size + 8, &amp;and_, sizeof(and_));
+            const uint64_t or_{ 0xae'0f'50'00'00'9f'c0'0d };
+            std::memcpy(code_buffer + code_size + 16, &amp;or_, sizeof(or_));
+            const uint32_t ldmxcsr{ 0x00'58'24'14 };
+            std::memcpy(code_buffer + code_size + 24, &amp;ldmxcsr, sizeof(ldmxcsr));
+            code_size += 27;
+        } else {</span>
+<span style = "background-color:#fdd">            const uint64_t mov{ 0x48'03'e0'83'48'c0'89'4c | uint64_t(8 * src_register) &lt;&lt; 16 };
+            std::memcpy(code_buffer + code_size, &amp;mov, sizeof(mov));
+            const uint64_t rol{ 0x00'9f'c0'0d'48'0d'c0'c1 };
+            std::memcpy(code_buffer + code_size + 8, &amp;rol, sizeof(rol));
+            const uint64_t or_{ 0x00'58'24'14'ae'0f'50'00 };
+            std::memcpy(code_buffer + code_size + 16, &amp;or_, sizeof(or_));
+            code_size += 23;</span>
         }
 <span style = "background-color:#dfd">    }</span>
 
-<span style = "background-color:#dfd">    void istore_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx) {
-        const uint8_t dst_register{ instr.dst_register % Int_Register_Count };
-        const uint8_t src_register{ instr.src_register % Int_Register_Count };
-        const auto imm{ static_cast&lt;int32_t&gt;(instr.imm32) };
+<span style = "background-color:#dfd">    void BytecodeCompiler::istore_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
+        const uint8_t dst_register{ instr.dst_register };
+        const uint8_t src_register{ instr.src_register };
+        const uint32_t imm{ instr.imm32 };
         constexpr uint32_t L3_Store_Condition{ 14 };</span>
 
 <span style = "background-color:#dfd">        auto mem_mask{ instr.modMask() ? Scratchpad_L1_Mask : Scratchpad_L2_Mask };
@@ -600,28 +600,24 @@ namespace modernRX {
             mem_mask = Scratchpad_L3_Mask;</span>
         }
 
-<span style = "background-color:#dfd">        if (dst_register != registers::RSP.idx) {
-            asmb.inject(char_array(</span>
-                /* LEA */ 0x49, 0x8d, 0x80 + dst_register, b&lt;0&gt;(imm), b&lt;1&gt;(imm), b&lt;2&gt;(imm), b&lt;3&gt;(imm),
-                /* AND */ 0x48, 0x25, b&lt;0&gt;(mem_mask), b&lt;1&gt;(mem_mask), b&lt;2&gt;(mem_mask), b&lt;3&gt;(mem_mask),
-                /* MOV */ 0x4c, 0x89, 0x04 + 8 * src_register, 0x06
-            ));
-<span style = "background-color:#dfd">        } else {
-            asmb.inject(char_array(</span>
-                /* LEA */ 0x49, 0x8d, 0x80 + dst_register, 0x24, b&lt;0&gt;(imm), b&lt;1&gt;(imm), b&lt;2&gt;(imm), b&lt;3&gt;(imm),
-                /* AND */ 0x48, 0x25, b&lt;0&gt;(mem_mask), b&lt;1&gt;(mem_mask), b&lt;2&gt;(mem_mask), b&lt;3&gt;(mem_mask),
-                /* MOV */ 0x4c, 0x89, 0x04 + 8 * src_register, 0x06
-            ));
+<span style = "background-color:#dfd">        if (dst_register != Sib_Reg_Idx) {
+            const uint64_t lea{ 0x48'00'00'00'00'80'8d'49 | uint64_t(dst_register) &lt;&lt; 16 | uint64_t(imm) &lt;&lt; 24 };
+            std::memcpy(code_buffer + code_size, &amp;lea, sizeof(lea));
+            const uint64_t and_{ 0x04'89'4c'00'00'00'00'25 | uint64_t(mem_mask) &lt;&lt; 8 | uint64_t(8 * src_register) &lt;&lt; 56 };
+            std::memcpy(code_buffer + code_size + 8, &amp;and_, sizeof(and_));
+            const uint8_t mov{ static_cast&lt;uint8_t&gt;(0x06) };
+            std::memcpy(code_buffer + code_size + 16, &amp;mov, 1);
+            code_size += 17;
+        } else {
+            const uint64_t lea{ 0x00'00'00'00'24'80'8d'49 | uint64_t(dst_register) &lt;&lt; 16 | uint64_t(imm) &lt;&lt; 32 };
+            std::memcpy(code_buffer + code_size, &amp;lea, sizeof(lea));
+            const uint64_t and_{ 0x89'4c'00'00'00'00'25'48 | uint64_t(mem_mask) &lt;&lt; 16 };
+            std::memcpy(code_buffer + code_size + 8, &amp;and_, sizeof(and_));
+            const uint16_t mov{ static_cast&lt;uint16_t&gt;(0x06'04 | uint16_t(8 * src_register)) };
+            std::memcpy(code_buffer + code_size + 16, &amp;mov, 2);
+            code_size += 18;</span>
         }
 <span style = "background-color:#dfd">    }</span>
-
-    namespace {
-        // Mark register as used by current instruction and set jump point to next instruction.
-<span style = "background-color:#dfd">        void setJmpPoint(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const uint32_t reg_idx, const uint32_t instr_idx) {
-            reg_usage[reg_idx] = instr_idx;
-            asmb.label&lt;false&gt;(instr_idx + 1);
-        };</span>
-    }
 }</pre>
         <hr />
         <table width="100%">

@@ -38,9 +38,9 @@ namespace modernRX::assembler {
             instruction.reserve(32);
         }</span>
 
-<span style = "background-color:#dfd">        constexpr void inject(const_span&lt;char&gt; _code) {
+        constexpr void inject(const_span&lt;char&gt; _code) {
             code.append_range(_code);
-        }</span>
+        }
 
         // Broadcasts 4x immediate 64-bit or value from GPR register into registers::RSP[offset] memory.
         // Stack must be aligned to 32 bytes at least.
@@ -264,9 +264,9 @@ namespace modernRX::assembler {
             schedule();
         }</span>
 
-<span style = "background-color:#dfd">        constexpr int32_t labelOffset(const int name) {
+        constexpr int32_t labelOffset(const int name) {
             return static_cast&lt;int32_t&gt;(labels[name] - code.size());
-        }</span>
+        }
 
         // Restores stack pointer. alignStack must be called before.
         // Must be called after destruction of all local variables and before popping registers.
@@ -746,10 +746,10 @@ namespace modernRX::assembler {
         }</span>
 
         // Flushes generated code into given buffer.
-<span style = "background-color:#dfd">        void flushCode(void* const buffer) noexcept {
+        void flushCode(void* const buffer) noexcept {
             std::memcpy(buffer, code.data(), code.size());
             code.clear();
-        }</span>
+        }
 
         // Flushes generated data that results in giving away ownership of the buffer.
         // Fills data pointers in code.
@@ -765,6 +765,10 @@ namespace modernRX::assembler {
 <span style = "background-color:#dfd">        [[nodiscard]] constexpr const uint8_t* dataPtr() noexcept {
             return data.data();
         }</span>
+
+        [[nodiscard]] constexpr const size_t codeSize() noexcept {
+            return code.size();
+        }
 
         std::vector&lt;std::pair&lt;size_t, size_t&gt;&gt; data_ptr_pos;
         code_vector code;

@@ -16,7 +16,6 @@
 * Defines code generation functions for all RandomX instructions.
 */
 
-#include "assembler.hpp"
 #include "bytecode.hpp"
 
 namespace modernRX {
@@ -50,37 +49,50 @@ namespace modernRX {
     };
     static_assert(sizeof(RxInstruction) == 8, "Size of single instruction must be 8 bytes");
 
-    void iaddrs_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx);
-    void iaddm_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx);
-    void isubr_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx);
-    void isubm_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx);
-    void imulr_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx);
-    void imulm_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx);
-    void imulhr_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx);
-    void imulhm_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx);
-    void ismulhr_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx);
-    void ismulhm_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx);
-    void inegr_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx);
-    void ixorr_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx);
-    void ixorm_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx);
-    void irorr_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx);
-    void irolr_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx);
-    void imulrcp_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx);
-    void iswapr_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx);
-    void cbranch_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx);
-    void fswapr_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx);
-    void faddr_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx);
-    void faddm_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx);
-    void fsubr_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx);
-    void fsubm_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx);
-    void fscalr_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx);
-    void fmulr_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx);
-    void fdivm_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx);
-    void fsqrtr_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx);
-    void cfround_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx);
-    void istore_cmpl(assembler::Context&amp; asmb, std::array&lt;int32_t, Int_Register_Count&gt;&amp; reg_usage, const RxInstruction&amp; instr, const uint32_t idx);
+    struct alignas(32) BytecodeCompiler {
+        std::array&lt;int32_t, Int_Register_Count&gt; reg_usage{ -1, -1, -1, -1, -1, -1, -1, -1 };
+        char* code_buffer{ nullptr };
+        int32_t code_size{ 0 };
+        std::array&lt;int32_t, Rx_Program_Size&gt; instr_offset{};
 
-    using InstrCmpl = decltype(&amp;iaddrs_cmpl);
+<span style = "background-color:#dfd">        void reset() {
+            code_size = 0;
+            reg_usage.fill(-1);</span>
+            // instr_offset will be overwritten during compilation
+<span style = "background-color:#dfd">        }</span>
+
+        void iaddrs_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
+        void iaddm_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
+        void isubr_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
+        void isubm_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
+        void imulr_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
+        void imulm_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
+        void imulhr_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
+        void imulhm_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
+        void ismulhr_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
+        void ismulhm_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
+        void inegr_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
+        void ixorr_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
+        void ixorm_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
+        void irorr_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
+        void irolr_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
+        void imulrcp_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
+        void iswapr_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
+        void cbranch_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
+        void fswapr_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
+        void faddr_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
+        void faddm_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
+        void fsubr_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
+        void fsubm_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
+        void fscalr_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
+        void fmulr_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
+        void fdivm_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
+        void fsqrtr_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
+        void cfround_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
+        void istore_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
+    };
+
+    using InstrCmpl = void(BytecodeCompiler::*)(const RxInstruction&amp;, const uint32_t);
 
     // Holds compilation function (code generator) for all possible instruction opcodes.
     inline constexpr std::array&lt;InstrCmpl, LUT_Opcode.size()&gt; LUT_Instr_Cmpl = []() consteval {
@@ -89,91 +101,91 @@ namespace modernRX {
         for (uint32_t i = 0; i &lt; LUT_Instr_Cmpl_.size(); ++i) {
             switch (LUT_Opcode[i]) { using enum Bytecode;
             case IADD_RS:
-                LUT_Instr_Cmpl_[i] = iaddrs_cmpl;
+                LUT_Instr_Cmpl_[i] = &amp;BytecodeCompiler::iaddrs_cmpl;
                 break;
             case IADD_M:
-                LUT_Instr_Cmpl_[i] = iaddm_cmpl;
+                LUT_Instr_Cmpl_[i] = &amp;BytecodeCompiler::iaddm_cmpl;
                 break;
             case ISUB_R:
-                LUT_Instr_Cmpl_[i] = isubr_cmpl;
+                LUT_Instr_Cmpl_[i] = &amp;BytecodeCompiler::isubr_cmpl;
                 break;
             case ISUB_M:
-                LUT_Instr_Cmpl_[i] = isubm_cmpl;
+                LUT_Instr_Cmpl_[i] = &amp;BytecodeCompiler::isubm_cmpl;
                 break;
             case IMUL_R:
-                LUT_Instr_Cmpl_[i] = imulr_cmpl;
+                LUT_Instr_Cmpl_[i] = &amp;BytecodeCompiler::imulr_cmpl;
                 break;
             case IMUL_M:
-                LUT_Instr_Cmpl_[i] = imulm_cmpl;
+                LUT_Instr_Cmpl_[i] = &amp;BytecodeCompiler::imulm_cmpl;
                 break;
             case IMULH_R:
-                LUT_Instr_Cmpl_[i] = imulhr_cmpl;
+                LUT_Instr_Cmpl_[i] = &amp;BytecodeCompiler::imulhr_cmpl;
                 break;
             case IMULH_M:
-                LUT_Instr_Cmpl_[i] = imulhm_cmpl;
+                LUT_Instr_Cmpl_[i] = &amp;BytecodeCompiler::imulhm_cmpl;
                 break;
             case ISMULH_R:
-                LUT_Instr_Cmpl_[i] = ismulhr_cmpl;
+                LUT_Instr_Cmpl_[i] = &amp;BytecodeCompiler::ismulhr_cmpl;
                 break;
             case ISMULH_M:
-                LUT_Instr_Cmpl_[i] = ismulhm_cmpl;
+                LUT_Instr_Cmpl_[i] = &amp;BytecodeCompiler::ismulhm_cmpl;
                 break;
             case IMUL_RCP:
-                LUT_Instr_Cmpl_[i] = imulrcp_cmpl;
+                LUT_Instr_Cmpl_[i] = &amp;BytecodeCompiler::imulrcp_cmpl;
                 break;
             case INEG_R:
-                LUT_Instr_Cmpl_[i] = inegr_cmpl;
+                LUT_Instr_Cmpl_[i] = &amp;BytecodeCompiler::inegr_cmpl;
                 break;
             case IXOR_R:
-                LUT_Instr_Cmpl_[i] = ixorr_cmpl;
+                LUT_Instr_Cmpl_[i] = &amp;BytecodeCompiler::ixorr_cmpl;
                 break;
             case IXOR_M:
-                LUT_Instr_Cmpl_[i] = ixorm_cmpl;
+                LUT_Instr_Cmpl_[i] = &amp;BytecodeCompiler::ixorm_cmpl;
                 break;
             case IROR_R:
-                LUT_Instr_Cmpl_[i] = irorr_cmpl;
+                LUT_Instr_Cmpl_[i] = &amp;BytecodeCompiler::irorr_cmpl;
                 break;
             case IROL_R:
-                LUT_Instr_Cmpl_[i] = irolr_cmpl;
+                LUT_Instr_Cmpl_[i] = &amp;BytecodeCompiler::irolr_cmpl;
                 break;
             case ISWAP_R:
-                LUT_Instr_Cmpl_[i] = iswapr_cmpl;
+                LUT_Instr_Cmpl_[i] = &amp;BytecodeCompiler::iswapr_cmpl;
                 break;
             case CBRANCH:
-                LUT_Instr_Cmpl_[i] = cbranch_cmpl;
+                LUT_Instr_Cmpl_[i] = &amp;BytecodeCompiler::cbranch_cmpl;
                 break;
             case FSWAP_R:
-                LUT_Instr_Cmpl_[i] = fswapr_cmpl;
+                LUT_Instr_Cmpl_[i] = &amp;BytecodeCompiler::fswapr_cmpl;
                 break;
             case FADD_R:
-                LUT_Instr_Cmpl_[i] = faddr_cmpl;
+                LUT_Instr_Cmpl_[i] = &amp;BytecodeCompiler::faddr_cmpl;
                 break;
             case FADD_M:
-                LUT_Instr_Cmpl_[i] = faddm_cmpl;
+                LUT_Instr_Cmpl_[i] = &amp;BytecodeCompiler::faddm_cmpl;
                 break;
             case FSUB_R:
-                LUT_Instr_Cmpl_[i] = fsubr_cmpl;
+                LUT_Instr_Cmpl_[i] = &amp;BytecodeCompiler::fsubr_cmpl;
                 break;
             case FSUB_M:
-                LUT_Instr_Cmpl_[i] = fsubm_cmpl;
+                LUT_Instr_Cmpl_[i] = &amp;BytecodeCompiler::fsubm_cmpl;
                 break;
             case FSCAL_R:
-                LUT_Instr_Cmpl_[i] = fscalr_cmpl;
+                LUT_Instr_Cmpl_[i] = &amp;BytecodeCompiler::fscalr_cmpl;
                 break;
             case FMUL_R:
-                LUT_Instr_Cmpl_[i] = fmulr_cmpl;
+                LUT_Instr_Cmpl_[i] = &amp;BytecodeCompiler::fmulr_cmpl;
                 break;
             case FDIV_M:
-                LUT_Instr_Cmpl_[i] = fdivm_cmpl;
+                LUT_Instr_Cmpl_[i] = &amp;BytecodeCompiler::fdivm_cmpl;
                 break;
             case FSQRT_R:
-                LUT_Instr_Cmpl_[i] = fsqrtr_cmpl;
+                LUT_Instr_Cmpl_[i] = &amp;BytecodeCompiler::fsqrtr_cmpl;
                 break;
             case CFROUND:
-                LUT_Instr_Cmpl_[i] = cfround_cmpl;
+                LUT_Instr_Cmpl_[i] = &amp;BytecodeCompiler::cfround_cmpl;
                 break;
             case ISTORE:
-                LUT_Instr_Cmpl_[i] = istore_cmpl;
+                LUT_Instr_Cmpl_[i] = &amp;BytecodeCompiler::istore_cmpl;
                 break;
             default:
                 throw "invalid instruction";

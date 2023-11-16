@@ -63,22 +63,6 @@ template<typename ...Args>
     return std::array<std::byte, sizeof...(Args)>{ static_cast<const std::byte>(args)... };
 }
 
-// Creates std::array of chars from given arguments.
-// In constant context arguments must be in range of a single byte.
-// In non-constant context arguments will not be checked and just casted to char.
-template<typename ...Args>
-[[nodiscard]] constexpr std::array<char, sizeof...(Args)> char_array(const Args&&... args) {
-    // Check arg range only at compile-time.
-    if (std::is_constant_evaluated()) {
-        // Workaround over "fold expression did not evaluate to a constant" error
-        if (((args > std::numeric_limits<uint8_t>::max()) || ...)) {
-            throw "byte_array requires all arguments to be in single byte value range";
-        }
-    }
-
-    return std::array<char, sizeof...(Args)>{ static_cast<const char>(args)... };
-}
-
 // Creates std::vector of bytes from given arguments.
 // Arguments values must be in range of a single byte.
 // This will check all arguments at runtime, not compile-time.

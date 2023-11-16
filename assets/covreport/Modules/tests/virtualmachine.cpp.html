@@ -16,19 +16,17 @@
 #include "aes1rhash.hpp"
 #include "aes1rrandom.hpp"
 #include "aes4rrandom.hpp"
-#include "assembler.hpp"
 #include "bytecodecompiler.hpp"
 #include "randomxparams.hpp"
 #include "sse.hpp"
 #include "virtualmachine.hpp"
 #include "virtualmem.hpp"
 
+#include "virtualmachineprogram.cpp"
+
 namespace modernRX {
     namespace {
-        constexpr uint32_t Max_Program_Size{ Rx_Program_Size * 32 };
         constexpr uint32_t Scratchpad_L3_Mask64{ (Rx_Scratchpad_L3_Size - 1) &amp; ~63 }; // L3 cache 64-byte alignment mask.
-
-        constexpr uint64_t Mantissa_Size{ 52 };
         constexpr uint64_t Cache_Line_Size{ sizeof(DatasetItem) };
         constexpr uint64_t Cache_Line_Align_Mask{ (Rx_Dataset_Base_Size - 1) &amp; ~(Cache_Line_Size - 1) }; // Dataset 64-byte alignment mask.
 
@@ -40,341 +38,135 @@ namespace modernRX {
             std::array&lt;intrinsics::xmm128d_t, Float_Register_Count&gt; e{}; // "Multiplicative" registers. Destination of floating point multiplication, division and square root instructions.
             std::array&lt;intrinsics::xmm128d_t, Float_Register_Count&gt; a{}; // Read-only, fixed-value floating point registers. Source operand of any floating point instruction.
         };
-
-        // Holds memory addresses for program execution.
-        // https://github.com/tevador/RandomX/blob/master/doc/specs.md#43-registers
-        struct MemoryRegisters {
-            uint32_t mx{ 0 }; // Holds memory address of the next Dataset read. Always aligned to be multiple of 64.
-            uint32_t ma{ 0 }; // Holds memory address of the next Dataset prefetch. Always aligned to be multiple of 64.
-        };
-
-        // Holds configuration of the program.
-        // https://github.com/tevador/RandomX/blob/master/doc/specs.md#454-address-registers
-        // https://github.com/tevador/RandomX/blob/master/doc/specs.md#455-dataset-offset
-        // https://github.com/tevador/RandomX/blob/master/doc/specs.md#456-group-e-register-masks
-        struct ProgramConfiguration {
-            std::array&lt;uint64_t, 2&gt; e_mask{}; // Used for the conversion of "E-group" registers.
-            std::array&lt;uint32_t, 4&gt; read_reg{}; // Used to select 4 address registers for program execution.
-            uint64_t dataset_offset{ 0 }; // Used when reading values from the Dataset.
-        };
-
-        constexpr uint32_t Emask_Offset{ offsetof(ProgramConfiguration, e_mask) };
-        constexpr uint32_t Read_Reg_Offset{ offsetof(ProgramConfiguration, read_reg) };
-        constexpr uint32_t Dataset_Offset{ offsetof(ProgramConfiguration, dataset_offset) };
-        static_assert(Emask_Offset == 0, "This assert is required, because this value is also used in compiler's context");
-
-        [[nodiscard]] constexpr double getSmallPositiveFloat(const uint64_t entropy) noexcept;
-        [[nodiscard]] constexpr uint64_t getFloatRegisterMask(const uint64_t entropy) noexcept;
     }
 
     // Holds RandomX program entropy and instructions: https://github.com/tevador/RandomX/blob/master/doc/specs.md#44-program-buffer
     // Initialized by AES-filled buffer. Must preserve order of fields.
-    struct RxProgram {
+    struct alignas(64) RxProgram {
         std::array&lt;uint64_t, 16&gt; entropy{};
         std::array&lt;RxInstruction, Rx_Program_Size&gt; instructions{};
     };
     static_assert(sizeof(RxProgram) == Rx_Program_Bytes_Size); // Size of random program is also used in different context. Make sure both values match.
-
-    // Holds RandomX program context: registers, memory addresses, configuration, etc.
-    struct ProgramContext {
-        // Initializes program context with given program.
-        [[nodiscard]] explicit ProgramContext(const RxProgram&amp; program);
-
-        RegisterFile rf{};
-        MemoryRegisters mem{};
-        MemoryRegisters sp_addr{};
-<span style = "background-color:#dfd">        uint32_t iter{ 0 };</span>
-        ProgramConfiguration cfg{};
-    };
-
-
-    void compilePrologue(assembler::Context&amp; asmb);
-    void compileInitializeRegisters(assembler::Context&amp; asmb);
-    void compileInstructions(assembler::Context&amp; asmb, const RxProgram&amp; program);
-    void compileFinalizeRegisters(assembler::Context&amp; asmb, const ProgramContext&amp; ctx);
-    void compileEpilogue(assembler::Context&amp; asmb);
-
-    constexpr uint32_t Rf_Offset{ offsetof(ProgramContext, rf) };
-    constexpr uint32_t Mem_Offset{ offsetof(ProgramContext, mem) };
-    constexpr uint32_t Sp_Addr_Offset{ offsetof(ProgramContext, sp_addr) };
-    constexpr uint32_t Cfg_Offset{ offsetof(ProgramContext, cfg) };
-    static_assert(Cfg_Offset == 280, "This assert is required, because this value is also used in compiler's context");
+    static_assert(offsetof(RxProgram, entropy) == 0);
 
 
     VirtualMachine::VirtualMachine() 
-<span style = "background-color:#dfd">        : scratchpad(Rx_Scratchpad_L3_Size), asmb(Max_Program_Size) {
-        jit = makeExecutable&lt;JITRxProgram&gt;(Max_Program_Size);
+<span style = "background-color:#dfd">        : scratchpad(Rx_Scratchpad_L3_Size + sizeof(RegisterFile)) {
+        jit = makeExecutable&lt;JITRxProgram&gt;(sizeof(Code_Buffer));
+        std::memcpy(jit.get(), Code_Buffer.data(), sizeof(Code_Buffer));
+        compiler.code_buffer = reinterpret_cast&lt;char*&gt;(jit.get()) + Program_Offset;
     }</span>
 
 <span style = "background-color:#dfd">    void VirtualMachine::reset(const_span&lt;std::byte&gt; input, const_span&lt;DatasetItem&gt; dataset) {
         this-&gt;dataset = dataset;
         blake2b::hash(seed, input);
-        aes::fill1R(scratchpad.buffer(), seed);
+        aes::fill1R(scratchpad.buffer(sizeof(RegisterFile), scratchpad.size() - sizeof(RegisterFile)), seed);
     }</span>
 
 <span style = "background-color:#dfd">    std::array&lt;std::byte, 32&gt; VirtualMachine::execute() {</span>
         // RandomX requires specific float environment before executing any program.
         // This RAII object will set proper float flags on creation and restore its values on destruction. 
-<span style = "background-color:#dfd">        const intrinsics::sse::FloatEnvironment fenv{};</span>
+<span style = "background-color:#dfd">        const intrinsics::sse::FloatEnvironment fenv{};
+        RxProgram program;
+        constexpr uint64_t Dataset_Extra_Items{ Rx_Dataset_Extra_Size / sizeof(DatasetItem) };</span>
+        static_assert(std::has_single_bit(Dataset_Extra_Items + 1));
+        static_assert(Cache_Line_Size == 64);
 
 <span style = "background-color:#dfd">        for (uint32_t i = 0; i &lt; Rx_Program_Count - 1; ++i) {
-            auto [ctx, program] { generateProgram() };
-            compileProgram(ctx, program);</span>
+            generateProgram(program);
+            compileProgram(program);</span>
+
+<span style = "background-color:#dfd">            const auto dataset_offset{ (program.entropy[13] &amp; Dataset_Extra_Items) * Cache_Line_Size };
+            const auto dataset_ptr{ reinterpret_cast&lt;uintptr_t&gt;(dataset.data()) + dataset_offset };</span>
             // https://github.com/tevador/RandomX/blob/master/doc/specs.md#462-loop-execution
             // Step 1-13.
 <span style = "background-color:#dfd">            const auto jit_program{ reinterpret_cast&lt;JITRxProgram&gt;(jit.get()) };
-            jit_program(reinterpret_cast&lt;uintptr_t&gt;(&amp;ctx), reinterpret_cast&lt;uintptr_t&gt;(scratchpad.data()), reinterpret_cast&lt;uintptr_t&gt;(dataset.data()));
-            blake2b::hash(seed, span_cast&lt;std::byte, sizeof(ctx.rf)&gt;(ctx.rf));
+            jit_program(0 /* deprecated */, reinterpret_cast&lt;uintptr_t&gt;(scratchpad.data()) + sizeof(RegisterFile),</span>
+                        dataset_ptr, reinterpret_cast&lt;uintptr_t&gt;(&amp;program));
+<span style = "background-color:#dfd">            blake2b::hash(seed, span_cast&lt;std::byte, sizeof(RegisterFile)&gt;(scratchpad.data()));
         }</span>
 
-<span style = "background-color:#dfd">        auto [ctx, program] { generateProgram() };
-        compileProgram(ctx, program);</span>
+<span style = "background-color:#dfd">        generateProgram(program);
+        compileProgram(program); </span>
 
         // https://github.com/tevador/RandomX/blob/master/doc/specs.md#462-loop-execution
         // Step 1-13.
-<span style = "background-color:#dfd">        const auto jit_program{ reinterpret_cast&lt;JITRxProgram&gt;(jit.get()) };
-        jit_program(reinterpret_cast&lt;uintptr_t&gt;(&amp;ctx), reinterpret_cast&lt;uintptr_t&gt;(scratchpad.data()), reinterpret_cast&lt;uintptr_t&gt;(dataset.data()));</span>
+<span style = "background-color:#dfd">        const auto dataset_offset{ (program.entropy[13] &amp; Dataset_Extra_Items) * Cache_Line_Size };
+        const auto dataset_ptr{ reinterpret_cast&lt;uintptr_t&gt;(dataset.data()) + dataset_offset };
+        const auto jit_program{ reinterpret_cast&lt;JITRxProgram&gt;(jit.get()) };
+        jit_program(0 /* deprecated */, reinterpret_cast&lt;uintptr_t&gt;(scratchpad.data()) + sizeof(RegisterFile),</span>
+            dataset_ptr, reinterpret_cast&lt;uintptr_t&gt;(&amp;program));
 
-<span style = "background-color:#dfd">        aes::hash1R(span_cast&lt;std::byte, sizeof(ctx.rf.a)&gt;(ctx.rf.a), span_cast&lt;std::byte, Rx_Scratchpad_L3_Size&gt;(scratchpad.data()));
-        std::array&lt;std::byte, 32&gt; output{};
-        blake2b::hash(output, span_cast&lt;std::byte&gt;(ctx.rf));
-        return output;
+<span style = "background-color:#dfd">        aes::hash1R(span_cast&lt;std::byte, sizeof(RegisterFile::a)&gt;(scratchpad.data() + sizeof(RegisterFile) - sizeof(RegisterFile::a)), </span>
+            span_cast&lt;std::byte, Rx_Scratchpad_L3_Size&gt;(scratchpad.data() + sizeof(RegisterFile)));
+        
+<span style = "background-color:#dfd">        std::array&lt;std::byte, 32&gt; output{};
+        blake2b::hash(output, span_cast&lt;std::byte, sizeof(RegisterFile)&gt;(scratchpad.data()));</span>
+
+<span style = "background-color:#dfd">        return output;
     }</span>
 
-<span style = "background-color:#dfd">    std::pair&lt;ProgramContext, RxProgram&gt; VirtualMachine::generateProgram() {
-        RxProgram program{};
+<span style = "background-color:#dfd">    void VirtualMachine::generateProgram(RxProgram&amp; program) {
         aes::fill4R(span_cast&lt;std::byte&gt;(program), seed);</span>
-
         // Last 64 bytes of the program are now the new seed.
-
-<span style = "background-color:#dfd">        return std::make_pair(ProgramContext{ program }, program);
-    }</span>
-
-<span style = "background-color:#dfd">    ProgramContext::ProgramContext(const RxProgram&amp; program) {
-        constexpr uint64_t Dataset_Extra_Items{ Rx_Dataset_Extra_Size / sizeof(DatasetItem) };
-        const auto&amp; entropy{ program.entropy };</span>
-        
-        // "A-group" register initialization: https://github.com/tevador/RandomX/blob/master/doc/specs.md#452-group-a-register-initialization
-<span style = "background-color:#dfd">        rf.a[0] = { getSmallPositiveFloat(entropy[0]), getSmallPositiveFloat(entropy[1]) }; 
-        rf.a[1] = { getSmallPositiveFloat(entropy[2]), getSmallPositiveFloat(entropy[3]) };
-        rf.a[2] = { getSmallPositiveFloat(entropy[4]), getSmallPositiveFloat(entropy[5]) };
-        rf.a[3] = { getSmallPositiveFloat(entropy[6]), getSmallPositiveFloat(entropy[7]) };</span>
-
-        // Memory registers initialization: https://github.com/tevador/RandomX/blob/master/doc/specs.md#453-memory-registers
-<span style = "background-color:#dfd">        mem.ma = static_cast&lt;uint32_t&gt;(entropy[8] &amp; Cache_Line_Align_Mask);
-        mem.mx = static_cast&lt;uint32_t&gt;(entropy[10]);</span>
-
-        // Address registers initialization: https://github.com/tevador/RandomX/blob/master/doc/specs.md#454-address-registers
-<span style = "background-color:#dfd">        for (uint32_t i = 0; i &lt; cfg.read_reg.size(); ++i) {
-            cfg.read_reg[i] = (i * 2) + ((entropy[12] &gt;&gt; i) &amp; 1);
-        }</span>
-
-        // Dataset offset initialization: https://github.com/tevador/RandomX/blob/master/doc/specs.md#455-dataset-offset
-<span style = "background-color:#dfd">        cfg.dataset_offset = (entropy[13] % (Dataset_Extra_Items + 1)) * Cache_Line_Size;</span>
-
-        // "E-group" register masks initialization: https://github.com/tevador/RandomX/blob/master/doc/specs.md#456-group-e-register-masks
-<span style = "background-color:#dfd">        cfg.e_mask[0] = getFloatRegisterMask(entropy[14]);
-        cfg.e_mask[1] = getFloatRegisterMask(entropy[15]);</span>
-
-        // Scratchpad address registers initialization: https://github.com/tevador/RandomX/blob/master/doc/specs.md#461-initialization
-<span style = "background-color:#dfd">        const uint64_t spMix{ rf.r[cfg.read_reg[0]] ^ rf.r[cfg.read_reg[1]] };
-        sp_addr.ma = (mem.ma ^ static_cast&lt;uint32_t&gt;(spMix)) &amp; Scratchpad_L3_Mask64;
-        sp_addr.mx = (mem.mx ^ static_cast&lt;uint32_t&gt;(spMix &gt;&gt; 32)) &amp; Scratchpad_L3_Mask64;
-    }</span>
-
-<span style = "background-color:#dfd">    void VirtualMachine::compileProgram(const ProgramContext&amp; ctx, const RxProgram&amp; program) {</span>
-        using namespace assembler;
-        using namespace assembler::registers;
-
-        // Compile prologue.
-<span style = "background-color:#dfd">        compilePrologue(asmb);</span>
-
-        // Prefetch first dataset item.
-        static_assert(std::has_single_bit(Cache_Line_Size));
-        static_assert(Mem_Offset == 256);
-        static_assert(Cfg_Offset == 280);
-        static_assert(Dataset_Offset == 32);
-<span style = "background-color:#dfd">        asmb.inject(char_array(</span>
-            0x8B, 0x87, 0x04, 0x01, 0x00, 0x00,
-            0x03, 0x87, 0x38, 0x01, 0x00, 0x00,
-            0x83, 0xe0, 0xc0,
-            0x48, 0x0F, 0x18, 0x44, 0x05, 0x00
-        ));
-
-        // Set loop entry.
-<span style = "background-color:#dfd">        constexpr int Loop_Label{ Rx_Program_Size + 1 };</span>
-        static_assert(Loop_Label &lt; 512); // 512 is max number of jmp labels in assembler::Context.
-<span style = "background-color:#dfd">        asmb.label(Loop_Label);</span>
-
-        // Compile Initialize registers.
-<span style = "background-color:#dfd">        compileInitializeRegisters(asmb);</span>
-
-        // Compile instructions.
-<span style = "background-color:#dfd">        compileInstructions(asmb, program);</span>
-
-        // Compile finalize registers.
-<span style = "background-color:#dfd">        compileFinalizeRegisters(asmb, ctx);</span>
-
-        // Decrease loop counter.
-<span style = "background-color:#dfd">        asmb.sub(RBX, 1);
-        asmb.jne(Loop_Label);</span>
-        
-        // Compile epilogue.
-<span style = "background-color:#dfd">        compileEpilogue(asmb);</span>
-
-<span style = "background-color:#dfd">        asmb.flushCode(jit.get());
-    }</span>
-
-<span style = "background-color:#dfd">    void compilePrologue(assembler::Context&amp; asmb) {</span>
-        using namespace assembler;
-        using namespace assembler::registers;
-
-<span style = "background-color:#dfd">        asmb.inject(char_array(</span>
-            0x53, 0x55, 0x56, 0x57, 0x41, 0x54, 0x41, 0x55, 0x41, 0x56, 0x41, 0x57, 0x48, 0x83, 0xec, 0x50,
-            0xc5, 0xfa, 0x7f, 0x74, 0x24, 0x40, 0xc5, 0xfa, 0x7f, 0x7c, 0x24, 0x30, 0xc5, 0x7a, 0x7f, 0x44,
-            0x24, 0x20, 0xc5, 0x7a, 0x7f, 0x4c, 0x24, 0x10, 0xc5, 0x7a, 0x7f, 0x14, 0x24, 0x48, 0x83, 0xec,
-            0x50, 0xc5, 0x7a, 0x7f, 0x5c, 0x24, 0x40, 0xc5, 0x7a, 0x7f, 0x64, 0x24, 0x30, 0xc5, 0x7a, 0x7f,
-            0x6c, 0x24, 0x20, 0xc5, 0x7a, 0x7f, 0x74, 0x24, 0x10, 0xc5, 0x7a, 0x7f, 0x3c, 0x24, 0x48, 0x8B,
-            0xF2, 0x49, 0x8B, 0xE8, 0x48, 0x8B, 0xF9, 0x40, 0xBB,
-            0x00, 0x08, 0x00, 0x00, 0x48, 0xB8, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0xC4, 0x21,
-            0xF9, 0x6E, 0xF8, 0xC4, 0x02, 0x79, 0x59, 0xFF, 0x48, 0xB8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0xF0, 0x80, 0xC4, 0x21, 0xF9, 0x6E, 0xF0, 0xC4, 0x02, 0x79, 0x59, 0xF6, 0x4D, 0x33, 0xC0, 0x4D,
-            0x33, 0xC9, 0xC5, 0x7A, 0x6F, 0x81, 0xC0, 0x00, 0x00, 0x00, 0x4D, 0x33, 0xD2, 0x4D, 0x33, 0xDB,
-            0xC5, 0x7A, 0x6F, 0x89, 0xD0, 0x00, 0x00, 0x00, 0x4D, 0x33, 0xE4, 0x4D, 0x33, 0xED, 0xC5, 0x7A,
-            0x6F, 0x91, 0xE0, 0x00, 0x00, 0x00, 0x4D, 0x33, 0xF6, 0x4D, 0x33, 0xFF, 0xC5, 0x7A, 0x6F, 0x99,
-            0xF0, 0x00, 0x00, 0x00
-        ));
 <span style = "background-color:#dfd">    }</span>
 
-    // step.2 and step.3
-    // Initializes registers before RandomX program execution.
-    // Performs steps 2-3 defined by: https://github.com/tevador/RandomX/blob/master/doc/specs.md#462-loop-execution
-<span style = "background-color:#dfd">    void compileInitializeRegisters(assembler::Context&amp; asmb) {</span>
-        using namespace assembler;
-        using namespace assembler::registers;
+<span style = "background-color:#dfd">    void VirtualMachine::compileProgram(const RxProgram&amp; program) {
+        compiler.reset();</span>
 
-        static_assert(Emask_Offset == 0);
-        static_assert(Cfg_Offset == 280);
-        static_assert(Sp_Addr_Offset == 264);
-<span style = "background-color:#dfd">        asmb.inject(char_array(</span>
-            0x8B, 0x87, 0x08, 0x01, 0x00, 0x00, 0x8B, 0x8F, 0x0C, 0x01, 0x00, 0x00, 0x4C, 0x33, 0x04, 0x06,
-            0x4C, 0x33, 0x4C, 0x06, 0x08, 0xC5, 0xFA, 0xE6, 0x04, 0x0E, 0xC5, 0x7A, 0x6F, 0xAF, 0x18, 0x01,
-            0x00, 0x00, 0xC5, 0x7A, 0xE6, 0x64, 0x0E, 0x20, 0xC4, 0x01, 0x19, 0xDB, 0xE7, 0xC4, 0x81, 0x19,
-            0xEB, 0xE5, 0x4C, 0x33, 0x54, 0x06, 0x10, 0x4C, 0x33, 0x5C, 0x06, 0x18, 0xC5, 0xFA, 0xE6, 0x4C,
-            0x0E, 0x08, 0xC5, 0x7A, 0x6F, 0xAF, 0x18, 0x01, 0x00, 0x00, 0xC5, 0x7A, 0xE6, 0x64, 0x0E, 0x28,
-            0xC4, 0x01, 0x19, 0xDB, 0xE7, 0xC4, 0x81, 0x19, 0xEB, 0xED, 0x4C, 0x33, 0x64, 0x06, 0x20, 0x4C,
-            0x33, 0x6C, 0x06, 0x28, 0xC5, 0xFA, 0xE6, 0x54, 0x0E, 0x10, 0xC5, 0x7A, 0x6F, 0xAF, 0x18, 0x01,
-            0x00, 0x00, 0xC5, 0x7A, 0xE6, 0x64, 0x0E, 0x30, 0xC4, 0x01, 0x19, 0xDB, 0xE7, 0xC4, 0x81, 0x19,
-            0xEB, 0xF5, 0x4C, 0x33, 0x74, 0x06, 0x30, 0x4C, 0x33, 0x7C, 0x06, 0x38, 0xC5, 0xFA, 0xE6, 0x5C,
-            0x0E, 0x18, 0xC5, 0x7A, 0x6F, 0xAF, 0x18, 0x01, 0x00, 0x00, 0xC5, 0x7A, 0xE6, 0x64, 0x0E, 0x38,
-            0xC4, 0x01, 0x19, 0xDB, 0xE7, 0xC4, 0x81, 0x19, 0xEB, 0xFD
-        ));
-<span style = "background-color:#dfd">    }</span>
-
-<span style = "background-color:#dfd">    void compileInstructions(assembler::Context&amp; asmb, const RxProgram&amp; program) {</span>
-        using namespace assembler;
-        using namespace assembler::registers;
-
-<span style = "background-color:#dfd">        std::array&lt;int32_t, Int_Register_Count&gt; reg_usage{};
-        reg_usage.fill(-1);</span>
-
-        // Set label for program entry.
-<span style = "background-color:#dfd">        asmb.label&lt;false&gt;(0);</span>
+        // RDI = rf
+        // RSI = scratchpad
+        // RBP = dataset
 
         // Compile all instructions.
 <span style = "background-color:#dfd">        for (uint32_t i = 0; i &lt; program.instructions.size(); ++i) {
+            compiler.instr_offset[i] = compiler.code_size;
             const RxInstruction&amp; instr{ program.instructions[i] };
-            LUT_Instr_Cmpl[instr.opcode](asmb, reg_usage, instr, i);
+            (compiler.*LUT_Instr_Cmpl[instr.opcode])(instr, i);
+        }</span>
+
+<span style = "background-color:#dfd">        auto loop_finalization_offset{ 0 };</span>
+        // Program size thresholds
+        // Jmp to finalize registers.
+<span style = "background-color:#dfd">        if (compiler.code_size &lt; Loop_Finalization_Offset_1 - Program_Offset - 5) {
+            loop_finalization_offset = Loop_Finalization_Offset_1;</span>
+<span style = "background-color:#fdd">        } else if (compiler.code_size &lt; Loop_Finalization_Offset_2 - Program_Offset - 5) {
+            loop_finalization_offset = Loop_Finalization_Offset_2;
+        } else if (compiler.code_size &lt; Max_Program_Size - 5) {
+            loop_finalization_offset = Loop_Finalization_Offset_3;</span>
+        } else {
+            // do nothing; just let it pass through nops
         }
-    }</span>
 
-<span style = "background-color:#dfd">    void compileFinalizeRegisters(assembler::Context&amp; asmb, const ProgramContext&amp; ctx) {</span>
-        using namespace assembler;
-        using namespace assembler::registers;
+<span style = "background-color:#dfd">        if (loop_finalization_offset &gt; 0) {
+            const int32_t jmp_offset{ loop_finalization_offset - compiler.code_size - Program_Offset - 5 };
+            const uint8_t jmp{ 0xe9 };
+            std::memcpy(compiler.code_buffer + compiler.code_size, &amp;jmp, sizeof(uint8_t));
+            std::memcpy(compiler.code_buffer + compiler.code_size + 1, &amp;jmp_offset, sizeof(int32_t));
+            compiler.code_size += 5;</span>
+        }
 
-        // scratchpad -&gt; RSI
-        // dataset -&gt; RBP
-        // ctx -&gt; RDI
-        // Step. 5
-        static_assert(Mem_Offset == 256);
+        // Compile finalize registers.
         static_assert(Cache_Line_Align_Mask == 0x7FFF'FFC0);
         static_assert(std::has_single_bit(Cache_Line_Size));
-        static_assert(Cfg_Offset == 280);
-        static_assert(Dataset_Offset == 32);
-        static_assert(Sp_Addr_Offset == 264);
         static_assert(Scratchpad_L3_Mask64 == 0x001F'FFC0);
 
-<span style = "background-color:#dfd">        asmb.inject(char_array(</span>
-            0x8b, 0x87, 0x00, 0x01, 0x00, 0x00, 0x44, 0x31, 0xc0 + 8 * (int)ctx.cfg.read_reg[2], 0x44,
-            0x31, 0xc0 + 8 * (int)ctx.cfg.read_reg[3], 0x25, 0xc0, 0xff, 0xff, 0x7f, 0x8b, 0x8f, 0x04, 0x01, 0x00, 0x00, 0x89, 0x87, 0x04,
-            0x01, 0x00, 0x00, 0x03, 0x87, 0x38, 0x01, 0x00, 0x00, 0x83, 0xe0, 0xc0, 0x48, 0x0f, 0x18, 0x04,
-            0x28, 0x89, 0x8f, 0x00, 0x01, 0x00, 0x00, 0x03, 0x8f, 0x38, 0x01, 0x00, 0x00, 0x83, 0xe1, 0xc0,
-            0x8b, 0x87, 0x0c, 0x01, 0x00, 0x00, 0x48, 0x01, 0xf0, 0x4c, 0x33, 0x44, 0x0d, 0x00, 0x4c, 0x33,
-            0x4c, 0x0d, 0x08, 0x4c, 0x33, 0x54, 0x0d, 0x10, 0x4c, 0x33, 0x5c, 0x0d, 0x18, 0x4c, 0x89, 0x00,
-            0x4c, 0x89, 0x48, 0x08, 0x4c, 0x33, 0x64, 0x0d, 0x20, 0x4c, 0x33, 0x6c, 0x0d, 0x28, 0x4c, 0x89,
-            0x50, 0x10, 0x4c, 0x89, 0x58, 0x18, 0x4c, 0x33, 0x74, 0x0d, 0x30, 0x4c, 0x33, 0x7c, 0x0d, 0x38,
-            0x4c, 0x89, 0x60, 0x20, 0x4c, 0x89, 0x68, 0x28, 0xc5, 0xf9, 0xef, 0xc4, 0xc5, 0xf1, 0xef, 0xcd,
-            0xc5, 0xe9, 0xef, 0xd6, 0xc5, 0xe1, 0xef, 0xdf, 0x4c, 0x89, 0x70, 0x30, 0x4c, 0x89, 0x78, 0x38,
-            0x8b, 0x87, 0x08, 0x01, 0x00, 0x00, 0x48, 0x01, 0xf0, 0xc5, 0xfa, 0x7f, 0x00, 0xc5, 0xfa, 0x7f,
-            0x48, 0x10, 0xc5, 0xfa, 0x7f, 0x50, 0x20, 0xc5, 0xfa, 0x7f, 0x58, 0x30, 0x4c, 0x89, 0xc0 + 8 * (int)ctx.cfg.read_reg[0], 0x4c,
-            0x31, 0xc0 + 8 * (int)ctx.cfg.read_reg[1], 0x48, 0x89, 0xc1, 0x48, 0xc1, 0xe9, 0x20, 0x48, 0x25, 0xc0, 0xff, 0x1f, 0x00, 0x48,
-            0x81, 0xe1, 0xc0, 0xff, 0x1f, 0x00, 0x89, 0x87, 0x08, 0x01, 0x00, 0x00, 0x89, 0x8f, 0x0c, 0x01,
-            0x00, 0x00
-        ));
-<span style = "background-color:#dfd">    }</span>
+<span style = "background-color:#dfd">        const uint8_t read_reg2 = static_cast&lt;uint8_t&gt;(0xc7 + 8 * (4 + ((program.entropy[12] &gt;&gt; 2) &amp; 1)));
+        const auto rr2_offset{ 8 };
+        std::memcpy(reinterpret_cast&lt;char*&gt;(jit.get()) + loop_finalization_offset + rr2_offset, &amp;read_reg2, sizeof(uint8_t));</span>
 
-<span style = "background-color:#dfd">    void compileEpilogue(assembler::Context&amp; asmb) {</span>
-        using namespace assembler;
-        using namespace assembler::registers;
+<span style = "background-color:#dfd">        const uint8_t read_reg3 = static_cast&lt;uint8_t&gt;(0xc7 + 8 * (6 + ((program.entropy[12] &gt;&gt; 3) &amp; 1)));
+        const auto rr3_offset{ 11 };
+        std::memcpy(reinterpret_cast&lt;char*&gt;(jit.get()) + loop_finalization_offset + rr3_offset, &amp;read_reg3, sizeof(uint8_t));</span>
 
-        static_assert(Rf_Offset == 0);
-<span style = "background-color:#dfd">        asmb.inject(char_array(</span>
-            0x4C, 0x89, 0x07, 0x4C, 0x89, 0x4F, 0x08, 0xC5, 0xFA, 0x7F, 0x47, 0x40, 0xC5, 0xFA, 0x7F, 0xA7,
-            0x80, 0x00, 0x00, 0x00, 0x4C, 0x89, 0x57, 0x10, 0x4C, 0x89, 0x5F, 0x18, 0xC5, 0xFA, 0x7F, 0x4F,
-            0x50, 0xC5, 0xFA, 0x7F, 0xAF, 0x90, 0x00, 0x00, 0x00, 0x4C, 0x89, 0x67, 0x20, 0x4C, 0x89, 0x6F,
-            0x28, 0xC5, 0xFA, 0x7F, 0x57, 0x60, 0xC5, 0xFA, 0x7F, 0xB7, 0xA0, 0x00, 0x00, 0x00, 0x4C, 0x89,
-            0x77, 0x30, 0x4C, 0x89, 0x7F, 0x38, 0xC5, 0xFA, 0x7F, 0x5F, 0x70, 0xC5, 0xFA, 0x7F, 0xBF, 0xB0,
-            0x00, 0x00, 0x00, 0xc5, 0x7a, 0x6f, 0x5c, 0x24, 0x40, 0xc5, 0x7a, 0x6f, 0x64, 0x24, 0x30, 0xc5,
-            0x7a, 0x6f, 0x6c, 0x24, 0x20, 0xc5, 0x7a, 0x6f, 0x74, 0x24, 0x10, 0xc5, 0x7a, 0x6f, 0x3c, 0x24,
-            0x48, 0x83, 0xc4, 0x50, 0xc5, 0xfa, 0x6f, 0x74, 0x24, 0x40, 0xc5, 0xfa, 0x6f, 0x7c, 0x24, 0x30,
-            0xc5, 0x7a, 0x6f, 0x44, 0x24, 0x20, 0xc5, 0x7a, 0x6f, 0x4c, 0x24, 0x10, 0xc5, 0x7a, 0x6f, 0x14,
-            0x24, 0x48, 0x83, 0xc4, 0x50, 0x41, 0x5F, 0x41, 0x5E, 0x41, 0x5D, 0x41, 0x5C, 0x5F, 0x5E, 0x5D,
-            0x5B, 0xC3
-        ));
-<span style = "background-color:#dfd">    }</span>
+<span style = "background-color:#dfd">        const uint8_t read_reg0 = static_cast&lt;uint8_t&gt;(0xc2 + 8 * (0 + ((program.entropy[12] &gt;&gt; 0) &amp; 1)));
+        const auto rr0_offset{ 149 };
+        std::memcpy(reinterpret_cast&lt;char*&gt;(jit.get()) + loop_finalization_offset + rr0_offset, &amp;read_reg0, sizeof(uint8_t));</span>
 
-    namespace {
-        // Used to initialize "A-group" register values:
-        // https://github.com/tevador/RandomX/blob/master/doc/specs.md#452-group-a-register-initialization
-<span style = "background-color:#dfd">        constexpr double getSmallPositiveFloat(const uint64_t entropy) noexcept {
-            constexpr uint64_t Exponent_Size{ 11 };
-            constexpr uint64_t Mantissa_Mask{ (1ULL &lt;&lt; Mantissa_Size) - 1 };
-            constexpr uint64_t Exponent_Mask{ (1ULL &lt;&lt; Exponent_Size) - 1 };
-            constexpr uint64_t Exponent_Bias{ 1023 };</span>
-
-<span style = "background-color:#dfd">            const auto mantissa{ entropy &amp; Mantissa_Mask };</span>
-
-<span style = "background-color:#dfd">            auto exponent{ entropy &gt;&gt; 59 }; // 0 .. 31
-            exponent += Exponent_Bias;
-            exponent &amp;= Exponent_Mask;
-            exponent &lt;&lt;= Mantissa_Size;</span>
-
-<span style = "background-color:#dfd">            return std::bit_cast&lt;double&gt;(exponent | mantissa);
-        }</span>
-
-        // Used to get "E-group" register masks:
-        // https://github.com/tevador/RandomX/blob/master/doc/specs.md#456-group-e-register-masks
-<span style = "background-color:#dfd">        constexpr uint64_t getFloatRegisterMask(const uint64_t entropy) noexcept {
-            constexpr uint64_t Mask22_Bits{ (1ULL &lt;&lt; 22) - 1 };
-            constexpr uint64_t Exponent_Bits{ 4 };</span>
-
-<span style = "background-color:#dfd">            uint64_t exponent{ 0b01100000000 }; // Step 2. of: https://github.com/tevador/RandomX/blob/master/doc/specs.md#432-group-e-register-conversion
-            exponent |= (entropy &gt;&gt; (64 - Exponent_Bits)) &lt;&lt; Exponent_Bits;
-            exponent &lt;&lt;= Mantissa_Size;</span>
-
-<span style = "background-color:#dfd">            return (entropy &amp; Mask22_Bits) | exponent;
-        }</span>
-    }
+<span style = "background-color:#dfd">        const uint8_t read_reg1 = static_cast&lt;uint8_t&gt;(0xc2 + 8 * (2 + ((program.entropy[12] &gt;&gt; 1) &amp; 1)));
+        const auto rr1_offset{ 152 };
+        std::memcpy(reinterpret_cast&lt;char*&gt;(jit.get()) + loop_finalization_offset + rr1_offset, &amp;read_reg1, sizeof(uint8_t));
+    }</span>
 }</pre>
         <hr />
         <table width="100%">

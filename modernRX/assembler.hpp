@@ -755,6 +755,10 @@ namespace modernRX::assembler {
             return data.data();
         }
 
+        [[nodiscard]] constexpr const size_t codeSize() noexcept {
+            return code.size();
+        }
+
         std::vector<std::pair<size_t, size_t>> data_ptr_pos;
         code_vector code;
         data_vector data;
