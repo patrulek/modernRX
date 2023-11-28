@@ -1,5 +1,12 @@
 ## modernRX - Changelog
 
+### v0.7.2 - 28.11.2023:
+
+Hash calculation optimization with thread affinity and scratchpad hash&fill.
+All optimization decisions made in this version:
+* add scratchpad prefetching with aes hash and fill
+* enforce alignment on some variables used in aes hash and fill
+
 ### v0.7.1 - 28.11.2023:
 
 Hash calculation optimization with thread affinity and scratchpad hash&fill.

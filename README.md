@@ -97,15 +97,15 @@ Sample output:
 ```console
 [ 0] Blake2b::hash                            ... Passed (<1ms)
 [ 1] Argon2d::Blake2b::hash                   ... Passed (<1ms)
-[ 2] Argon2d::fillMemory                      ... Passed (20.671s)
+[ 2] Argon2d::fillMemory                      ... Passed (19.607s)
 [ 3] AesGenerator1R::fill                     ... Passed (<1ms)
 [ 4] AesGenerator4R::fill                     ... Passed (<1ms)
 [ 5] AesHash1R                                ... Passed (<1ms)
 [ 6] Blake2brandom::get                       ... Passed (<1ms)
 [ 7] Reciprocal                               ... Passed (<1ms)
-[ 8] Superscalar::generate                    ... Passed (0.010s)
-[ 9] Dataset::generate                        ... Passed (26.625s)
-[10] VirtualMachine::execute                  ... Passed (17.685s)
+[ 8] Superscalar::generate                    ... Passed (0.012s)
+[ 9] Dataset::generate                        ... Passed (25.411s)
+[10] VirtualMachine::execute                  ... Passed (16.984s)
 ```
 
 Ideally, tests should be run before every release in `Release` and `Debug` mode with `AddressSanitizer` enabled. `ReleaseAsan` and `DebugAsan` project configurations are provided for this purpose.
@@ -156,7 +156,7 @@ CPU temperature limit was set to 95°C.
 |                                | Blake2b [H/s] | Blake2bLong [H/s] | Argon2d [MB/s] | Aes1R [MB/s] | Aes4R [MB/s] | AesHash1R [H/s] | Superscalar [Prog/s] | Dataset [MB/s] | Hash [H/s] | Efficiency [H/Watt/s] |
 | ------------------------------ | :-----------: | :---------------: | :------------: | :----------: | :----------: | :-------------: | :------------------: | :------------: | :--------: | :-------------------: |
 | RandomX-1.2.1 (102f8acf)       |        3.231M |           103.46K |          881.4 |      47402.5 |      11473.4 |           23702 |                 2754 |         ~838.7 |   **4554** |            **~84.33** |
-| modernRX 0.7.1                 |    **5.449M** |       **172.14K** |     **1234.4** |  **47465.2** |  **11882.1** |       **23725** |             **9698** |     **1247.6** |       3043 |                ~62.74 |
+| modernRX 0.7.2                 |    **5.455M** |       **172.07K** |     **1238.7** |  **47429.1** |  **11889.1** |       **23762** |             **9619** |     **1268.0** |       3113 |                ~64.05 |
 
 Original RandomX provides benchmark only for calculating final hashes. All other values were estimated (based on information benchmark provides) or some custom benchmarks were written on top of RandomX implementation, thus values may not be 100% accurate.
 
@@ -199,7 +199,7 @@ Project follows [zero-based versioning](https://0ver.org/) with several specific
 
 ## Changelog
 
-* **v0.7.1 - 28.11.2023:** optimize hash calculation (thread affinity, scratchpad hash and fill)
+* **v0.7.2 - 28.11.2023:** optimize hash calculation (prefetching scratchpad in aes hash and fill)
 * ...
 * **v0.1.3 - 29.10.2023:** bugfixes, benchmarks corrections, code cleanup
 * ...
@@ -215,11 +215,11 @@ $> gocloc /exclude-ext "xml,json,txt,exp" /not-match-d "3rdparty/*|x64/*|assets/
 -------------------------------------------------------------------------------
 Language                     files          blank        comment           code
 -------------------------------------------------------------------------------
-C++                             17            607            381           3459
+C++                             17            609            381           3462
 C++ Header                      35            527            577           3043
-Markdown                         3            178              0            527
+Markdown                         3            180              0            534
 -------------------------------------------------------------------------------
-TOTAL                           55           1312            958           7029
+TOTAL                           55           1316            958           7039
 -------------------------------------------------------------------------------
 ```
 

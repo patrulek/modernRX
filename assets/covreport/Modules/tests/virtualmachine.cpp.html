@@ -94,7 +94,7 @@ namespace modernRX {
         aes::hashAndFill1R(rfa_view, seed, scratchpad_view);</span>
 
         // Get final hash.
-        RxHash output;
+        alignas(32) RxHash output;
 <span style = "background-color:#dfd">        auto rf_view{ span_cast&lt;std::byte, sizeof(RegisterFile)&gt;(scratchpad.data()) };
         blake2b::hash(output.buffer(), rf_view);
         callback(output);

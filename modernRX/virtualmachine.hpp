@@ -71,11 +71,11 @@ namespace modernRX {
 
 
         std::array<std::byte, 64> seed;
+        BlockTemplate block_template;
         std::span<const DatasetItem> dataset;
         std::span<std::byte, Required_Memory> scratchpad;
         BytecodeCompiler compiler;
         jit_function_ptr<JITRxProgram> jit{ nullptr };
-        BlockTemplate block_template;
         bool new_block_template{ false };
     };
 }

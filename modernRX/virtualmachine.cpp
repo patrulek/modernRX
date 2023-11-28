@@ -83,7 +83,7 @@ namespace modernRX {
         aes::hashAndFill1R(rfa_view, seed, scratchpad_view);
 
         // Get final hash.
-        RxHash output;
+        alignas(32) RxHash output;
         auto rf_view{ span_cast<std::byte, sizeof(RegisterFile)>(scratchpad.data()) };
         blake2b::hash(output.buffer(), rf_view);
         callback(output);
