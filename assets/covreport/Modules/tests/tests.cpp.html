@@ -602,12 +602,14 @@ void testVM();
             program = superscalar.generate();
         }</span>
 
-<span style = "background-color:#dfd">        auto dataset{ generateDataset(cache.view(), programs) };</span>
+<span style = "background-color:#dfd">        auto dataset{ generateDataset(cache.view(), programs) };
+        HeapArray&lt;std::byte, Rx_Scratchpad_L3_Size&gt; scratchpad(VirtualMachine::requiredMemory());</span>
 
-<span style = "background-color:#dfd">        VirtualMachine vm;</span>
+<span style = "background-color:#dfd">        VirtualMachine vm(scratchpad.buffer&lt;VirtualMachine::requiredMemory()&gt;());</span>
         BlockTemplate bt;
 <span style = "background-color:#dfd">        std::memcpy(bt.data, block_template.data(), sizeof(block_template));
         vm.reset(bt, dataset);
+        vm.execute(nullptr); // After reset, first hash is calculated with second `execute` call.
         vm.execute([&amp;expected](const RxHash&amp; hash) {
             testAssert(hash == expected);
         });
@@ -630,13 +632,15 @@ void testVM();
             program = superscalar.generate();
         }</span>
 
-<span style = "background-color:#dfd">        auto dataset{ generateDataset(cache.view(), programs) };</span>
+<span style = "background-color:#dfd">        auto dataset{ generateDataset(cache.view(), programs) };
+        HeapArray&lt;std::byte, Rx_Scratchpad_L3_Size&gt; scratchpad(VirtualMachine::requiredMemory());</span>
 
-<span style = "background-color:#dfd">        VirtualMachine vm;</span>
+<span style = "background-color:#dfd">        VirtualMachine vm(scratchpad.buffer&lt;VirtualMachine::requiredMemory()&gt;());</span>
         BlockTemplate bt;
 <span style = "background-color:#dfd">        std::memcpy(bt.data, block_template.data(), sizeof(block_template));
         bt.data[42] = 1;
         vm.reset(bt, dataset);
+        vm.execute(nullptr); // After reset, first hash is calculated with second `execute` call.
         vm.execute([&amp;expected](const RxHash&amp; hash) {
             testAssert(hash == expected);
         });</span>

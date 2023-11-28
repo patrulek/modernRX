@@ -101,16 +101,18 @@ public:
         return data_[index];
     }
 
-    [[nodiscard]] constexpr std::span<T> buffer() noexcept {
-        return std::span<T>(data_, capacity_);
+    template<size_t Extent = std::numeric_limits<size_t>::max()>
+    [[nodiscard]] constexpr std::span<T, Extent> buffer() noexcept {
+        return std::span<T, Extent>(data_, capacity_);
     }
 
     [[nodiscard]] constexpr const_span<T> view() const noexcept {
         return const_span<T>(data_, capacity_);
     }
 
-    [[nodiscard]] constexpr std::span<T> buffer(const size_t offset, const size_t size) noexcept {
-        return std::span<T>(data_ + offset, size);
+    template<size_t Extent = std::numeric_limits<size_t>::max()>
+    [[nodiscard]] constexpr std::span<T, Extent> buffer(const size_t offset, const size_t size) noexcept {
+        return std::span<T, Extent>(data_ + offset, size);
     }
 
     [[nodiscard]] constexpr std::span<T> view(const size_t offset, const size_t size) const noexcept {

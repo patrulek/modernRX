@@ -13,7 +13,7 @@ namespace modernRX {
         constexpr uint8_t Sib_Reg_Idx{ 4 };
     }
 
-    void BytecodeCompiler::iaddrs_cmpl(const RxInstruction& instr, const uint32_t idx) {
+    void BytecodeCompiler::iaddrs_cmpl(const RxInstruction& instr, const uint32_t idx) noexcept {
         constexpr uint8_t Displacement_Reg_Idx{ 5 };
         const uint8_t dst_register{ instr.dst_register };
         const uint8_t src_register{ instr.src_register };
@@ -37,7 +37,7 @@ namespace modernRX {
 
     }
 
-    void BytecodeCompiler::iaddm_cmpl(const RxInstruction& instr, const uint32_t idx) {
+    void BytecodeCompiler::iaddm_cmpl(const RxInstruction& instr, const uint32_t idx) noexcept {
         const uint8_t dst_register{ instr.dst_register };
         const uint8_t src_register{ instr.src_register };
         reg_usage[dst_register] = idx;
@@ -71,7 +71,7 @@ namespace modernRX {
         }
     }
 
-    void BytecodeCompiler::isubr_cmpl(const RxInstruction& instr, const uint32_t idx) {
+    void BytecodeCompiler::isubr_cmpl(const RxInstruction& instr, const uint32_t idx) noexcept {
         const uint8_t dst_register{ instr.dst_register };
         const uint8_t src_register{ instr.src_register };
         reg_usage[dst_register] = idx;
@@ -88,7 +88,7 @@ namespace modernRX {
         }
     }
 
-    void BytecodeCompiler::isubm_cmpl(const RxInstruction& instr, const uint32_t idx) {
+    void BytecodeCompiler::isubm_cmpl(const RxInstruction& instr, const uint32_t idx) noexcept {
         const uint8_t dst_register{ instr.dst_register };
         const uint8_t src_register{ instr.src_register };
         reg_usage[dst_register] = idx;
@@ -122,7 +122,7 @@ namespace modernRX {
         }
     }
 
-    void BytecodeCompiler::imulr_cmpl(const RxInstruction& instr, const uint32_t idx) {
+    void BytecodeCompiler::imulr_cmpl(const RxInstruction& instr, const uint32_t idx) noexcept {
         const uint8_t dst_register{ instr.dst_register };
         const uint8_t src_register{ instr.src_register };
 
@@ -140,7 +140,7 @@ namespace modernRX {
         }
     }
 
-    void BytecodeCompiler::imulm_cmpl(const RxInstruction& instr, const uint32_t idx) {
+    void BytecodeCompiler::imulm_cmpl(const RxInstruction& instr, const uint32_t idx) noexcept {
         const uint8_t dst_register{ instr.dst_register };
         const uint8_t src_register{ instr.src_register };
 
@@ -175,7 +175,7 @@ namespace modernRX {
         }
     }
 
-    void BytecodeCompiler::imulhr_cmpl(const RxInstruction& instr, const uint32_t idx) {
+    void BytecodeCompiler::imulhr_cmpl(const RxInstruction& instr, const uint32_t idx) noexcept {
         const uint8_t dst_register{ instr.dst_register };
         const uint8_t src_register{ instr.src_register };
         reg_usage[dst_register] = idx;
@@ -188,7 +188,7 @@ namespace modernRX {
 
     }
 
-    void BytecodeCompiler::imulhm_cmpl(const RxInstruction& instr, const uint32_t idx) {
+    void BytecodeCompiler::imulhm_cmpl(const RxInstruction& instr, const uint32_t idx) noexcept {
         const uint8_t dst_register{ instr.dst_register };
         const uint8_t src_register{ instr.src_register };
 
@@ -227,7 +227,7 @@ namespace modernRX {
         }
     }
 
-    void BytecodeCompiler::ismulhr_cmpl(const RxInstruction& instr, const uint32_t idx) {
+    void BytecodeCompiler::ismulhr_cmpl(const RxInstruction& instr, const uint32_t idx) noexcept {
         const uint8_t dst_register{ instr.dst_register };
         const uint8_t src_register{ instr.src_register };
 
@@ -240,7 +240,7 @@ namespace modernRX {
         code_size += 9;
     }
 
-    void BytecodeCompiler::ismulhm_cmpl(const RxInstruction& instr, const uint32_t idx) {
+    void BytecodeCompiler::ismulhm_cmpl(const RxInstruction& instr, const uint32_t idx) noexcept {
         const uint8_t dst_register{ instr.dst_register };
         const uint8_t src_register{ instr.src_register };
         reg_usage[dst_register] = idx;
@@ -279,7 +279,7 @@ namespace modernRX {
         }
     }
 
-    void BytecodeCompiler::inegr_cmpl(const RxInstruction& instr, const uint32_t idx) {
+    void BytecodeCompiler::inegr_cmpl(const RxInstruction& instr, const uint32_t idx) noexcept {
         const uint8_t dst_register{ instr.dst_register };
         reg_usage[dst_register] = idx;
         const uint32_t neg{ 0x00'd8'f7'49 | uint32_t(dst_register) << 16 };
@@ -287,7 +287,7 @@ namespace modernRX {
         code_size += 3;
     }
 
-    void BytecodeCompiler::ixorr_cmpl(const RxInstruction& instr, const uint32_t idx) {
+    void BytecodeCompiler::ixorr_cmpl(const RxInstruction& instr, const uint32_t idx) noexcept {
         const uint8_t dst_register{ instr.dst_register };
         const uint8_t src_register{ instr.src_register };
         reg_usage[dst_register] = idx;
@@ -304,7 +304,7 @@ namespace modernRX {
         }
     }
 
-    void BytecodeCompiler::ixorm_cmpl(const RxInstruction& instr, const uint32_t idx) {
+    void BytecodeCompiler::ixorm_cmpl(const RxInstruction& instr, const uint32_t idx) noexcept {
         const uint8_t dst_register{ instr.dst_register };
         const uint8_t src_register{ instr.src_register };
 
@@ -339,7 +339,7 @@ namespace modernRX {
         }
     }
 
-    void BytecodeCompiler::irorr_cmpl(const RxInstruction& instr, const uint32_t idx) {
+    void BytecodeCompiler::irorr_cmpl(const RxInstruction& instr, const uint32_t idx) noexcept {
         const uint8_t dst_register{ instr.dst_register };
         const uint8_t src_register{ instr.src_register };
 
@@ -357,7 +357,7 @@ namespace modernRX {
         }
     }
 
-    void BytecodeCompiler::irolr_cmpl(const RxInstruction& instr, const uint32_t idx) {
+    void BytecodeCompiler::irolr_cmpl(const RxInstruction& instr, const uint32_t idx) noexcept {
         const uint8_t dst_register{ instr.dst_register };
         const uint8_t src_register{ instr.src_register };
         // Set even for rotate == 0.
@@ -374,7 +374,7 @@ namespace modernRX {
         }
     }
 
-    void BytecodeCompiler::imulrcp_cmpl(const RxInstruction& instr, const uint32_t idx) {
+    void BytecodeCompiler::imulrcp_cmpl(const RxInstruction& instr, const uint32_t idx) noexcept {
         if (const uint32_t imm = instr.imm32; imm != 0 && !std::has_single_bit(imm)) {
             const uint8_t dst_register{ instr.dst_register };
             reg_usage[dst_register] = idx;
@@ -388,7 +388,7 @@ namespace modernRX {
         }
     }
 
-    void BytecodeCompiler::iswapr_cmpl(const RxInstruction& instr, const uint32_t idx) {
+    void BytecodeCompiler::iswapr_cmpl(const RxInstruction& instr, const uint32_t idx) noexcept {
         const uint8_t dst_register{ instr.dst_register };
         const uint8_t src_register{ instr.src_register };
 
@@ -402,7 +402,7 @@ namespace modernRX {
         }
     }
 
-    void BytecodeCompiler::cbranch_cmpl(const RxInstruction& instr, const uint32_t idx) {
+    void BytecodeCompiler::cbranch_cmpl(const RxInstruction& instr, const uint32_t idx) noexcept {
         const uint8_t dst_register{ instr.dst_register };
         const uint8_t src_register{ instr.src_register };
 
@@ -429,14 +429,14 @@ namespace modernRX {
         }
     }
 
-    void BytecodeCompiler::fswapr_cmpl(const RxInstruction& instr, const uint32_t idx) {
+    void BytecodeCompiler::fswapr_cmpl(const RxInstruction& instr, const uint32_t idx) noexcept {
         const uint8_t dst_register{ instr.dst_register };
         const uint64_t vshufpd{ 0x00'00'00'01'c0'c6'c1'c5 | uint64_t(56 - 8 * dst_register) << 8 | uint64_t(9 * dst_register) << 24 };
         std::memcpy(code_buffer + code_size, &vshufpd, sizeof(vshufpd));
         code_size += 5;
     }
 
-    void BytecodeCompiler::faddr_cmpl(const RxInstruction& instr, const uint32_t idx) {
+    void BytecodeCompiler::faddr_cmpl(const RxInstruction& instr, const uint32_t idx) noexcept {
         const uint8_t dst_register{ instr.dst_register % Float_Register_Count };
         const uint8_t src_register{ instr.src_register % Float_Register_Count };
         const uint32_t vaddpd{ 0xc0'58'a1'c5 | uint32_t(24 - 8 * src_register) << 8 | uint32_t(9 * dst_register) << 24 };
@@ -444,7 +444,7 @@ namespace modernRX {
         code_size += 4;
     }
 
-    void BytecodeCompiler::faddm_cmpl(const RxInstruction& instr, const uint32_t idx) {
+    void BytecodeCompiler::faddm_cmpl(const RxInstruction& instr, const uint32_t idx) noexcept {
         const uint8_t src_register{ instr.src_register };
         const uint8_t f_dst_register{ instr.dst_register % Float_Register_Count };
         const uint64_t mem_mask{ instr.modMask() ? Scratchpad_L1_Mask : Scratchpad_L2_Mask };
@@ -469,7 +469,7 @@ namespace modernRX {
         }
     }
 
-    void BytecodeCompiler::fsubr_cmpl(const RxInstruction& instr, const uint32_t idx) {
+    void BytecodeCompiler::fsubr_cmpl(const RxInstruction& instr, const uint32_t idx) noexcept {
         const uint8_t dst_register{ instr.dst_register % Float_Register_Count };
         const uint8_t src_register{ instr.src_register % Float_Register_Count };
         const uint64_t vsubpd{ 0x00'00'00'c0'5c'61'c1'c4 | uint64_t(24 - 8 * dst_register) << 16 | uint64_t(8 * dst_register + src_register) << 32 };
@@ -477,7 +477,7 @@ namespace modernRX {
         code_size += 5;
     }
 
-    void BytecodeCompiler::fsubm_cmpl(const RxInstruction& instr, const uint32_t idx) {
+    void BytecodeCompiler::fsubm_cmpl(const RxInstruction& instr, const uint32_t idx) noexcept {
         const uint8_t src_register{ instr.src_register };
         const uint8_t f_dst_register{ instr.dst_register % Float_Register_Count };
         const uint64_t mem_mask{ instr.modMask() ? Scratchpad_L1_Mask : Scratchpad_L2_Mask };
@@ -502,14 +502,14 @@ namespace modernRX {
         }
     }
 
-    void BytecodeCompiler::fscalr_cmpl(const RxInstruction& instr, const uint32_t idx) {
+    void BytecodeCompiler::fscalr_cmpl(const RxInstruction& instr, const uint32_t idx) noexcept {
         const uint8_t dst_register{ instr.dst_register % Float_Register_Count };
         const uint32_t xorps{ 0xc6'57'0f'41 | uint32_t(8 * dst_register) << 24 };
         std::memcpy(code_buffer + code_size, &xorps, sizeof(xorps));
         code_size += 4;
     }
 
-    void BytecodeCompiler::fmulr_cmpl(const RxInstruction& instr, const uint32_t idx) {
+    void BytecodeCompiler::fmulr_cmpl(const RxInstruction& instr, const uint32_t idx) noexcept {
         const uint8_t dst_register{ instr.dst_register % Float_Register_Count };
         const uint8_t src_register{ instr.src_register % Float_Register_Count };
         const uint32_t vmulpd{ 0xe4'59'81'c5 | uint32_t(56 - 8 * src_register) << 8 | uint32_t(9 * dst_register) << 24 };
@@ -517,7 +517,7 @@ namespace modernRX {
         code_size += 4;
     }
 
-    void BytecodeCompiler::fdivm_cmpl(const RxInstruction& instr, const uint32_t idx) {
+    void BytecodeCompiler::fdivm_cmpl(const RxInstruction& instr, const uint32_t idx) noexcept {
         const uint8_t src_register{ instr.src_register };
         const uint8_t f_dst_register{ instr.dst_register % Float_Register_Count };
         const uint64_t mem_mask{ instr.modMask() ? Scratchpad_L1_Mask : Scratchpad_L2_Mask };
@@ -547,14 +547,14 @@ namespace modernRX {
         }
     }
 
-    void BytecodeCompiler::fsqrtr_cmpl(const RxInstruction& instr, const uint32_t idx) {
+    void BytecodeCompiler::fsqrtr_cmpl(const RxInstruction& instr, const uint32_t idx) noexcept {
         const uint8_t dst_register{ instr.dst_register % Float_Register_Count };
         const uint32_t vsqrtpd{ 0xe4'51'f9'c5 | uint32_t(9 * dst_register) << 24 };
         std::memcpy(code_buffer + code_size, &vsqrtpd, sizeof(vsqrtpd));
         code_size += 4;
     }
 
-    void BytecodeCompiler::cfround_cmpl(const RxInstruction& instr, const uint32_t idx) {
+    void BytecodeCompiler::cfround_cmpl(const RxInstruction& instr, const uint32_t idx) noexcept {
         const uint8_t src_register{ instr.src_register };
 
         if (const uint64_t imm{ instr.imm32 % 64 }; imm != 0) {
@@ -578,7 +578,7 @@ namespace modernRX {
         }
     }
 
-    void BytecodeCompiler::istore_cmpl(const RxInstruction& instr, const uint32_t idx) {
+    void BytecodeCompiler::istore_cmpl(const RxInstruction& instr, const uint32_t idx) noexcept {
         const uint8_t dst_register{ instr.dst_register };
         const uint8_t src_register{ instr.src_register };
         const uint32_t imm{ instr.imm32 };

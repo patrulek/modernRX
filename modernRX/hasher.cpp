@@ -8,20 +8,32 @@
 #include "hasher.hpp"
 #include "randomxparams.hpp"
 #include "superscalar.hpp"
-
+#include "thread.hpp"
 
 namespace modernRX {
     Hasher::Hasher() {
         checkCPU();
+
+        // If hyper-threading is enabled, use half of available threads.
+        // Possibly it would be better to use L3 cache size to calculate number of threads.
+        const auto threads{ CPUInfo::HTT() ? std::thread::hardware_concurrency() / 2 : std::thread::hardware_concurrency() };
+        vms.reserve(threads);
+        vm_workers.reserve(vms.size());
+
+        // Allocate memory for VMs.
+        constexpr auto Vm_Required_Memory{ VirtualMachine::requiredMemory() };
+        constexpr auto Offset{ 0 };
+        constexpr auto Total_Vm_Memory{ Vm_Required_Memory + Offset };
+        scratchpads.reserve(threads * Total_Vm_Memory);
+
+        for (uint32_t i = 0; i < threads; ++i) {
+            vms.emplace_back(scratchpads.buffer<Vm_Required_Memory>(i * Total_Vm_Memory, Vm_Required_Memory));
+        }
     }
 
     Hasher::Hasher(const_span<std::byte> key) :
         Hasher() {
-        // If hyper-threading is enabled, use half of available threads.
-        // Possibly it would be better to use L3 cache size to calculate number of threads.
-        const auto threads{ CPUInfo::HTT() ? std::thread::hardware_concurrency() / 2 : std::thread::hardware_concurrency() };
-        vms.resize(threads);
-        vm_workers.reserve(vms.size());
+
         reset(key);
     }
 
@@ -36,17 +48,33 @@ namespace modernRX {
             return;
         }
 
-        // If callback is not provided, use empty function.
-        if (callback == nullptr) {
-            callback = [](const RxHash&) {};
-        }
+        std::atomic<size_t> vm_init{ 0 };
 
-        for (auto& vm : vms) {
-            vm_workers.emplace_back([&vm, callback, this]() {
-                for (; this->running; ) {
+        for (uint32_t vm_id = 0; vm_id < vms.size(); ++vm_id) {
+            vm_workers.emplace_back([&vm_init, callback, vm_id, this]() {
+                vm_init.fetch_add(1, std::memory_order_relaxed);
+
+                if (!setThreadAffinity(vm_id)) {
+                    vm_init.fetch_add(vms.size(), std::memory_order_relaxed);
+                    return;
+                }
+
+                auto& vm{ vms[vm_id] };
+                while (this->running) {
                     vm.execute(callback);
                 }
             });
+        }
+
+        // Wait for worker threads to initialize.
+        while (vm_init.load(std::memory_order_relaxed) < vms.size()) {
+            std::this_thread::yield();
+        }
+
+        // If any thread failed to initialize, stop and throw exception.
+        if (vm_init.load(std::memory_order_relaxed) > vms.size()) {   
+            stop();
+            throw modernRX::Exception("Failed to initialize VirtualMachine worker threads");
         }
     }
 
@@ -60,6 +88,7 @@ namespace modernRX {
         for (auto& worker : vm_workers) {
             worker.join();
         }
+
         vm_workers.clear();
     }
 

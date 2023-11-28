@@ -112,17 +112,19 @@ public:
         return data_[index];
     }</span>
 
-<span style = "background-color:#dfd">    [[nodiscard]] constexpr std::span&lt;T&gt; buffer() noexcept {
-        return std::span&lt;T&gt;(data_, capacity_);
+    template&lt;size_t Extent = std::numeric_limits&lt;size_t&gt;::max()&gt;
+<span style = "background-color:#dfd">    [[nodiscard]] constexpr std::span&lt;T, Extent&gt; buffer() noexcept {
+        return std::span&lt;T, Extent&gt;(data_, capacity_);
     }</span>
 
 <span style = "background-color:#dfd">    [[nodiscard]] constexpr const_span&lt;T&gt; view() const noexcept {
         return const_span&lt;T&gt;(data_, capacity_);
     }</span>
 
-<span style = "background-color:#dfd">    [[nodiscard]] constexpr std::span&lt;T&gt; buffer(const size_t offset, const size_t size) noexcept {
-        return std::span&lt;T&gt;(data_ + offset, size);
-    }</span>
+    template&lt;size_t Extent = std::numeric_limits&lt;size_t&gt;::max()&gt;
+    [[nodiscard]] constexpr std::span&lt;T, Extent&gt; buffer(const size_t offset, const size_t size) noexcept {
+        return std::span&lt;T, Extent&gt;(data_ + offset, size);
+    }
 
     [[nodiscard]] constexpr std::span&lt;T&gt; view(const size_t offset, const size_t size) const noexcept {
         return const_span&lt;T&gt;(data_ + offset, size);

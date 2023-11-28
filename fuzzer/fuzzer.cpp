@@ -26,7 +26,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     }
 
     auto dataset{ generateDataset(cache.view(), programs) };
-    VirtualMachine vm;
+    HeapArray<std::byte, Rx_Scratchpad_L3_Size> scratchpad(VirtualMachine::requiredMemory());
+
+    VirtualMachine vm(scratchpad.buffer<VirtualMachine::requiredMemory()>());
     BlockTemplate bt;
     std::memcpy(bt.data, key_or_data.data(), key_or_data.size());
 
@@ -60,6 +62,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     for (int i = 0; i < size; ++i) {
         RxHash modernRX_hash;
         vm.reset(bt, dataset);
+        vm.execute(nullptr); // First 'execute' after reset does only initialization.
         vm.execute([&modernRX_hash](const RxHash& hash) {
             modernRX_hash = hash;
         });

@@ -14,4 +14,7 @@ namespace modernRX::aes {
     // The input size must be a multiple of 64 bytes if Fixed is false, otherwise it will be the size of the Scratchpad memory.
     template<bool Fixed = true>
     void hash1R(std::span<std::byte, 64> output, const_span<std::byte> input) noexcept;
+
+    
+    void hashAndFill1R(std::span<std::byte, 64> hash, std::span<std::byte, 64> seed, std::span<std::byte> scratchpad) noexcept;
 }

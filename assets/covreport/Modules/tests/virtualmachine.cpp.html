@@ -30,15 +30,6 @@ namespace modernRX {
         constexpr uint32_t Scratchpad_L3_Mask64{ (Rx_Scratchpad_L3_Size - 1) &amp; ~63 }; // L3 cache 64-byte alignment mask.
         constexpr uint64_t Cache_Line_Size{ sizeof(DatasetItem) };
         constexpr uint64_t Cache_Line_Align_Mask{ (Rx_Dataset_Base_Size - 1) &amp; ~(Cache_Line_Size - 1) }; // Dataset 64-byte alignment mask.
-
-        // Holds representation of register file used by VirtualMachine during program execution.
-        // https://github.com/tevador/RandomX/blob/master/doc/specs.md#43-registers
-        struct RegisterFile {
-            std::array&lt;uint64_t, Int_Register_Count&gt; r{}; // Common integer registers. Source or destination of integer instructions. Can be used as address registers for scratchpad access.
-            std::array&lt;intrinsics::xmm128d_t, Float_Register_Count&gt; f{}; // "Additive" registers. Destination of floating point addition and substraction instructions.
-            std::array&lt;intrinsics::xmm128d_t, Float_Register_Count&gt; e{}; // "Multiplicative" registers. Destination of floating point multiplication, division and square root instructions.
-            std::array&lt;intrinsics::xmm128d_t, Float_Register_Count&gt; a{}; // Read-only, fixed-value floating point registers. Source operand of any floating point instruction.
-        };
     }
 
     // Holds RandomX program entropy and instructions: https://github.com/tevador/RandomX/blob/master/doc/specs.md#44-program-buffer
@@ -51,69 +42,83 @@ namespace modernRX {
     static_assert(offsetof(RxProgram, entropy) == 0);
 
 
-    VirtualMachine::VirtualMachine() 
-<span style = "background-color:#dfd">        : scratchpad(Rx_Scratchpad_L3_Size + sizeof(RegisterFile)) {
+    VirtualMachine::VirtualMachine(std::span&lt;std::byte, Required_Memory&gt; scratchpad) 
+<span style = "background-color:#dfd">        : scratchpad(scratchpad) {
         jit = makeExecutable&lt;JITRxProgram&gt;(sizeof(Code_Buffer));
         std::memcpy(jit.get(), Code_Buffer.data(), sizeof(Code_Buffer));
         compiler.code_buffer = reinterpret_cast&lt;char*&gt;(jit.get()) + Program_Offset;
     }</span>
 
-<span style = "background-color:#dfd">    void VirtualMachine::reset(BlockTemplate block_template, const_span&lt;DatasetItem&gt; dataset) {
+<span style = "background-color:#dfd">    void VirtualMachine::reset(BlockTemplate block_template, const_span&lt;DatasetItem&gt; dataset) noexcept {
         this-&gt;dataset = dataset;
         this-&gt;block_template = block_template;
+        this-&gt;new_block_template = true;
     }</span>
 
-<span style = "background-color:#dfd">    void VirtualMachine::execute(std::function&lt;void(const RxHash&amp;)&gt; callback) {
-        blake2b::hash(seed, block_template.view());
-        aes::fill1R(scratchpad.buffer(sizeof(RegisterFile), scratchpad.size() - sizeof(RegisterFile)), seed);</span>
+<span style = "background-color:#dfd">    void VirtualMachine::executeNext(std::function&lt;void(const RxHash&amp;)&gt; callback) noexcept{</span>
         // RandomX requires specific float environment before executing any program.
         // This RAII object will set proper float flags on creation and restore its values on destruction. 
 <span style = "background-color:#dfd">        const intrinsics::sse::FloatEnvironment fenv{};
         RxProgram program;
         constexpr uint64_t Dataset_Extra_Items{ Rx_Dataset_Extra_Size / sizeof(DatasetItem) };</span>
-        static_assert(std::has_single_bit(Dataset_Extra_Items + 1));
+        static_assert(Dataset_Extra_Items == 524'287);
         static_assert(Cache_Line_Size == 64);
 
 <span style = "background-color:#dfd">        for (uint32_t i = 0; i &lt; Rx_Program_Count - 1; ++i) {
             generateProgram(program);
             compileProgram(program);</span>
 
-<span style = "background-color:#dfd">            const auto dataset_offset{ (program.entropy[13] &amp; Dataset_Extra_Items) * Cache_Line_Size };
-            const auto dataset_ptr{ reinterpret_cast&lt;uintptr_t&gt;(dataset.data()) + dataset_offset };</span>
+<span style = "background-color:#dfd">            const auto dataset_ptr{ reinterpret_cast&lt;uintptr_t&gt;(dataset.data()) };</span>
             // https://github.com/tevador/RandomX/blob/master/doc/specs.md#462-loop-execution
             // Step 1-13.
 <span style = "background-color:#dfd">            const auto jit_program{ reinterpret_cast&lt;JITRxProgram&gt;(jit.get()) };
-            jit_program(0 /* deprecated */, reinterpret_cast&lt;uintptr_t&gt;(scratchpad.data()) + sizeof(RegisterFile),</span>
-                        dataset_ptr, reinterpret_cast&lt;uintptr_t&gt;(&amp;program));
-<span style = "background-color:#dfd">            blake2b::hash(seed, span_cast&lt;std::byte, sizeof(RegisterFile)&gt;(scratchpad.data()));
+            jit_program(reinterpret_cast&lt;uintptr_t&gt;(scratchpad.data()) + sizeof(RegisterFile), dataset_ptr, reinterpret_cast&lt;uintptr_t&gt;(&amp;program));
+            blake2b::hash(seed, span_cast&lt;std::byte, sizeof(RegisterFile)&gt;(scratchpad.data()));
         }</span>
 
 <span style = "background-color:#dfd">        generateProgram(program);
-        compileProgram(program); </span>
+        compileProgram(program);</span>
 
         // https://github.com/tevador/RandomX/blob/master/doc/specs.md#462-loop-execution
         // Step 1-13.
-<span style = "background-color:#dfd">        const auto dataset_offset{ (program.entropy[13] &amp; Dataset_Extra_Items) * Cache_Line_Size };
-        const auto dataset_ptr{ reinterpret_cast&lt;uintptr_t&gt;(dataset.data()) + dataset_offset };
+<span style = "background-color:#dfd">        const auto dataset_ptr{ reinterpret_cast&lt;uintptr_t&gt;(dataset.data()) };
         const auto jit_program{ reinterpret_cast&lt;JITRxProgram&gt;(jit.get()) };
-        jit_program(0 /* deprecated */, reinterpret_cast&lt;uintptr_t&gt;(scratchpad.data()) + sizeof(RegisterFile),</span>
-            dataset_ptr, reinterpret_cast&lt;uintptr_t&gt;(&amp;program));
+        jit_program(reinterpret_cast&lt;uintptr_t&gt;(scratchpad.data()) + sizeof(RegisterFile), dataset_ptr, reinterpret_cast&lt;uintptr_t&gt;(&amp;program));</span>
 
-<span style = "background-color:#dfd">        aes::hash1R(span_cast&lt;std::byte, sizeof(RegisterFile::a)&gt;(scratchpad.data() + sizeof(RegisterFile) - sizeof(RegisterFile::a)), </span>
-            span_cast&lt;std::byte, Rx_Scratchpad_L3_Size&gt;(scratchpad.data() + sizeof(RegisterFile)));
-        
+
+        // Hash and fill for next iteration.
+<span style = "background-color:#dfd">        block_template.next();
+        blake2b::hash(seed, block_template.view());
+        auto rfa_view{ span_cast&lt;std::byte, sizeof(RegisterFile::a)&gt;(scratchpad.data() + sizeof(RegisterFile) - sizeof(RegisterFile::a)) };
+        auto scratchpad_view{ scratchpad.subspan(sizeof(RegisterFile), Rx_Scratchpad_L3_Size) };
+        aes::hashAndFill1R(rfa_view, seed, scratchpad_view);</span>
+
+        // Get final hash.
         RxHash output;
-<span style = "background-color:#dfd">        blake2b::hash(output.buffer(), span_cast&lt;std::byte, sizeof(RegisterFile)&gt;(scratchpad.data()));
+<span style = "background-color:#dfd">        auto rf_view{ span_cast&lt;std::byte, sizeof(RegisterFile)&gt;(scratchpad.data()) };
+        blake2b::hash(output.buffer(), rf_view);
         callback(output);
-        block_template.next();
     }</span>
 
-<span style = "background-color:#dfd">    void VirtualMachine::generateProgram(RxProgram&amp; program) {
+<span style = "background-color:#dfd">    void VirtualMachine::execute(std::function&lt;void(const RxHash&amp;)&gt; callback) noexcept {
+        if (!new_block_template) {
+            executeNext(callback);
+            return;</span>
+        }
+
+<span style = "background-color:#dfd">        new_block_template = false;</span>
+
+        // Initialize scratchpad.
+<span style = "background-color:#dfd">        blake2b::hash(seed, block_template.view());
+        aes::fill1R(scratchpad.subspan(sizeof(RegisterFile), Rx_Scratchpad_L3_Size), seed);
+    }</span>
+
+<span style = "background-color:#dfd">    void VirtualMachine::generateProgram(RxProgram&amp; program) noexcept {
         aes::fill4R(span_cast&lt;std::byte&gt;(program), seed);</span>
         // Last 64 bytes of the program are now the new seed.
 <span style = "background-color:#dfd">    }</span>
 
-<span style = "background-color:#dfd">    void VirtualMachine::compileProgram(const RxProgram&amp; program) {
+<span style = "background-color:#dfd">    void VirtualMachine::compileProgram(const RxProgram&amp; program) noexcept {
         compiler.reset();</span>
 
         // RDI = rf
@@ -127,25 +132,25 @@ namespace modernRX {
             (compiler.*LUT_Instr_Cmpl[instr.opcode])(instr, i);
         }</span>
 
-<span style = "background-color:#dfd">        auto loop_finalization_offset{ 0 };</span>
-        // Program size thresholds
-        // Jmp to finalize registers.
-<span style = "background-color:#dfd">        if (compiler.code_size &lt; Loop_Finalization_Offset_1 - Program_Offset - 5) {
-            loop_finalization_offset = Loop_Finalization_Offset_1;</span>
-<span style = "background-color:#fdd">        } else if (compiler.code_size &lt; Loop_Finalization_Offset_2 - Program_Offset - 5) {
-            loop_finalization_offset = Loop_Finalization_Offset_2;
-        } else if (compiler.code_size &lt; Max_Program_Size - 5) {
-            loop_finalization_offset = Loop_Finalization_Offset_3;</span>
-        } else {
-            // do nothing; just let it pass through nops
-        }
+<span style = "background-color:#dfd">        constexpr auto loop_finalization_offset{ Loop_Finalization_Offset_3 };
+        constexpr auto Jmp_Code_Size{ 5 };
+        constexpr uint8_t nops[16]{ 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90 };</span>
 
-<span style = "background-color:#dfd">        if (loop_finalization_offset &gt; 0) {
-            const int32_t jmp_offset{ loop_finalization_offset - compiler.code_size - Program_Offset - 5 };
+<span style = "background-color:#dfd">        if (compiler.code_size &lt; Max_Program_Size - Jmp_Code_Size) {</span>
+            // do the jmp
+<span style = "background-color:#dfd">            const auto jmp_pos{ Program_Offset + compiler.code_size + Jmp_Code_Size };
+            const int32_t jmp_offset{ loop_finalization_offset - jmp_pos };
             const uint8_t jmp{ 0xe9 };
             std::memcpy(compiler.code_buffer + compiler.code_size, &amp;jmp, sizeof(uint8_t));
             std::memcpy(compiler.code_buffer + compiler.code_size + 1, &amp;jmp_offset, sizeof(int32_t));
-            compiler.code_size += 5;</span>
+            compiler.code_size += Jmp_Code_Size;
+            const auto nop_size{ std::min&lt;uint32_t&gt;(sizeof(nops), Max_Program_Size - compiler.code_size)};
+            std::memcpy(compiler.code_buffer + compiler.code_size, nops, nop_size);
+            compiler.code_size += nop_size;
+        } else {</span>
+            // fill with nops
+<span style = "background-color:#fdd">            std::memcpy(compiler.code_buffer + compiler.code_size, nops, Max_Program_Size - compiler.code_size);
+            compiler.code_size += Max_Program_Size - compiler.code_size;</span>
         }
 
         // Compile finalize registers.

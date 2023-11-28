@@ -1,5 +1,20 @@
 ## modernRX - Changelog
 
+### v0.7.1 - 28.11.2023:
+
+Hash calculation optimization with thread affinity and scratchpad hash&fill.
+All optimization decisions made in this version:
+* add thread affinity (to prevent threads from migrating between cores and losing cache)
+* combine hash and fill scratchpad (to increase ILP)
+* allocate all VM's scratchpad memory in single chunk (potentially better L3 cache hit ratio)
+
+Improvements:
+* remove multiple loop finalization points in jit code buffer
+* remove deprecated jit program argument
+* move dataset offset calculation to jit program
+* small jit code buffer tweaks
+* general code improvements
+
 ### v0.7.0 - 17.11.2023:
 
 Hash calculation optimization with multi-threading.

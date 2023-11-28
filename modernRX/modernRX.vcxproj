@@ -296,6 +296,7 @@
     <ClInclude Include="dataset.hpp" />
     <ClInclude Include="hasher.hpp" />
     <ClInclude Include="instructionset.hpp" />
+    <ClInclude Include="thread.hpp" />
     <ClInclude Include="virtualmachine.hpp" />
     <ClInclude Include="randomxparams.hpp" />
     <ClInclude Include="reciprocal.hpp" />

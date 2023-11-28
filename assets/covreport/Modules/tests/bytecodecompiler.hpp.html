@@ -55,41 +55,41 @@ namespace modernRX {
         int32_t code_size{ 0 };
         std::array&lt;int32_t, Rx_Program_Size&gt; instr_offset{};
 
-<span style = "background-color:#dfd">        void reset() {
+<span style = "background-color:#dfd">        void reset() noexcept {
             code_size = 0;
             reg_usage.fill(-1);</span>
             // instr_offset will be overwritten during compilation
 <span style = "background-color:#dfd">        }</span>
 
-        void iaddrs_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
-        void iaddm_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
-        void isubr_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
-        void isubm_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
-        void imulr_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
-        void imulm_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
-        void imulhr_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
-        void imulhm_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
-        void ismulhr_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
-        void ismulhm_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
-        void inegr_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
-        void ixorr_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
-        void ixorm_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
-        void irorr_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
-        void irolr_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
-        void imulrcp_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
-        void iswapr_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
-        void cbranch_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
-        void fswapr_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
-        void faddr_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
-        void faddm_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
-        void fsubr_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
-        void fsubm_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
-        void fscalr_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
-        void fmulr_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
-        void fdivm_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
-        void fsqrtr_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
-        void cfround_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
-        void istore_cmpl(const RxInstruction&amp; instr, const uint32_t idx);
+        void iaddrs_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept;
+        void iaddm_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept;
+        void isubr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept;
+        void isubm_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept;
+        void imulr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept;
+        void imulm_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept;
+        void imulhr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept;
+        void imulhm_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept;
+        void ismulhr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept;
+        void ismulhm_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept;
+        void inegr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept;
+        void ixorr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept;
+        void ixorm_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept;
+        void irorr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept;
+        void irolr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept;
+        void imulrcp_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept;
+        void iswapr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept;
+        void cbranch_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept;
+        void fswapr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept;
+        void faddr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept;
+        void faddm_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept;
+        void fsubr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept;
+        void fsubm_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept;
+        void fscalr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept;
+        void fmulr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept;
+        void fdivm_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept;
+        void fsqrtr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept;
+        void cfround_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept;
+        void istore_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept;
     };
 
     using InstrCmpl = void(BytecodeCompiler::*)(const RxInstruction&amp;, const uint32_t);

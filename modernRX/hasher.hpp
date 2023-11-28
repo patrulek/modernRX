@@ -34,7 +34,7 @@ namespace modernRX {
         void reset(const_span<std::byte> key);
 
         // Starts all VirtualMachine worker threads.
-        void run(std::function<void(const RxHash&)> callback = nullptr);
+        void run(std::function<void(const RxHash&)> callback = [](const RxHash&) noexcept {});
 
         // Wait for all VirtualMachine worker threads to finish.
         void stop();
@@ -43,6 +43,7 @@ namespace modernRX {
         std::vector<VirtualMachine> vms; // Virtual machines used for program execution.
         std::vector<std::byte> key; // Latest key used for Dataset generation.
         HeapArray<DatasetItem, 4096> dataset; // Dataset used for program execution.
+        HeapArray<std::byte, 64 * Rx_Scratchpad_L3_Size> scratchpads; // Scratchpads used for program execution.
         std::atomic<bool> running{ false }; // Stop signal for VM threads.
 
         void checkCPU() const; // Ensure CPU supports required features.

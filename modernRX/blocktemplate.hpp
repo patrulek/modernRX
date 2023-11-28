@@ -9,11 +9,11 @@ namespace modernRX {
         uint8_t data[Rx_Block_Template_Size];
 
         // Increases nonce by offset.
-        void next(const uint32_t offset = 1) {
+        void next(const uint32_t offset = 1) noexcept {
             reinterpret_cast<uint32_t&>(data[Rx_Block_Template_Nonce_Offset]) += offset;
         }
 
-        const_span<std::byte> view() const {
+        const_span<std::byte> view() const noexcept {
             return { reinterpret_cast<const std::byte*>(data), Rx_Block_Template_Size };
         }
     };

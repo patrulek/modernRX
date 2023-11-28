@@ -592,11 +592,13 @@ void testVM() {
         }
 
         auto dataset{ generateDataset(cache.view(), programs) };
+        HeapArray<std::byte, Rx_Scratchpad_L3_Size> scratchpad(VirtualMachine::requiredMemory());
 
-        VirtualMachine vm;
+        VirtualMachine vm(scratchpad.buffer<VirtualMachine::requiredMemory()>());
         BlockTemplate bt;
         std::memcpy(bt.data, block_template.data(), sizeof(block_template));
         vm.reset(bt, dataset);
+        vm.execute(nullptr); // After reset, first hash is calculated with second `execute` call.
         vm.execute([&expected](const RxHash& hash) {
             testAssert(hash == expected);
         });
@@ -620,12 +622,14 @@ void testVM() {
         }
 
         auto dataset{ generateDataset(cache.view(), programs) };
+        HeapArray<std::byte, Rx_Scratchpad_L3_Size> scratchpad(VirtualMachine::requiredMemory());
 
-        VirtualMachine vm;
+        VirtualMachine vm(scratchpad.buffer<VirtualMachine::requiredMemory()>());
         BlockTemplate bt;
         std::memcpy(bt.data, block_template.data(), sizeof(block_template));
         bt.data[42] = 1;
         vm.reset(bt, dataset);
+        vm.execute(nullptr); // After reset, first hash is calculated with second `execute` call.
         vm.execute([&expected](const RxHash& hash) {
             testAssert(hash == expected);
         });

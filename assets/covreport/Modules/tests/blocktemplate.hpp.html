@@ -20,11 +20,11 @@ namespace modernRX {
         uint8_t data[Rx_Block_Template_Size];
 
         // Increases nonce by offset.
-<span style = "background-color:#dfd">        void next(const uint32_t offset = 1) {
+<span style = "background-color:#dfd">        void next(const uint32_t offset = 1) noexcept {
             reinterpret_cast&lt;uint32_t&amp;&gt;(data[Rx_Block_Template_Nonce_Offset]) += offset;
         }</span>
 
-<span style = "background-color:#dfd">        const_span&lt;std::byte&gt; view() const {
+<span style = "background-color:#dfd">        const_span&lt;std::byte&gt; view() const noexcept {
             return { reinterpret_cast&lt;const std::byte*&gt;(data), Rx_Block_Template_Size };
         }</span>
     };

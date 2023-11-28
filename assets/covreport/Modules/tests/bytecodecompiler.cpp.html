@@ -24,7 +24,7 @@ namespace modernRX {
         constexpr uint8_t Sib_Reg_Idx{ 4 };
     }
 
-<span style = "background-color:#dfd">    void BytecodeCompiler::iaddrs_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
+<span style = "background-color:#dfd">    void BytecodeCompiler::iaddrs_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept {
         constexpr uint8_t Displacement_Reg_Idx{ 5 };
         const uint8_t dst_register{ instr.dst_register };
         const uint8_t src_register{ instr.src_register };</span>
@@ -48,7 +48,7 @@ namespace modernRX {
 
 <span style = "background-color:#dfd">    }</span>
 
-<span style = "background-color:#dfd">    void BytecodeCompiler::iaddm_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
+<span style = "background-color:#dfd">    void BytecodeCompiler::iaddm_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept {
         const uint8_t dst_register{ instr.dst_register };
         const uint8_t src_register{ instr.src_register };
         reg_usage[dst_register] = idx;</span>
@@ -82,7 +82,7 @@ namespace modernRX {
         }
 <span style = "background-color:#dfd">    }</span>
 
-<span style = "background-color:#dfd">    void BytecodeCompiler::isubr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
+<span style = "background-color:#dfd">    void BytecodeCompiler::isubr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept {
         const uint8_t dst_register{ instr.dst_register };
         const uint8_t src_register{ instr.src_register };
         reg_usage[dst_register] = idx;</span>
@@ -99,7 +99,7 @@ namespace modernRX {
         }
 <span style = "background-color:#dfd">    }</span>
 
-<span style = "background-color:#dfd">    void BytecodeCompiler::isubm_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
+<span style = "background-color:#dfd">    void BytecodeCompiler::isubm_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept {
         const uint8_t dst_register{ instr.dst_register };
         const uint8_t src_register{ instr.src_register };
         reg_usage[dst_register] = idx;</span>
@@ -133,7 +133,7 @@ namespace modernRX {
         }
 <span style = "background-color:#dfd">    }</span>
 
-<span style = "background-color:#dfd">    void BytecodeCompiler::imulr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
+<span style = "background-color:#dfd">    void BytecodeCompiler::imulr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept {
         const uint8_t dst_register{ instr.dst_register };
         const uint8_t src_register{ instr.src_register };</span>
 
@@ -151,7 +151,7 @@ namespace modernRX {
         }
 <span style = "background-color:#dfd">    }</span>
 
-<span style = "background-color:#dfd">    void BytecodeCompiler::imulm_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
+<span style = "background-color:#dfd">    void BytecodeCompiler::imulm_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept {
         const uint8_t dst_register{ instr.dst_register };
         const uint8_t src_register{ instr.src_register };</span>
 
@@ -186,7 +186,7 @@ namespace modernRX {
         }
 <span style = "background-color:#dfd">    }</span>
 
-<span style = "background-color:#dfd">    void BytecodeCompiler::imulhr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
+<span style = "background-color:#dfd">    void BytecodeCompiler::imulhr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept {
         const uint8_t dst_register{ instr.dst_register };
         const uint8_t src_register{ instr.src_register };
         reg_usage[dst_register] = idx;</span>
@@ -199,7 +199,7 @@ namespace modernRX {
 
 <span style = "background-color:#dfd">    }</span>
 
-<span style = "background-color:#dfd">    void BytecodeCompiler::imulhm_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
+<span style = "background-color:#dfd">    void BytecodeCompiler::imulhm_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept {
         const uint8_t dst_register{ instr.dst_register };
         const uint8_t src_register{ instr.src_register };</span>
 
@@ -238,7 +238,7 @@ namespace modernRX {
         }
 <span style = "background-color:#dfd">    }</span>
 
-<span style = "background-color:#dfd">    void BytecodeCompiler::ismulhr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
+<span style = "background-color:#dfd">    void BytecodeCompiler::ismulhr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept {
         const uint8_t dst_register{ instr.dst_register };
         const uint8_t src_register{ instr.src_register };</span>
 
@@ -251,7 +251,7 @@ namespace modernRX {
         code_size += 9;
     }</span>
 
-<span style = "background-color:#dfd">    void BytecodeCompiler::ismulhm_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
+<span style = "background-color:#dfd">    void BytecodeCompiler::ismulhm_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept {
         const uint8_t dst_register{ instr.dst_register };
         const uint8_t src_register{ instr.src_register };
         reg_usage[dst_register] = idx;</span>
@@ -290,7 +290,7 @@ namespace modernRX {
         }
 <span style = "background-color:#dfd">    }</span>
 
-<span style = "background-color:#dfd">    void BytecodeCompiler::inegr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
+<span style = "background-color:#dfd">    void BytecodeCompiler::inegr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept {
         const uint8_t dst_register{ instr.dst_register };
         reg_usage[dst_register] = idx;
         const uint32_t neg{ 0x00'd8'f7'49 | uint32_t(dst_register) &lt;&lt; 16 };
@@ -298,7 +298,7 @@ namespace modernRX {
         code_size += 3;
     }</span>
 
-<span style = "background-color:#dfd">    void BytecodeCompiler::ixorr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
+<span style = "background-color:#dfd">    void BytecodeCompiler::ixorr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept {
         const uint8_t dst_register{ instr.dst_register };
         const uint8_t src_register{ instr.src_register };
         reg_usage[dst_register] = idx;</span>
@@ -315,7 +315,7 @@ namespace modernRX {
         }
 <span style = "background-color:#dfd">    }</span>
 
-<span style = "background-color:#dfd">    void BytecodeCompiler::ixorm_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
+<span style = "background-color:#dfd">    void BytecodeCompiler::ixorm_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept {
         const uint8_t dst_register{ instr.dst_register };
         const uint8_t src_register{ instr.src_register };</span>
 
@@ -350,7 +350,7 @@ namespace modernRX {
         }
 <span style = "background-color:#dfd">    }</span>
 
-<span style = "background-color:#dfd">    void BytecodeCompiler::irorr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
+<span style = "background-color:#dfd">    void BytecodeCompiler::irorr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept {
         const uint8_t dst_register{ instr.dst_register };
         const uint8_t src_register{ instr.src_register };</span>
 
@@ -368,7 +368,7 @@ namespace modernRX {
         }
 <span style = "background-color:#dfd">    }</span>
 
-<span style = "background-color:#dfd">    void BytecodeCompiler::irolr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
+<span style = "background-color:#dfd">    void BytecodeCompiler::irolr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept {
         const uint8_t dst_register{ instr.dst_register };
         const uint8_t src_register{ instr.src_register };</span>
         // Set even for rotate == 0.
@@ -385,7 +385,7 @@ namespace modernRX {
         }
 <span style = "background-color:#dfd">    }</span>
 
-<span style = "background-color:#dfd">    void BytecodeCompiler::imulrcp_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
+<span style = "background-color:#dfd">    void BytecodeCompiler::imulrcp_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept {
         if (const uint32_t imm = instr.imm32; imm != 0 &amp;&amp; !std::has_single_bit(imm)) {
             const uint8_t dst_register{ instr.dst_register };
             reg_usage[dst_register] = idx;
@@ -399,7 +399,7 @@ namespace modernRX {
         }
 <span style = "background-color:#dfd">    }</span>
 
-<span style = "background-color:#dfd">    void BytecodeCompiler::iswapr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
+<span style = "background-color:#dfd">    void BytecodeCompiler::iswapr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept {
         const uint8_t dst_register{ instr.dst_register };
         const uint8_t src_register{ instr.src_register };</span>
 
@@ -413,7 +413,7 @@ namespace modernRX {
         }
 <span style = "background-color:#dfd">    }</span>
 
-<span style = "background-color:#dfd">    void BytecodeCompiler::cbranch_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
+<span style = "background-color:#dfd">    void BytecodeCompiler::cbranch_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept {
         const uint8_t dst_register{ instr.dst_register };
         const uint8_t src_register{ instr.src_register };</span>
 
@@ -440,14 +440,14 @@ namespace modernRX {
         }
     }</span>
 
-<span style = "background-color:#dfd">    void BytecodeCompiler::fswapr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
+<span style = "background-color:#dfd">    void BytecodeCompiler::fswapr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept {
         const uint8_t dst_register{ instr.dst_register };
         const uint64_t vshufpd{ 0x00'00'00'01'c0'c6'c1'c5 | uint64_t(56 - 8 * dst_register) &lt;&lt; 8 | uint64_t(9 * dst_register) &lt;&lt; 24 };
         std::memcpy(code_buffer + code_size, &amp;vshufpd, sizeof(vshufpd));
         code_size += 5;
     }</span>
 
-<span style = "background-color:#dfd">    void BytecodeCompiler::faddr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
+<span style = "background-color:#dfd">    void BytecodeCompiler::faddr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept {
         const uint8_t dst_register{ instr.dst_register % Float_Register_Count };
         const uint8_t src_register{ instr.src_register % Float_Register_Count };
         const uint32_t vaddpd{ 0xc0'58'a1'c5 | uint32_t(24 - 8 * src_register) &lt;&lt; 8 | uint32_t(9 * dst_register) &lt;&lt; 24 };
@@ -455,7 +455,7 @@ namespace modernRX {
         code_size += 4;
     }</span>
 
-<span style = "background-color:#dfd">    void BytecodeCompiler::faddm_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
+<span style = "background-color:#dfd">    void BytecodeCompiler::faddm_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept {
         const uint8_t src_register{ instr.src_register };
         const uint8_t f_dst_register{ instr.dst_register % Float_Register_Count };
         const uint64_t mem_mask{ instr.modMask() ? Scratchpad_L1_Mask : Scratchpad_L2_Mask };
@@ -480,7 +480,7 @@ namespace modernRX {
         }
 <span style = "background-color:#dfd">    }</span>
 
-<span style = "background-color:#dfd">    void BytecodeCompiler::fsubr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
+<span style = "background-color:#dfd">    void BytecodeCompiler::fsubr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept {
         const uint8_t dst_register{ instr.dst_register % Float_Register_Count };
         const uint8_t src_register{ instr.src_register % Float_Register_Count };
         const uint64_t vsubpd{ 0x00'00'00'c0'5c'61'c1'c4 | uint64_t(24 - 8 * dst_register) &lt;&lt; 16 | uint64_t(8 * dst_register + src_register) &lt;&lt; 32 };
@@ -488,7 +488,7 @@ namespace modernRX {
         code_size += 5;
     }</span>
 
-<span style = "background-color:#dfd">    void BytecodeCompiler::fsubm_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
+<span style = "background-color:#dfd">    void BytecodeCompiler::fsubm_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept {
         const uint8_t src_register{ instr.src_register };
         const uint8_t f_dst_register{ instr.dst_register % Float_Register_Count };
         const uint64_t mem_mask{ instr.modMask() ? Scratchpad_L1_Mask : Scratchpad_L2_Mask };
@@ -513,14 +513,14 @@ namespace modernRX {
         }
 <span style = "background-color:#dfd">    }</span>
 
-<span style = "background-color:#dfd">    void BytecodeCompiler::fscalr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
+<span style = "background-color:#dfd">    void BytecodeCompiler::fscalr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept {
         const uint8_t dst_register{ instr.dst_register % Float_Register_Count };
         const uint32_t xorps{ 0xc6'57'0f'41 | uint32_t(8 * dst_register) &lt;&lt; 24 };
         std::memcpy(code_buffer + code_size, &amp;xorps, sizeof(xorps));
         code_size += 4;
     }</span>
 
-<span style = "background-color:#dfd">    void BytecodeCompiler::fmulr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
+<span style = "background-color:#dfd">    void BytecodeCompiler::fmulr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept {
         const uint8_t dst_register{ instr.dst_register % Float_Register_Count };
         const uint8_t src_register{ instr.src_register % Float_Register_Count };
         const uint32_t vmulpd{ 0xe4'59'81'c5 | uint32_t(56 - 8 * src_register) &lt;&lt; 8 | uint32_t(9 * dst_register) &lt;&lt; 24 };
@@ -528,7 +528,7 @@ namespace modernRX {
         code_size += 4;
     }</span>
 
-<span style = "background-color:#dfd">    void BytecodeCompiler::fdivm_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
+<span style = "background-color:#dfd">    void BytecodeCompiler::fdivm_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept {
         const uint8_t src_register{ instr.src_register };
         const uint8_t f_dst_register{ instr.dst_register % Float_Register_Count };
         const uint64_t mem_mask{ instr.modMask() ? Scratchpad_L1_Mask : Scratchpad_L2_Mask };
@@ -558,14 +558,14 @@ namespace modernRX {
         }
 <span style = "background-color:#dfd">    }</span>
 
-<span style = "background-color:#dfd">    void BytecodeCompiler::fsqrtr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
+<span style = "background-color:#dfd">    void BytecodeCompiler::fsqrtr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept {
         const uint8_t dst_register{ instr.dst_register % Float_Register_Count };
         const uint32_t vsqrtpd{ 0xe4'51'f9'c5 | uint32_t(9 * dst_register) &lt;&lt; 24 };
         std::memcpy(code_buffer + code_size, &amp;vsqrtpd, sizeof(vsqrtpd));
         code_size += 4;
     }</span>
 
-<span style = "background-color:#dfd">    void BytecodeCompiler::cfround_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
+<span style = "background-color:#dfd">    void BytecodeCompiler::cfround_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept {
         const uint8_t src_register{ instr.src_register };</span>
 
 <span style = "background-color:#dfd">        if (const uint64_t imm{ instr.imm32 % 64 }; imm != 0) {
@@ -589,7 +589,7 @@ namespace modernRX {
         }
 <span style = "background-color:#dfd">    }</span>
 
-<span style = "background-color:#dfd">    void BytecodeCompiler::istore_cmpl(const RxInstruction&amp; instr, const uint32_t idx) {
+<span style = "background-color:#dfd">    void BytecodeCompiler::istore_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept {
         const uint8_t dst_register{ instr.dst_register };
         const uint8_t src_register{ instr.src_register };
         const uint32_t imm{ instr.imm32 };

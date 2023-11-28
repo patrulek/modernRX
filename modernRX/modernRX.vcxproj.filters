@@ -31,6 +31,9 @@
     <Filter Include="vm">
       <UniqueIdentifier>{b1d97ff8-31a4-48f2-ab6b-93380fd71307}</UniqueIdentifier>
     </Filter>
+    <Filter Include="utils\system">
+      <UniqueIdentifier>{4d33a94d-a192-4aac-876e-e6635688119e}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="blake2b.hpp">
@@ -90,9 +93,6 @@
     <ClInclude Include="argon2davx2.hpp">
       <Filter>argon2d</Filter>
     </ClInclude>
-    <ClInclude Include="virtualmem.hpp">
-      <Filter>utils</Filter>
-    </ClInclude>
     <ClInclude Include="heaparray.hpp">
       <Filter>utils</Filter>
     </ClInclude>
@@ -134,6 +134,12 @@
     </ClInclude>
     <ClInclude Include="hash.hpp">
       <Filter>modernRX</Filter>
+    </ClInclude>
+    <ClInclude Include="virtualmem.hpp">
+      <Filter>utils\system</Filter>
+    </ClInclude>
+    <ClInclude Include="thread.hpp">
+      <Filter>utils\system</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
