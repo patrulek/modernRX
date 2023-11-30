@@ -9,8 +9,6 @@
     <body onload="prettyPrint()">
         <h4></h4>
         <pre class="prettyprint lang-cpp linenums">
-#pragma once
-
 #include "bytecodecompiler.hpp"
 #include "randomxparams.hpp"
 #include "reciprocal.hpp"
@@ -38,7 +36,7 @@ namespace modernRX {
             const uint32_t lea{ 0x00'04'8d'4f | uint32_t(scale | index | base) &lt;&lt; 24 | uint32_t(8 * dst_register) &lt;&lt; 16 };
             std::memcpy(code_buffer + code_size, &amp;lea, sizeof(lea));
             code_size += 4;</span>
-            
+
 <span style = "background-color:#dfd">        } else {
             const uint64_t imm{ instr.imm32 };
             const uint64_t lea{ 0x00'00'00'00'00'ac'8d'4f | uint64_t(scale | index | base) &lt;&lt; 24 | imm &lt;&lt; 32 };
@@ -426,11 +424,11 @@ namespace modernRX {
         imm &amp;= ~(1ULL &lt;&lt; (shift - 1)); // Clear the bit below the condition mask - this limits the number of successive jumps to 2.</span>
 
 <span style = "background-color:#dfd">        const auto jmp_target{ reg_usage[dst_register] + 1 };
-        const int32_t jmp_offset{ instr_offset[jmp_target] - instr_offset[idx] - 20};</span>
+        const int32_t jmp_offset{ instr_offset[jmp_target] - instr_offset[idx] - 20 };</span>
 
 <span style = "background-color:#dfd">        const uint64_t add{ 0x49'00'00'00'00'c0'81'49 | uint64_t(dst_register) &lt;&lt; 16 | uint64_t(imm) &lt;&lt; 24 };
         std::memcpy(code_buffer + code_size, &amp;add, sizeof(add));
-        const uint64_t test{ 0x84'0f'00'00'00'00'c0'f7 | uint64_t(dst_register) &lt;&lt; 8 | uint64_t(mem_mask) &lt;&lt; 16};
+        const uint64_t test{ 0x84'0f'00'00'00'00'c0'f7 | uint64_t(dst_register) &lt;&lt; 8 | uint64_t(mem_mask) &lt;&lt; 16 };
         std::memcpy(code_buffer + code_size + 8, &amp;test, sizeof(test));
         std::memcpy(code_buffer + code_size + 16, &amp;jmp_offset, sizeof(jmp_offset));
         code_size += 20;</span>
@@ -544,7 +542,7 @@ namespace modernRX {
             const uint64_t orps{ 0x00'e4'5e'41'c1'c4'e5'56 | uint64_t(8 * f_dst_register) &lt;&lt; 48 | uint64_t(24 - 8 * f_dst_register) &lt;&lt; 32 };
             std::memcpy(code_buffer + code_size + 24, &amp;orps, sizeof(orps));
             code_size += 31;</span>
-            
+
 <span style = "background-color:#dfd">        } else {
             const uint64_t lea{ 0x00'00'00'00'24'80'8d'49 | uint64_t(src_register) &lt;&lt; 16 | uint64_t(imm) &lt;&lt; 32 };
             std::memcpy(code_buffer + code_size, &amp;lea, sizeof(lea));

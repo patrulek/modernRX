@@ -22,7 +22,7 @@ Current state of this project does not provide sensible performance to use in mi
 * [x] (30.10.2023) Optimize hash calculation with hardware specific instructions.
 * [x] (08.11.2023) Optimize hash calculation with JIT compiler for random programs.
 * [x] (17.11.2023) Optimize hash calculation with multithreading.
-* [ ] Experiment with further JIT optimizations for faster hash calculation.
+* [x] (30.11.2023) Experiment with further JIT optimizations for faster hash calculation.
 * [ ] Experiment with system and architecture specific optimizations (Huge Pages, MSR etc.) for faster hash calculation.
 * [ ] Port library to Unix-based systems.
 * [ ] Implement RandomX light mode.
@@ -97,15 +97,15 @@ Sample output:
 ```console
 [ 0] Blake2b::hash                            ... Passed (<1ms)
 [ 1] Argon2d::Blake2b::hash                   ... Passed (<1ms)
-[ 2] Argon2d::fillMemory                      ... Passed (19.607s)
+[ 2] Argon2d::fillMemory                      ... Passed (19.508s)
 [ 3] AesGenerator1R::fill                     ... Passed (<1ms)
 [ 4] AesGenerator4R::fill                     ... Passed (<1ms)
 [ 5] AesHash1R                                ... Passed (<1ms)
 [ 6] Blake2brandom::get                       ... Passed (<1ms)
 [ 7] Reciprocal                               ... Passed (<1ms)
-[ 8] Superscalar::generate                    ... Passed (0.012s)
-[ 9] Dataset::generate                        ... Passed (25.411s)
-[10] VirtualMachine::execute                  ... Passed (16.984s)
+[ 8] Superscalar::generate                    ... Passed (0.010s)
+[ 9] Dataset::generate                        ... Passed (25.748s)
+[10] VirtualMachine::execute                  ... Passed (16.866s)
 ```
 
 Ideally, tests should be run before every release in `Release` and `Debug` mode with `AddressSanitizer` enabled. `ReleaseAsan` and `DebugAsan` project configurations are provided for this purpose.
@@ -153,10 +153,10 @@ Benchmarks were performed on AMD Ryzen 5800H CPU with 32GB of RAM (Dual-channel,
 CPU frequency turbo boost was disabled (3.2GHz base frequency).
 CPU temperature limit was set to 95°C.
 
-|                                | Blake2b [H/s] | Blake2bLong [H/s] | Argon2d [MB/s] | Aes1R [MB/s] | Aes4R [MB/s] | AesHash1R [H/s] | Superscalar [Prog/s] | Dataset [MB/s] | Hash [H/s] | Efficiency [H/Watt/s] |
-| ------------------------------ | :-----------: | :---------------: | :------------: | :----------: | :----------: | :-------------: | :------------------: | :------------: | :--------: | :-------------------: |
-| RandomX-1.2.1 (102f8acf)       |        3.231M |           103.46K |          881.4 |      47402.5 |      11473.4 |           23702 |                 2754 |         ~838.7 |   **4554** |            **~84.33** |
-| modernRX 0.7.2                 |    **5.455M** |       **172.07K** |     **1238.7** |  **47429.1** |  **11889.1** |       **23762** |             **9619** |     **1268.0** |       3113 |                ~64.05 |
+|                                |  Hash [H/s] | Efficiency [H/Watt/s] | Blake2b [H/s] | Blake2bLong [H/s] | Argon2d [MB/s] | Aes1R [MB/s] | Aes4R [MB/s] | AesHash1R [H/s] | Superscalar [Prog/s] | Dataset [MB/s] |
+| ------------------------------ |  :--------: | :-------------------: | :-----------: | :---------------: | :------------: | :----------: | :----------: | :-------------: | :------------------: | :------------: |
+| RandomX-1.2.1 (102f8acf)       |    **4554** |            **~84.33** |        3.231M |           103.46K |          881.4 |      47402.5 |      11473.4 |           23702 |                 2754 |         ~838.7 |
+| modernRX 0.8.0                 |        3105 |                ~63.62 |    **5.455M** |       **172.01K** |     **1217.6** |  **47454.3** |  **11885.5** |       **23845** |             **9690** |     **1246.1** |
 
 Original RandomX provides benchmark only for calculating final hashes. All other values were estimated (based on information benchmark provides) or some custom benchmarks were written on top of RandomX implementation, thus values may not be 100% accurate.
 
@@ -199,7 +199,7 @@ Project follows [zero-based versioning](https://0ver.org/) with several specific
 
 ## Changelog
 
-* **v0.7.2 - 28.11.2023:** optimize hash calculation (prefetching scratchpad in aes hash and fill)
+* **v0.8.0 - 30.11.2023:** code preparation for optimization experiments (simple execution tracer, improved benchmarking)
 * ...
 * **v0.1.3 - 29.10.2023:** bugfixes, benchmarks corrections, code cleanup
 * ...
@@ -215,11 +215,11 @@ $> gocloc /exclude-ext "xml,json,txt,exp" /not-match-d "3rdparty/*|x64/*|assets/
 -------------------------------------------------------------------------------
 Language                     files          blank        comment           code
 -------------------------------------------------------------------------------
-C++                             17            609            381           3462
-C++ Header                      35            527            577           3043
-Markdown                         3            180              0            534
+C++                             17            646            377           3607
+C++ Header                      36            553            577           3139
+Markdown                         3            185              0            550
 -------------------------------------------------------------------------------
-TOTAL                           55           1316            958           7039
+TOTAL                           56           1384            954           7296
 -------------------------------------------------------------------------------
 ```
 

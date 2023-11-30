@@ -1,5 +1,3 @@
-#pragma once
-
 #include "bytecodecompiler.hpp"
 #include "randomxparams.hpp"
 #include "reciprocal.hpp"
@@ -27,7 +25,7 @@ namespace modernRX {
             const uint32_t lea{ 0x00'04'8d'4f | uint32_t(scale | index | base) << 24 | uint32_t(8 * dst_register) << 16 };
             std::memcpy(code_buffer + code_size, &lea, sizeof(lea));
             code_size += 4;
-            
+
         } else {
             const uint64_t imm{ instr.imm32 };
             const uint64_t lea{ 0x00'00'00'00'00'ac'8d'4f | uint64_t(scale | index | base) << 24 | imm << 32 };
@@ -415,11 +413,11 @@ namespace modernRX {
         imm &= ~(1ULL << (shift - 1)); // Clear the bit below the condition mask - this limits the number of successive jumps to 2.
 
         const auto jmp_target{ reg_usage[dst_register] + 1 };
-        const int32_t jmp_offset{ instr_offset[jmp_target] - instr_offset[idx] - 20};
+        const int32_t jmp_offset{ instr_offset[jmp_target] - instr_offset[idx] - 20 };
 
         const uint64_t add{ 0x49'00'00'00'00'c0'81'49 | uint64_t(dst_register) << 16 | uint64_t(imm) << 24 };
         std::memcpy(code_buffer + code_size, &add, sizeof(add));
-        const uint64_t test{ 0x84'0f'00'00'00'00'c0'f7 | uint64_t(dst_register) << 8 | uint64_t(mem_mask) << 16};
+        const uint64_t test{ 0x84'0f'00'00'00'00'c0'f7 | uint64_t(dst_register) << 8 | uint64_t(mem_mask) << 16 };
         std::memcpy(code_buffer + code_size + 8, &test, sizeof(test));
         std::memcpy(code_buffer + code_size + 16, &jmp_offset, sizeof(jmp_offset));
         code_size += 20;
@@ -533,7 +531,7 @@ namespace modernRX {
             const uint64_t orps{ 0x00'e4'5e'41'c1'c4'e5'56 | uint64_t(8 * f_dst_register) << 48 | uint64_t(24 - 8 * f_dst_register) << 32 };
             std::memcpy(code_buffer + code_size + 24, &orps, sizeof(orps));
             code_size += 31;
-            
+
         } else {
             const uint64_t lea{ 0x00'00'00'00'24'80'8d'49 | uint64_t(src_register) << 16 | uint64_t(imm) << 32 };
             std::memcpy(code_buffer + code_size, &lea, sizeof(lea));

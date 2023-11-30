@@ -182,5 +182,5 @@ namespace modernRX {
         }
 
         return LUT_Instr_Cmpl_;
-    }();
+        }();
 }

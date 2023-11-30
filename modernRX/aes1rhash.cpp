@@ -128,7 +128,7 @@ namespace modernRX::aes {
             const intrinsics::xmm128i_t& input1{ *reinterpret_cast<const intrinsics::xmm128i_t*>(input.data() + i + 16) };
             const intrinsics::xmm128i_t& input2{ *reinterpret_cast<const intrinsics::xmm128i_t*>(input.data() + i + 32) };
             const intrinsics::xmm128i_t& input3{ *reinterpret_cast<const intrinsics::xmm128i_t*>(input.data() + i + 48) };
-        
+
             intrinsics::aes::encode(state0, input0);
             intrinsics::aes::decode(state1, input1);
             intrinsics::aes::encode(state2, input2);
@@ -140,17 +140,17 @@ namespace modernRX::aes {
         // xkey1 = d1 63 b2 61 3c e0 f4 51 c6 43 10 ee 9b f9 18 ed
         constexpr auto key0{ intrinsics::fromChars(0x89, 0x83, 0xfa, 0xf6, 0x9f, 0x94, 0x24, 0x8b, 0xbf, 0x56, 0xdc, 0x90, 0x01, 0x02, 0x89, 0x06) };
         constexpr auto key1{ intrinsics::fromChars(0xd1, 0x63, 0xb2, 0x61, 0x3c, 0xe0, 0xf4, 0x51, 0xc6, 0x43, 0x10, 0xee, 0x9b, 0xf9, 0x18, 0xed) };
-        
+
         intrinsics::aes::encode(state0, key0);
         intrinsics::aes::decode(state1, key0);
         intrinsics::aes::encode(state2, key0);
         intrinsics::aes::decode(state3, key0);
-        
+
         intrinsics::aes::encode(state0, key1);
         intrinsics::aes::decode(state1, key1);
         intrinsics::aes::encode(state2, key1);
         intrinsics::aes::decode(state3, key1);
-        
+
         intrinsics::xmm128i_t& output0{ *reinterpret_cast<intrinsics::xmm128i_t*>(output.data()) };
         intrinsics::xmm128i_t& output1{ *reinterpret_cast<intrinsics::xmm128i_t*>(output.data() + 16) };
         intrinsics::xmm128i_t& output2{ *reinterpret_cast<intrinsics::xmm128i_t*>(output.data() + 32) };

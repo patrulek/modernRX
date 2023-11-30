@@ -20,6 +20,7 @@
 #include "hash.hpp"
 #include "randomxparams.hpp"
 #include "sse.hpp"
+#include "trace.hpp"
 #include "virtualmachine.hpp"
 #include "virtualmem.hpp"
 
@@ -30,11 +31,13 @@ namespace modernRX {
         constexpr uint32_t Scratchpad_L3_Mask64{ (Rx_Scratchpad_L3_Size - 1) &amp; ~63 }; // L3 cache 64-byte alignment mask.
         constexpr uint64_t Cache_Line_Size{ sizeof(DatasetItem) };
         constexpr uint64_t Cache_Line_Align_Mask{ (Rx_Dataset_Base_Size - 1) &amp; ~(Cache_Line_Size - 1) }; // Dataset 64-byte alignment mask.
+        constexpr auto Rf_Offset{ 0 };
+        constexpr auto Sp_Offset{ Rf_Offset + 256 };
     }
 
     // Holds RandomX program entropy and instructions: https://github.com/tevador/RandomX/blob/master/doc/specs.md#44-program-buffer
     // Initialized by AES-filled buffer. Must preserve order of fields.
-    struct alignas(64) RxProgram {
+    struct RxProgram {
         std::array&lt;uint64_t, 16&gt; entropy{};
         std::array&lt;RxInstruction, Rx_Program_Size&gt; instructions{};
     };
@@ -42,62 +45,82 @@ namespace modernRX {
     static_assert(offsetof(RxProgram, entropy) == 0);
 
 
-    VirtualMachine::VirtualMachine(std::span&lt;std::byte, Required_Memory&gt; scratchpad) 
-<span style = "background-color:#dfd">        : scratchpad(scratchpad) {
+    VirtualMachine::VirtualMachine(std::span&lt;std::byte, Required_Memory&gt; scratchpad, const uint32_t vm_id) 
+<span style = "background-color:#dfd">        : memory(scratchpad) {
         jit = makeExecutable&lt;JITRxProgram&gt;(sizeof(Code_Buffer));
         std::memcpy(jit.get(), Code_Buffer.data(), sizeof(Code_Buffer));
         compiler.code_buffer = reinterpret_cast&lt;char*&gt;(jit.get()) + Program_Offset;
+        pdata.vm_id = vm_id;
     }</span>
 
 <span style = "background-color:#dfd">    void VirtualMachine::reset(BlockTemplate block_template, const_span&lt;DatasetItem&gt; dataset) noexcept {
         this-&gt;dataset = dataset;
         this-&gt;block_template = block_template;
         this-&gt;new_block_template = true;
+        this-&gt;pdata.hashes = 0;
     }</span>
 
 <span style = "background-color:#dfd">    void VirtualMachine::executeNext(std::function&lt;void(const RxHash&amp;)&gt; callback) noexcept{</span>
         // RandomX requires specific float environment before executing any program.
         // This RAII object will set proper float flags on creation and restore its values on destruction. 
 <span style = "background-color:#dfd">        const intrinsics::sse::FloatEnvironment fenv{};
-        RxProgram program;
         constexpr uint64_t Dataset_Extra_Items{ Rx_Dataset_Extra_Size / sizeof(DatasetItem) };</span>
         static_assert(Dataset_Extra_Items == 524'287);
         static_assert(Cache_Line_Size == 64);
+
+<span style = "background-color:#dfd">        const auto dataset_ptr{ reinterpret_cast&lt;uintptr_t&gt;(dataset.data()) };
+        const auto rf_ptr{ reinterpret_cast&lt;uintptr_t&gt;(memory.data()) + Rf_Offset };
+        const auto scratchpad_ptr{ reinterpret_cast&lt;uintptr_t&gt;(memory.data()) + Sp_Offset };</span>
+
+<span style = "background-color:#dfd">        RxProgram program;
+        const auto program_ptr{ reinterpret_cast&lt;uintptr_t&gt;(&amp;program) };</span>
 
 <span style = "background-color:#dfd">        for (uint32_t i = 0; i &lt; Rx_Program_Count - 1; ++i) {
             generateProgram(program);
             compileProgram(program);</span>
 
-<span style = "background-color:#dfd">            const auto dataset_ptr{ reinterpret_cast&lt;uintptr_t&gt;(dataset.data()) };</span>
-            // https://github.com/tevador/RandomX/blob/master/doc/specs.md#462-loop-execution
-            // Step 1-13.
 <span style = "background-color:#dfd">            const auto jit_program{ reinterpret_cast&lt;JITRxProgram&gt;(jit.get()) };
-            jit_program(reinterpret_cast&lt;uintptr_t&gt;(scratchpad.data()) + sizeof(RegisterFile), dataset_ptr, reinterpret_cast&lt;uintptr_t&gt;(&amp;program));
-            blake2b::hash(seed, span_cast&lt;std::byte, sizeof(RegisterFile)&gt;(scratchpad.data()));
+            jit_program(scratchpad_ptr, dataset_ptr, program_ptr);</span>
+
+<span style = "background-color:#dfd">            blake2b::hash(seed, span_cast&lt;std::byte, sizeof(RegisterFile)&gt;(reinterpret_cast&lt;std::byte*&gt;(rf_ptr)));
         }</span>
 
-<span style = "background-color:#dfd">        generateProgram(program);
-        compileProgram(program);</span>
+        {
+<span style = "background-color:#dfd">            Trace&lt;TraceEvent::Generate&gt; _;
+            generateProgram(program);
+        }</span>
 
-        // https://github.com/tevador/RandomX/blob/master/doc/specs.md#462-loop-execution
-        // Step 1-13.
-<span style = "background-color:#dfd">        const auto dataset_ptr{ reinterpret_cast&lt;uintptr_t&gt;(dataset.data()) };
-        const auto jit_program{ reinterpret_cast&lt;JITRxProgram&gt;(jit.get()) };
-        jit_program(reinterpret_cast&lt;uintptr_t&gt;(scratchpad.data()) + sizeof(RegisterFile), dataset_ptr, reinterpret_cast&lt;uintptr_t&gt;(&amp;program));</span>
+        {
+<span style = "background-color:#dfd">            Trace&lt;TraceEvent::Compile&gt; _;
+            compileProgram(program);
+        }</span>
 
 
-        // Hash and fill for next iteration.
-<span style = "background-color:#dfd">        block_template.next();
-        blake2b::hash(seed, block_template.view());
-        auto rfa_view{ span_cast&lt;std::byte, sizeof(RegisterFile::a)&gt;(scratchpad.data() + sizeof(RegisterFile) - sizeof(RegisterFile::a)) };
-        auto scratchpad_view{ scratchpad.subspan(sizeof(RegisterFile), Rx_Scratchpad_L3_Size) };
-        aes::hashAndFill1R(rfa_view, seed, scratchpad_view);</span>
+        {
+<span style = "background-color:#dfd">            Trace&lt;TraceEvent::Execute&gt; _;
+            const auto jit_program{ reinterpret_cast&lt;JITRxProgram&gt;(jit.get()) };
+            jit_program(scratchpad_ptr, dataset_ptr, program_ptr);
+        }</span>
 
-        // Get final hash.
-        alignas(32) RxHash output;
-<span style = "background-color:#dfd">        auto rf_view{ span_cast&lt;std::byte, sizeof(RegisterFile)&gt;(scratchpad.data()) };
-        blake2b::hash(output.buffer(), rf_view);
-        callback(output);
+
+        {
+<span style = "background-color:#dfd">            Trace&lt;TraceEvent::HashAndFill&gt; _;</span>
+
+            // Hash and fill for next iteration.
+<span style = "background-color:#dfd">            block_template.next();
+            blake2b::hash(seed, block_template.view());</span>
+
+<span style = "background-color:#dfd">            const auto rfa_view{ span_cast&lt;std::byte, sizeof(RegisterFile::a)&gt;(reinterpret_cast&lt;std::byte*&gt;(scratchpad_ptr - sizeof(RegisterFile::a))) };
+            const auto scratchpad_view{ std::span&lt;std::byte&gt;(reinterpret_cast&lt;std::byte*&gt;(scratchpad_ptr), Rx_Scratchpad_L3_Size) };
+            aes::hashAndFill1R(rfa_view, seed, scratchpad_view);</span>
+
+            // Get final hash.
+<span style = "background-color:#dfd">            const auto rf_view{ span_cast&lt;std::byte, sizeof(RegisterFile)&gt;(reinterpret_cast&lt;std::byte*&gt;(rf_ptr)) };
+            blake2b::hash(output.buffer(), rf_view);
+            ++pdata.hashes;
+        }</span>
+
+<span style = "background-color:#dfd">        callback(output);
     }</span>
 
 <span style = "background-color:#dfd">    void VirtualMachine::execute(std::function&lt;void(const RxHash&amp;)&gt; callback) noexcept {
@@ -106,11 +129,13 @@ namespace modernRX {
             return;</span>
         }
 
-<span style = "background-color:#dfd">        new_block_template = false;</span>
+<span style = "background-color:#dfd">        new_block_template = false;
+        const auto scratchpad_ptr{ reinterpret_cast&lt;uintptr_t&gt;(memory.data()) + Sp_Offset };
+        const auto scratchpad_view{ std::span&lt;std::byte&gt;(reinterpret_cast&lt;std::byte*&gt;(scratchpad_ptr), Rx_Scratchpad_L3_Size) };</span>
 
-        // Initialize scratchpad.
+        // Initialize memory.
 <span style = "background-color:#dfd">        blake2b::hash(seed, block_template.view());
-        aes::fill1R(scratchpad.subspan(sizeof(RegisterFile), Rx_Scratchpad_L3_Size), seed);
+        aes::fill1R(scratchpad_view, seed);
     }</span>
 
 <span style = "background-color:#dfd">    void VirtualMachine::generateProgram(RxProgram&amp; program) noexcept {
@@ -122,7 +147,7 @@ namespace modernRX {
         compiler.reset();</span>
 
         // RDI = rf
-        // RSI = scratchpad
+        // RSI = memory
         // RBP = dataset
 
         // Compile all instructions.

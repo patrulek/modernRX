@@ -9,6 +9,7 @@
 #include "hash.hpp"
 #include "randomxparams.hpp"
 #include "sse.hpp"
+#include "trace.hpp"
 #include "virtualmachine.hpp"
 #include "virtualmem.hpp"
 
@@ -19,11 +20,13 @@ namespace modernRX {
         constexpr uint32_t Scratchpad_L3_Mask64{ (Rx_Scratchpad_L3_Size - 1) & ~63 }; // L3 cache 64-byte alignment mask.
         constexpr uint64_t Cache_Line_Size{ sizeof(DatasetItem) };
         constexpr uint64_t Cache_Line_Align_Mask{ (Rx_Dataset_Base_Size - 1) & ~(Cache_Line_Size - 1) }; // Dataset 64-byte alignment mask.
+        constexpr auto Rf_Offset{ 0 };
+        constexpr auto Sp_Offset{ Rf_Offset + 256 };
     }
 
     // Holds RandomX program entropy and instructions: https://github.com/tevador/RandomX/blob/master/doc/specs.md#44-program-buffer
     // Initialized by AES-filled buffer. Must preserve order of fields.
-    struct alignas(64) RxProgram {
+    struct RxProgram {
         std::array<uint64_t, 16> entropy{};
         std::array<RxInstruction, Rx_Program_Size> instructions{};
     };
@@ -31,61 +34,81 @@ namespace modernRX {
     static_assert(offsetof(RxProgram, entropy) == 0);
 
 
-    VirtualMachine::VirtualMachine(std::span<std::byte, Required_Memory> scratchpad) 
-        : scratchpad(scratchpad) {
+    VirtualMachine::VirtualMachine(std::span<std::byte, Required_Memory> scratchpad, const uint32_t vm_id) 
+        : memory(scratchpad) {
         jit = makeExecutable<JITRxProgram>(sizeof(Code_Buffer));
         std::memcpy(jit.get(), Code_Buffer.data(), sizeof(Code_Buffer));
         compiler.code_buffer = reinterpret_cast<char*>(jit.get()) + Program_Offset;
+        pdata.vm_id = vm_id;
     }
 
     void VirtualMachine::reset(BlockTemplate block_template, const_span<DatasetItem> dataset) noexcept {
         this->dataset = dataset;
         this->block_template = block_template;
         this->new_block_template = true;
+        this->pdata.hashes = 0;
     }
 
     void VirtualMachine::executeNext(std::function<void(const RxHash&)> callback) noexcept{
         // RandomX requires specific float environment before executing any program.
         // This RAII object will set proper float flags on creation and restore its values on destruction. 
         const intrinsics::sse::FloatEnvironment fenv{};
-        RxProgram program;
         constexpr uint64_t Dataset_Extra_Items{ Rx_Dataset_Extra_Size / sizeof(DatasetItem) };
         static_assert(Dataset_Extra_Items == 524'287);
         static_assert(Cache_Line_Size == 64);
+
+        const auto dataset_ptr{ reinterpret_cast<uintptr_t>(dataset.data()) };
+        const auto rf_ptr{ reinterpret_cast<uintptr_t>(memory.data()) + Rf_Offset };
+        const auto scratchpad_ptr{ reinterpret_cast<uintptr_t>(memory.data()) + Sp_Offset };
+
+        RxProgram program;
+        const auto program_ptr{ reinterpret_cast<uintptr_t>(&program) };
 
         for (uint32_t i = 0; i < Rx_Program_Count - 1; ++i) {
             generateProgram(program);
             compileProgram(program);
 
-            const auto dataset_ptr{ reinterpret_cast<uintptr_t>(dataset.data()) };
-            // https://github.com/tevador/RandomX/blob/master/doc/specs.md#462-loop-execution
-            // Step 1-13.
             const auto jit_program{ reinterpret_cast<JITRxProgram>(jit.get()) };
-            jit_program(reinterpret_cast<uintptr_t>(scratchpad.data()) + sizeof(RegisterFile), dataset_ptr, reinterpret_cast<uintptr_t>(&program));
-            blake2b::hash(seed, span_cast<std::byte, sizeof(RegisterFile)>(scratchpad.data()));
+            jit_program(scratchpad_ptr, dataset_ptr, program_ptr);
+
+            blake2b::hash(seed, span_cast<std::byte, sizeof(RegisterFile)>(reinterpret_cast<std::byte*>(rf_ptr)));
         }
 
-        generateProgram(program);
-        compileProgram(program);
+        {
+            Trace<TraceEvent::Generate> _;
+            generateProgram(program);
+        }
 
-        // https://github.com/tevador/RandomX/blob/master/doc/specs.md#462-loop-execution
-        // Step 1-13.
-        const auto dataset_ptr{ reinterpret_cast<uintptr_t>(dataset.data()) };
-        const auto jit_program{ reinterpret_cast<JITRxProgram>(jit.get()) };
-        jit_program(reinterpret_cast<uintptr_t>(scratchpad.data()) + sizeof(RegisterFile), dataset_ptr, reinterpret_cast<uintptr_t>(&program));
+        {
+            Trace<TraceEvent::Compile> _;
+            compileProgram(program);
+        }
 
 
-        // Hash and fill for next iteration.
-        block_template.next();
-        blake2b::hash(seed, block_template.view());
-        auto rfa_view{ span_cast<std::byte, sizeof(RegisterFile::a)>(scratchpad.data() + sizeof(RegisterFile) - sizeof(RegisterFile::a)) };
-        auto scratchpad_view{ scratchpad.subspan(sizeof(RegisterFile), Rx_Scratchpad_L3_Size) };
-        aes::hashAndFill1R(rfa_view, seed, scratchpad_view);
+        {
+            Trace<TraceEvent::Execute> _;
+            const auto jit_program{ reinterpret_cast<JITRxProgram>(jit.get()) };
+            jit_program(scratchpad_ptr, dataset_ptr, program_ptr);
+        }
 
-        // Get final hash.
-        alignas(32) RxHash output;
-        auto rf_view{ span_cast<std::byte, sizeof(RegisterFile)>(scratchpad.data()) };
-        blake2b::hash(output.buffer(), rf_view);
+
+        {
+            Trace<TraceEvent::HashAndFill> _;
+
+            // Hash and fill for next iteration.
+            block_template.next();
+            blake2b::hash(seed, block_template.view());
+
+            const auto rfa_view{ span_cast<std::byte, sizeof(RegisterFile::a)>(reinterpret_cast<std::byte*>(scratchpad_ptr - sizeof(RegisterFile::a))) };
+            const auto scratchpad_view{ std::span<std::byte>(reinterpret_cast<std::byte*>(scratchpad_ptr), Rx_Scratchpad_L3_Size) };
+            aes::hashAndFill1R(rfa_view, seed, scratchpad_view);
+
+            // Get final hash.
+            const auto rf_view{ span_cast<std::byte, sizeof(RegisterFile)>(reinterpret_cast<std::byte*>(rf_ptr)) };
+            blake2b::hash(output.buffer(), rf_view);
+            ++pdata.hashes;
+        }
+
         callback(output);
     }
 
@@ -96,10 +119,12 @@ namespace modernRX {
         }
 
         new_block_template = false;
+        const auto scratchpad_ptr{ reinterpret_cast<uintptr_t>(memory.data()) + Sp_Offset };
+        const auto scratchpad_view{ std::span<std::byte>(reinterpret_cast<std::byte*>(scratchpad_ptr), Rx_Scratchpad_L3_Size) };
 
-        // Initialize scratchpad.
+        // Initialize memory.
         blake2b::hash(seed, block_template.view());
-        aes::fill1R(scratchpad.subspan(sizeof(RegisterFile), Rx_Scratchpad_L3_Size), seed);
+        aes::fill1R(scratchpad_view, seed);
     }
 
     void VirtualMachine::generateProgram(RxProgram& program) noexcept {
@@ -111,7 +136,7 @@ namespace modernRX {
         compiler.reset();
 
         // RDI = rf
-        // RSI = scratchpad
+        // RSI = memory
         // RBP = dataset
 
         // Compile all instructions.

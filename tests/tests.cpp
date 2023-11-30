@@ -599,9 +599,14 @@ void testVM() {
         std::memcpy(bt.data, block_template.data(), sizeof(block_template));
         vm.reset(bt, dataset);
         vm.execute(nullptr); // After reset, first hash is calculated with second `execute` call.
-        vm.execute([&expected](const RxHash& hash) {
-            testAssert(hash == expected);
+
+        RxHash actual;
+        vm.execute([&actual](const RxHash& hash) {
+            actual = hash;
         });
+
+        testAssert(actual == expected);
+        testAssert(vm.getPData().hashes == 1);
     }
 
     {
@@ -630,13 +635,21 @@ void testVM() {
         bt.data[42] = 1;
         vm.reset(bt, dataset);
         vm.execute(nullptr); // After reset, first hash is calculated with second `execute` call.
-        vm.execute([&expected](const RxHash& hash) {
-            testAssert(hash == expected);
-        });
+
+        RxHash actual;
+        vm.execute([&actual](const RxHash& hash) {
+            actual = hash;
+            });
+
+        testAssert(actual == expected);
+        testAssert(vm.getPData().hashes == 1);
 
         // Ensure that next hash is different.
-        vm.execute([&expected](const RxHash& hash) {
-            testAssert(hash != expected);
+        vm.execute([&actual](const RxHash& hash) {
+            actual = hash;
         });
+
+        testAssert(actual != expected);
+        testAssert(vm.getPData().hashes == 2);
     }
 }

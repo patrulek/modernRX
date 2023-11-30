@@ -141,6 +141,9 @@
     <ClInclude Include="thread.hpp">
       <Filter>utils\system</Filter>
     </ClInclude>
+    <ClInclude Include="trace.hpp">
+      <Filter>utils</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="blake2b.cpp">

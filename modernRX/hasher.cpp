@@ -27,7 +27,7 @@ namespace modernRX {
         scratchpads.reserve(threads * Total_Vm_Memory);
 
         for (uint32_t i = 0; i < threads; ++i) {
-            vms.emplace_back(scratchpads.buffer<Vm_Required_Memory>(i * Total_Vm_Memory, Vm_Required_Memory));
+            vms.emplace_back(scratchpads.buffer<Vm_Required_Memory>(i * Total_Vm_Memory, Vm_Required_Memory), i);
         }
     }
 
@@ -39,6 +39,15 @@ namespace modernRX {
 
     Hasher::~Hasher() {
         stop();
+    }
+
+    uint64_t Hasher::hashes() const noexcept {
+        uint64_t hashes{ 0 };
+        for (const auto& vm : vms) {
+            hashes += vm.getPData().hashes;
+        }
+
+        return hashes;
     }
 
     void Hasher::run(std::function<void(const RxHash&)> callback) {

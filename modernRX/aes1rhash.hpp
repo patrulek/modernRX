@@ -15,6 +15,6 @@ namespace modernRX::aes {
     template<bool Fixed = true>
     void hash1R(std::span<std::byte, 64> output, const_span<std::byte> input) noexcept;
 
-    
+
     void hashAndFill1R(std::span<std::byte, 64> hash, std::span<std::byte, 64> seed, std::span<std::byte> scratchpad) noexcept;
 }

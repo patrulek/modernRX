@@ -38,6 +38,8 @@ namespace modernRX {
 
         // Wait for all VirtualMachine worker threads to finish.
         void stop();
+
+        uint64_t hashes() const noexcept;
     private:
         std::vector<std::thread> vm_workers; // Threads used for program execution.
         std::vector<VirtualMachine> vms; // Virtual machines used for program execution.

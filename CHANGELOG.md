@@ -1,5 +1,16 @@
 ## modernRX - Changelog
 
+### v0.8.0 - 30.11.2023:
+
+Code preparation for optimization experiments.
+
+Improvements:
+* add simple execution tracer
+* improve benchmarking
+
+Bug fixes:
+* fix failing tests output
+
 ### v0.7.2 - 28.11.2023:
 
 Hash calculation optimization with thread affinity and scratchpad hash&fill.

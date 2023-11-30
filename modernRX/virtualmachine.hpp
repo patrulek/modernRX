@@ -20,7 +20,7 @@
 
 namespace modernRX {
     // RandomX program JIT-compiled function.
-    // scratchpad - pointer to Scratchpad.
+    // memory - pointer to Scratchpad.
     // dataset - pointer to Dataset.
     // program - pointer to RandomX program.
     using JITRxProgram = void(*)(const uintptr_t scratchpad, const uintptr_t dataset, const uintptr_t program);
@@ -30,21 +30,26 @@ namespace modernRX {
     struct RxInstruction;
     struct RxProgram;
 
+    struct PData {
+        uint32_t vm_id{ 0 };
+        uint32_t hashes{ 0 };
+    };
+
     // Defines RandomX VM bytecode executor.
     class alignas(64) VirtualMachine {
         // Holds representation of register file used by VirtualMachine during program execution.
         // https://github.com/tevador/RandomX/blob/master/doc/specs.md#43-registers
         struct RegisterFile {
-            std::array<uint64_t, Int_Register_Count> r{}; // Common integer registers. Source or destination of integer instructions. Can be used as address registers for scratchpad access.
+            std::array<uint64_t, Int_Register_Count> r{}; // Common integer registers. Source or destination of integer instructions. Can be used as address registers for memory access.
             std::array<intrinsics::xmm128d_t, Float_Register_Count> f{}; // "Additive" registers. Destination of floating point addition and substraction instructions.
             std::array<intrinsics::xmm128d_t, Float_Register_Count> e{}; // "Multiplicative" registers. Destination of floating point multiplication, division and square root instructions.
             std::array<intrinsics::xmm128d_t, Float_Register_Count> a{}; // Read-only, fixed-value floating point registers. Source operand of any floating point instruction.
         };
 
-        static constexpr size_t Required_Memory{ Rx_Scratchpad_L3_Size + sizeof(VirtualMachine::RegisterFile) };
+        static constexpr size_t Required_Memory{ Rx_Scratchpad_L3_Size + sizeof(VirtualMachine::RegisterFile) + Rx_Program_Bytes_Size };
 
     public:
-        [[nodiscard]] explicit VirtualMachine(std::span<std::byte, Required_Memory>);
+        [[nodiscard]] explicit VirtualMachine(std::span<std::byte, Required_Memory>, const uint32_t = 0);
 
         // Resets VirtualMachine with new input and dataset.
         // Another VirtualMachine with same input and dataset will produce same result.
@@ -56,6 +61,10 @@ namespace modernRX {
 
         static consteval size_t requiredMemory() noexcept {
             return Required_Memory;
+        }
+
+        PData getPData() const noexcept {
+            return pdata;
         }
     private:
 
@@ -73,9 +82,11 @@ namespace modernRX {
         std::array<std::byte, 64> seed;
         BlockTemplate block_template;
         std::span<const DatasetItem> dataset;
-        std::span<std::byte, Required_Memory> scratchpad;
+        std::span<std::byte, Required_Memory> memory;
         BytecodeCompiler compiler;
         jit_function_ptr<JITRxProgram> jit{ nullptr };
+        PData pdata;
+        alignas(32) RxHash output;
         bool new_block_template{ false };
     };
 }

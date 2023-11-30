@@ -609,10 +609,15 @@ void testVM();
         BlockTemplate bt;
 <span style = "background-color:#dfd">        std::memcpy(bt.data, block_template.data(), sizeof(block_template));
         vm.reset(bt, dataset);
-        vm.execute(nullptr); // After reset, first hash is calculated with second `execute` call.
-        vm.execute([&amp;expected](const RxHash&amp; hash) {
-            testAssert(hash == expected);
-        });
+        vm.execute(nullptr); // After reset, first hash is calculated with second `execute` call.</span>
+
+        RxHash actual;
+<span style = "background-color:#dfd">        vm.execute([&amp;actual](const RxHash&amp; hash) {
+            actual = hash;
+        });</span>
+
+<span style = "background-color:#dfd">        testAssert(actual == expected);
+        testAssert(vm.getPData().hashes == 1);
     }</span>
 
     {
@@ -640,15 +645,23 @@ void testVM();
 <span style = "background-color:#dfd">        std::memcpy(bt.data, block_template.data(), sizeof(block_template));
         bt.data[42] = 1;
         vm.reset(bt, dataset);
-        vm.execute(nullptr); // After reset, first hash is calculated with second `execute` call.
-        vm.execute([&amp;expected](const RxHash&amp; hash) {
-            testAssert(hash == expected);
-        });</span>
+        vm.execute(nullptr); // After reset, first hash is calculated with second `execute` call.</span>
+
+        RxHash actual;
+<span style = "background-color:#dfd">        vm.execute([&amp;actual](const RxHash&amp; hash) {
+            actual = hash;
+            });</span>
+
+<span style = "background-color:#dfd">        testAssert(actual == expected);
+        testAssert(vm.getPData().hashes == 1);</span>
 
         // Ensure that next hash is different.
-<span style = "background-color:#dfd">        vm.execute([&amp;expected](const RxHash&amp; hash) {
-            testAssert(hash != expected);
-        });
+<span style = "background-color:#dfd">        vm.execute([&amp;actual](const RxHash&amp; hash) {
+            actual = hash;
+        });</span>
+
+<span style = "background-color:#dfd">        testAssert(actual != expected);
+        testAssert(vm.getPData().hashes == 2);
     }
 }</span></pre>
         <hr />

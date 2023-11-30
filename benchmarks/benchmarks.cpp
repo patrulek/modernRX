@@ -11,6 +11,7 @@
 #include "dataset.hpp"
 #include "hasher.hpp"
 #include "superscalar.hpp"
+#include "trace.hpp"
 
 namespace {
     constexpr double Us_Per_Sec{ 1'000'000.0 }; // Number of microseconds in one second.
@@ -92,7 +93,54 @@ void runBenchmarks(std::span<Benchmark> benchmarks) {
 
 using namespace modernRX;
 
-void hasherBenchmark();
+struct Options {
+    int seconds{ 60 };
+    int verbose{ 1 };
+    int warmup{ 5 };
+    bool microbenchmarks{ true };
+
+    std::string_view usage() const {
+        return "benchmarks [--warmup <seconds:0-15, default: 5>] [--seconds <seconds:15-7200, default: 60>] [--verbose <level:0-2, default: 1>] [--no-microbenchmarks]";
+    }
+
+    void parse(int argc, char** argv) {
+        std::string_view arg;
+        int* iarg{ nullptr };
+        int min_range{ 0 };
+        int max_range{ 0 };
+
+        for (int i = 1; i < argc; ++i) {
+            if (iarg != nullptr) {
+                *iarg = std::min(std::max(std::stoi(argv[i]), min_range), max_range);
+                iarg = nullptr;
+                continue;
+            }
+
+            arg = argv[i];
+            if (arg == "--seconds") {
+                iarg = &seconds;
+                min_range = 15; max_range = 7200;
+            } else if (arg == "--verbose") {
+                iarg = &verbose;
+                min_range = 0; max_range = 2;
+            } else if (arg == "--no-microbenchmarks") {
+                microbenchmarks = false;
+            } else if (arg == "--warmup") {
+                iarg = &warmup;
+                min_range = 0; max_range = 15;
+            } else {
+                throw std::runtime_error{ std::format("invalid argument `{}`", arg) };
+            }
+        }
+
+        if (iarg != nullptr) {
+            throw std::runtime_error{ std::format("missing argument value for `{}`", arg) };
+        }
+    }
+};
+
+void hasherBenchmark(const Options options);
+void microbenchmarks();
 void blake2bBenchmark();
 void blake2bLongBenchmark();
 void argon2dFillMemoryBenchmark();
@@ -125,11 +173,126 @@ BlockTemplate block_template{
     0xc3, 0x8b, 0xde, 0xd3, 0x4d, 0x2d, 0xcd, 0xee, 0xf9, 0x5c, 0xd2, 0x0c, 0xef, 0xc1, 0x2f, 0x61, 0xd5, 0x61, 0x09
 };
 
-int main() {
+int main(int argc, char **argv) {
+    Options options;
+
+    if (argc > 1) {
+        try {
+            options.parse(argc, argv);
+        } catch (const std::exception& ex) {
+            std::println("Failed to parse arguments: {:s}", ex.what());
+            std::println("Usage: {}", options.usage());
+            std::exit(-1);
+        } catch (...) {
+            std::println("Failed to parse arguments.");
+            std::println("Usage: {}", options.usage());
+            std::exit(-1);
+        }
+    }
+
+    if (options.microbenchmarks) {
+        microbenchmarks();
+    }
+
+    hasherBenchmark(options);
+}
+
+void hasherBenchmark(const Options options) {
+    TraceResults trace_results;
+
+    try {
+        std::println("Running Hasher benchmark with options:\n- seconds: {:d}\n- warmup: {:d}\n- verbosity: {:d}\n- trace: {}\n", 
+            options.seconds, options.warmup, options.verbose, Trace_Enabled);
+
+        Hasher hasher{ span_cast<std::byte>(seed) };
+        hasher.resetVM(block_template);
+
+        std::vector<std::pair<size_t, size_t>> measures;
+        measures.reserve(options.seconds + 1);
+        measures.emplace_back(0, 0);
+
+        const auto startT{ std::chrono::high_resolution_clock::now() };
+        hasher.run();
+        while (measures.size() < options.seconds + 1) {
+            std::this_thread::sleep_for(std::chrono::microseconds(static_cast<uint64_t>(Us_Per_Sec)));
+            const auto hashes = hasher.hashes();
+            const auto tickT{ std::chrono::high_resolution_clock::now() };
+            const auto elapsedT{ static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(tickT - startT).count()) };
+            measures.emplace_back(hashes, static_cast<size_t>(elapsedT));
+        }
+
+        hasher.stop();
+        const auto endT{ std::chrono::high_resolution_clock::now() };
+
+        const size_t warmup_hashes{ measures[options.warmup].first };
+        const auto elapsedT{ static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(endT - startT).count() - measures[options.warmup].second)  };
+        const auto throughputT{ static_cast<double>(hasher.hashes() - warmup_hashes) / (elapsedT / Us_Per_Sec) };
+
+
+        if (options.verbose >= 2) {
+            std::println("(initial) Hashes: 0\tTimestamp: 0.000s\tH: 0\tT: 0.000s\tAvg h/s: 0.000");
+        }
+
+        double variance{ 0.0 };
+        std::vector<double> hs_vec;
+
+        for (int i = 1; i < measures.size(); ++i) {
+            const auto& cur{ measures[i] };
+            const auto& prev{ measures[i - 1] };
+            
+            const double h{ static_cast<double>(cur.first - prev.first) };
+            const double t{ (cur.second - prev.second) / Us_Per_Sec };
+            const bool is_warmup{ i <= options.warmup };
+
+            if (options.verbose >= 2) {
+                const std::string_view warmup_str{ (is_warmup ? "(warmup) " : "") };
+                std::println("{}Hashes: {:d}\tTimestamp: {:.3f}s\tH: {}\tT: {:.3f}s\tAvg h/s: {:.3f}", 
+                    warmup_str, cur.first, cur.second / Us_Per_Sec, h, t, h / t);
+            }
+
+            if (!is_warmup) {
+                hs_vec.push_back(h / t);
+                variance += (h / t - throughputT) * (h / t - throughputT);
+            }
+        }
+
+        if (options.verbose >= 2) {
+            std::println("");
+        }
+
+        std::sort(hs_vec.begin(), hs_vec.end());
+        variance /= hs_vec.size();
+        const auto stddev{ std::sqrt(variance) };
+        const auto p5_idx{ static_cast<size_t>(hs_vec.size() * (1.0 - 0.05)) };
+        const auto p50_idx{ static_cast<size_t>(hs_vec.size() * (1.0 - 0.50)) };
+        const auto p95_idx{ static_cast<size_t>(hs_vec.size() * (1.0 - 0.95)) };
+
+        if (options.verbose >= 1) {
+            std::println("min h/s: {:.3f}", hs_vec.front());
+            std::println("95th percentile: {:.3f}", hs_vec[p95_idx]);
+            std::println("50th percentile: {:.3f}", hs_vec[p50_idx]);
+            std::println("5th percentile: {:.3f}", hs_vec[p5_idx]);
+            std::println("max h/s: {:.3f}", hs_vec.back());
+            std::println("");
+        }
+
+        const std::string_view warmup_time_str{ (options.warmup == 0 ? "" : std::format(" (+{:.3f}s warmup)", measures[options.warmup].second / Us_Per_Sec)) };
+        std::println("Benchmark ran for {:.3f}s{}", elapsedT / Us_Per_Sec, warmup_time_str);
+
+        const std::string_view warmup_hashes_str{ (options.warmup == 0 ? "" : std::format(" (+{:d} warmup hashes)", warmup_hashes)) };
+        std::println("Hashes calculated: {:d}{}", hasher.hashes() - warmup_hashes, warmup_hashes_str);
+        std::println("Hashes per second: {:.2f}, stddev: {:.2f}", throughputT, stddev);
+    } catch (const Exception& ex) {
+        std::println("Failed to initialize Hasher: {:s}", ex.what());
+        return std::exit(-1);
+    }
+}
+
+void microbenchmarks() {
     aes_input.resize(Rx_Scratchpad_L3_Size);
     program_input.resize(2176);
 
-    for (auto &program : programs) {
+    for (auto& program : programs) {
         program = superscalar.generate();
     }
 
@@ -146,36 +309,6 @@ int main() {
 
     std::println("Running {:d} benchmarks...\n", benchmarks.size());
     runBenchmarks(benchmarks);
-
-    hasherBenchmark();
-}
-
-void hasherBenchmark() {
-    try {
-        std::println("Running Hasher benchmark...");
-
-        Hasher hasher{ span_cast<std::byte>(seed) };
-        hasher.resetVM(block_template);
-        std::atomic<uint64_t> counter{ 0 };
-
-        const auto startT{ std::chrono::high_resolution_clock::now() };
-        hasher.run([&counter](const RxHash& hash) {
-            counter.fetch_add(1, std::memory_order_relaxed);
-        });
-        std::this_thread::sleep_for(std::chrono::microseconds(static_cast<uint64_t>(Total_Microseconds)));
-        hasher.stop();
-        const auto endT{ std::chrono::high_resolution_clock::now() };
-
-        const auto elapsedT{ static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(endT - startT).count()) };
-        const auto throughputT{ static_cast<double>(counter.load()) / (elapsedT / Us_Per_Sec) };
-
-        std::println("Benchmark ran for {:.3f}s", elapsedT / Us_Per_Sec);
-        std::println("Hashes calculated: {:d}", counter.load());
-        std::println("Hashes per second: {:.2f}", throughputT);
-    } catch (const Exception& ex) {
-        std::println("Failed to initialize Hasher: {:s}", ex.what());
-        return std::exit(-1);
-    }
 }
 
 void blake2bBenchmark() {
