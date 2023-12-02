@@ -24,21 +24,10 @@ namespace modernRX {
         constexpr auto Sp_Offset{ Rf_Offset + 256 };
     }
 
-    // Holds RandomX program entropy and instructions: https://github.com/tevador/RandomX/blob/master/doc/specs.md#44-program-buffer
-    // Initialized by AES-filled buffer. Must preserve order of fields.
-    struct RxProgram {
-        std::array<uint64_t, 16> entropy{};
-        std::array<RxInstruction, Rx_Program_Size> instructions{};
-    };
-    static_assert(sizeof(RxProgram) == Rx_Program_Bytes_Size); // Size of random program is also used in different context. Make sure both values match.
-    static_assert(offsetof(RxProgram, entropy) == 0);
-
-
-    VirtualMachine::VirtualMachine(std::span<std::byte, Required_Memory> scratchpad, const uint32_t vm_id) 
-        : memory(scratchpad) {
-        jit = makeExecutable<JITRxProgram>(sizeof(Code_Buffer));
-        std::memcpy(jit.get(), Code_Buffer.data(), sizeof(Code_Buffer));
-        compiler.code_buffer = reinterpret_cast<char*>(jit.get()) + Program_Offset;
+    VirtualMachine::VirtualMachine(std::span<std::byte, Required_Memory> scratchpad, JITRxProgram jit, const uint32_t vm_id)
+        : memory(scratchpad), jit(jit) {
+        std::memcpy(jit, Code_Buffer.data(), sizeof(Code_Buffer));
+        compiler.code_buffer = reinterpret_cast<char*>(jit) + Program_Offset;
         pdata.vm_id = vm_id;
     }
 
@@ -49,9 +38,21 @@ namespace modernRX {
         this->pdata.hashes = 0;
     }
 
+    struct alignas(16) OtherConsts {
+        uint64_t scratchpad_offset_mask{ 0x001f'ffc0'001f'ffc0 };
+        uint64_t reserved{};
+    };
+
+    struct alignas(16) FloatingEnv {
+        uint32_t mode0{ 0x9fc0 };
+        uint32_t mode1{ 0xbfc0 };
+        uint32_t mode2{ 0xdfc0 };
+        uint32_t mode3{ 0xffc0 };
+    };
+
+    FloatingEnv global_fenv{};
+
     void VirtualMachine::executeNext(std::function<void(const RxHash&)> callback) noexcept{
-        // RandomX requires specific float environment before executing any program.
-        // This RAII object will set proper float flags on creation and restore its values on destruction. 
         const intrinsics::sse::FloatEnvironment fenv{};
         constexpr uint64_t Dataset_Extra_Items{ Rx_Dataset_Extra_Size / sizeof(DatasetItem) };
         static_assert(Dataset_Extra_Items == 524'287);
@@ -60,16 +61,22 @@ namespace modernRX {
         const auto dataset_ptr{ reinterpret_cast<uintptr_t>(dataset.data()) };
         const auto rf_ptr{ reinterpret_cast<uintptr_t>(memory.data()) + Rf_Offset };
         const auto scratchpad_ptr{ reinterpret_cast<uintptr_t>(memory.data()) + Sp_Offset };
+        const auto global_ptr{ static_cast<uintptr_t>(0) }; // Currently unused.
+
+        OtherConsts* other_consts_ptr{ reinterpret_cast<OtherConsts*>(scratchpad_ptr - 32) };
+        FloatingEnv* fenv_ptr{ reinterpret_cast<FloatingEnv*>(scratchpad_ptr - 16) };
 
         RxProgram program;
         const auto program_ptr{ reinterpret_cast<uintptr_t>(&program) };
+        compiler.program = &program;
 
         for (uint32_t i = 0; i < Rx_Program_Count - 1; ++i) {
             generateProgram(program);
             compileProgram(program);
 
-            const auto jit_program{ reinterpret_cast<JITRxProgram>(jit.get()) };
-            jit_program(scratchpad_ptr, dataset_ptr, program_ptr);
+            *other_consts_ptr = OtherConsts{};
+            *fenv_ptr = FloatingEnv{};
+            jit(scratchpad_ptr, dataset_ptr, program_ptr, global_ptr);
 
             blake2b::hash(seed, span_cast<std::byte, sizeof(RegisterFile)>(reinterpret_cast<std::byte*>(rf_ptr)));
         }
@@ -87,8 +94,9 @@ namespace modernRX {
 
         {
             Trace<TraceEvent::Execute> _;
-            const auto jit_program{ reinterpret_cast<JITRxProgram>(jit.get()) };
-            jit_program(scratchpad_ptr, dataset_ptr, program_ptr);
+            *other_consts_ptr = OtherConsts{};
+            *fenv_ptr = FloatingEnv{};
+            jit(scratchpad_ptr, dataset_ptr, program_ptr, global_ptr);
         }
 
 
@@ -128,6 +136,11 @@ namespace modernRX {
     }
 
     void VirtualMachine::generateProgram(RxProgram& program) noexcept {
+        intrinsics::prefetch<intrinsics::PrefetchMode::T0, 1>(&compiler.Base_Cmpl_Addr);
+        for (int i = 0; i < 8; ++i) {
+            intrinsics::prefetch<intrinsics::PrefetchMode::T0, 1>(LUT_Instr_Cmpl_Offsets.data() + 32);
+            intrinsics::prefetch<intrinsics::PrefetchMode::T0, 1>(compiler.instr_offset.data() + 32);
+        }
         aes::fill4R(span_cast<std::byte>(program), seed);
         // Last 64 bytes of the program are now the new seed.
     }
@@ -138,17 +151,37 @@ namespace modernRX {
         // RDI = rf
         // RSI = memory
         // RBP = dataset
+        
 
         // Compile all instructions.
-        for (uint32_t i = 0; i < program.instructions.size(); ++i) {
+        for (uint32_t i = 0; i < program.instructions.size(); ) {
+            const RxInstruction& instr{ program.instructions[i++] };
+            const RxInstruction& instr2{ program.instructions[i++] };
+            const RxInstruction& instr3{ program.instructions[i++] };
+            const RxInstruction& instr4{ program.instructions[i++] };
+
+            const auto cmpl_func{ ForceCast<InstrCmpl>(compiler.Base_Cmpl_Addr + LUT_Instr_Cmpl_Offsets[instr.opcode]) };
+            const auto cmpl_func2{ ForceCast<InstrCmpl>(compiler.Base_Cmpl_Addr + LUT_Instr_Cmpl_Offsets[instr2.opcode]) };
+            const auto cmpl_func3{ ForceCast<InstrCmpl>(compiler.Base_Cmpl_Addr + LUT_Instr_Cmpl_Offsets[instr3.opcode]) };
+            const auto cmpl_func4{ ForceCast<InstrCmpl>(compiler.Base_Cmpl_Addr + LUT_Instr_Cmpl_Offsets[instr4.opcode]) };
+            i -= 4;
+
             compiler.instr_offset[i] = compiler.code_size;
-            const RxInstruction& instr{ program.instructions[i] };
-            (compiler.*LUT_Instr_Cmpl[instr.opcode])(instr, i);
+            (compiler.*cmpl_func)(instr, i++);
+
+            compiler.instr_offset[i] = compiler.code_size;
+            (compiler.*cmpl_func2)(instr2, i++);
+
+            compiler.instr_offset[i] = compiler.code_size;
+            (compiler.*cmpl_func3)(instr3, i++);
+
+            compiler.instr_offset[i] = compiler.code_size;
+            (compiler.*cmpl_func4)(instr4, i++);
         }
 
         constexpr auto loop_finalization_offset{ Loop_Finalization_Offset_3 };
         constexpr auto Jmp_Code_Size{ 5 };
-        constexpr uint8_t nops[16]{ 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90 };
+        constexpr uint8_t nops[8]{ 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90 };
 
         if (compiler.code_size < Max_Program_Size - Jmp_Code_Size) {
             // do the jmp
@@ -173,19 +206,19 @@ namespace modernRX {
         static_assert(Scratchpad_L3_Mask64 == 0x001F'FFC0);
 
         const uint8_t read_reg2 = static_cast<uint8_t>(0xc7 + 8 * (4 + ((program.entropy[12] >> 2) & 1)));
-        const auto rr2_offset{ 8 };
-        std::memcpy(reinterpret_cast<char*>(jit.get()) + loop_finalization_offset + rr2_offset, &read_reg2, sizeof(uint8_t));
+        const auto rr2_offset{ 18 };
+        std::memcpy(reinterpret_cast<char*>(jit) + loop_finalization_offset + rr2_offset, &read_reg2, sizeof(uint8_t));
 
         const uint8_t read_reg3 = static_cast<uint8_t>(0xc7 + 8 * (6 + ((program.entropy[12] >> 3) & 1)));
-        const auto rr3_offset{ 11 };
-        std::memcpy(reinterpret_cast<char*>(jit.get()) + loop_finalization_offset + rr3_offset, &read_reg3, sizeof(uint8_t));
+        const auto rr3_offset{ 21 };
+        std::memcpy(reinterpret_cast<char*>(jit) + loop_finalization_offset + rr3_offset, &read_reg3, sizeof(uint8_t));
 
         const uint8_t read_reg0 = static_cast<uint8_t>(0xc2 + 8 * (0 + ((program.entropy[12] >> 0) & 1)));
-        const auto rr0_offset{ 149 };
-        std::memcpy(reinterpret_cast<char*>(jit.get()) + loop_finalization_offset + rr0_offset, &read_reg0, sizeof(uint8_t));
+        const auto rr0_offset{ 155 };
+        std::memcpy(reinterpret_cast<char*>(jit) + loop_finalization_offset + rr0_offset, &read_reg0, sizeof(uint8_t));
 
         const uint8_t read_reg1 = static_cast<uint8_t>(0xc2 + 8 * (2 + ((program.entropy[12] >> 1) & 1)));
-        const auto rr1_offset{ 152 };
-        std::memcpy(reinterpret_cast<char*>(jit.get()) + loop_finalization_offset + rr1_offset, &read_reg1, sizeof(uint8_t));
+        const auto rr1_offset{ 158 };
+        std::memcpy(reinterpret_cast<char*>(jit) + loop_finalization_offset + rr1_offset, &read_reg1, sizeof(uint8_t));
     }
 }

@@ -10,6 +10,8 @@
 #include "superscalar.hpp"
 #include "thread.hpp"
 
+#include "virtualmachineprogram.cpp"
+
 namespace modernRX {
     Hasher::Hasher() {
         checkCPU();
@@ -26,8 +28,12 @@ namespace modernRX {
         constexpr auto Total_Vm_Memory{ Vm_Required_Memory + Offset };
         scratchpads.reserve(threads * Total_Vm_Memory);
 
+        jit = makeExecutable<JITRxProgram>(threads * sizeof(Code_Buffer));
+
         for (uint32_t i = 0; i < threads; ++i) {
-            vms.emplace_back(scratchpads.buffer<Vm_Required_Memory>(i * Total_Vm_Memory, Vm_Required_Memory), i);
+            const auto vm_scratchpad{ scratchpads.buffer<Vm_Required_Memory>(i * Total_Vm_Memory, Vm_Required_Memory) };
+            const auto vm_jit_buffer{ reinterpret_cast<JITRxProgram>(reinterpret_cast<char*>(jit.get()) + i * sizeof(Code_Buffer)) };
+            vms.emplace_back(vm_scratchpad, vm_jit_buffer, i);
         }
     }
 

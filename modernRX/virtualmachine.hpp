@@ -23,7 +23,8 @@ namespace modernRX {
     // memory - pointer to Scratchpad.
     // dataset - pointer to Dataset.
     // program - pointer to RandomX program.
-    using JITRxProgram = void(*)(const uintptr_t scratchpad, const uintptr_t dataset, const uintptr_t program);
+    // global - pointer to global, read-only data shared by all VMs.
+    using JITRxProgram = void(*)(const uintptr_t scratchpad, const uintptr_t dataset, const uintptr_t program, const uintptr_t global);
 
     // Forward declarations.
     struct ProgramContext;
@@ -49,7 +50,7 @@ namespace modernRX {
         static constexpr size_t Required_Memory{ Rx_Scratchpad_L3_Size + sizeof(VirtualMachine::RegisterFile) + Rx_Program_Bytes_Size };
 
     public:
-        [[nodiscard]] explicit VirtualMachine(std::span<std::byte, Required_Memory>, const uint32_t = 0);
+        [[nodiscard]] explicit VirtualMachine(std::span<std::byte, Required_Memory>, JITRxProgram, const uint32_t = 0);
 
         // Resets VirtualMachine with new input and dataset.
         // Another VirtualMachine with same input and dataset will produce same result.
@@ -84,7 +85,7 @@ namespace modernRX {
         std::span<const DatasetItem> dataset;
         std::span<std::byte, Required_Memory> memory;
         BytecodeCompiler compiler;
-        jit_function_ptr<JITRxProgram> jit{ nullptr };
+        JITRxProgram jit{ nullptr };
         PData pdata;
         alignas(32) RxHash output;
         bool new_block_template{ false };

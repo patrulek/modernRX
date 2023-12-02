@@ -3,9 +3,6 @@
 #include <functional>
 #include <print>
 
-#include "aes1rhash.hpp"
-#include "aes1rrandom.hpp"
-#include "aes4rrandom.hpp"
 #include "argon2d.hpp"
 #include "blake2b.hpp"
 #include "dataset.hpp"
@@ -144,9 +141,6 @@ void microbenchmarks();
 void blake2bBenchmark();
 void blake2bLongBenchmark();
 void argon2dFillMemoryBenchmark();
-void aes1rHashBenchmark();
-void aes1rFillBenchmark();
-void aes4rFillBenchmark();
 void superscalarGenerateBenchmark();
 void datasetGenerateBenchmark();
 
@@ -204,14 +198,26 @@ void hasherBenchmark(const Options options) {
         std::println("Running Hasher benchmark with options:\n- seconds: {:d}\n- warmup: {:d}\n- verbosity: {:d}\n- trace: {}\n", 
             options.seconds, options.warmup, options.verbose, Trace_Enabled);
 
+        std::println("Key: {:08x}", seed);
+        std::print("Block template: ");
+        for (const auto& b : block_template.view()) {
+            std::print("{:02x}", static_cast<uint8_t>(b));
+        }
+        std::println("");
+
+        auto startT{ std::chrono::high_resolution_clock::now() };
         Hasher hasher{ span_cast<std::byte>(seed) };
+        auto endT{ std::chrono::high_resolution_clock::now() };
+        auto elapsedT{ static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(endT - startT).count()) };
+        std::println("Memory initialized in {:.3f}s\n", elapsedT / Us_Per_Sec);
+
         hasher.resetVM(block_template);
 
         std::vector<std::pair<size_t, size_t>> measures;
         measures.reserve(options.seconds + 1);
         measures.emplace_back(0, 0);
 
-        const auto startT{ std::chrono::high_resolution_clock::now() };
+        startT = std::chrono::high_resolution_clock::now();
         hasher.run();
         while (measures.size() < options.seconds + 1) {
             std::this_thread::sleep_for(std::chrono::microseconds(static_cast<uint64_t>(Us_Per_Sec)));
@@ -222,10 +228,10 @@ void hasherBenchmark(const Options options) {
         }
 
         hasher.stop();
-        const auto endT{ std::chrono::high_resolution_clock::now() };
+        endT = std::chrono::high_resolution_clock::now();
 
         const size_t warmup_hashes{ measures[options.warmup].first };
-        const auto elapsedT{ static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(endT - startT).count() - measures[options.warmup].second)  };
+        elapsedT = static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(endT - startT).count() - measures[options.warmup].second);
         const auto throughputT{ static_cast<double>(hasher.hashes() - warmup_hashes) / (elapsedT / Us_Per_Sec) };
 
 
@@ -289,9 +295,6 @@ void hasherBenchmark(const Options options) {
 }
 
 void microbenchmarks() {
-    aes_input.resize(Rx_Scratchpad_L3_Size);
-    program_input.resize(2176);
-
     for (auto& program : programs) {
         program = superscalar.generate();
     }
@@ -300,9 +303,6 @@ void microbenchmarks() {
         { "Blake2b::hash (64B input/output)", 1, "H/s", blake2bBenchmark },
         { "Argon2d::Blake2b::hash (72B input, 1 KB output)", 1, "H/s", blake2bLongBenchmark },
         { "Argon2d::fillMemory (256MB output)", 268'435'456, "B/s", argon2dFillMemoryBenchmark },
-        { "Aes::fill1R (64B input, 2MB output)",  2'097'152, "B/s", aes1rFillBenchmark },
-        { "Aes::fill4R (64B input, 2176B output)", 2176, "B/s", aes4rFillBenchmark },
-        { "Aes::hash1R (2MB input, 64B output)", 1, "H/s", aes1rHashBenchmark },
         { "Superscalar::generate (1 Program output)", 1, "Program/s", superscalarGenerateBenchmark },
         { std::format("Dataset::generate ({:d}B output)", Rx_Dataset_Base_Size + Rx_Dataset_Extra_Size), Rx_Dataset_Base_Size + Rx_Dataset_Extra_Size, "B/s", datasetGenerateBenchmark },
     };
@@ -323,18 +323,6 @@ void argon2dFillMemoryBenchmark() {
     auto block_template_copy{ block_template };
     std::memcpy(block_template_copy.data + 11, &(++fill), sizeof(uint32_t));
     argon2d::fillMemory(memory.buffer(), block_template.view());
-}
-
-void aes1rHashBenchmark() {
-    aes::hash1R(hash, aes_input);
-}
-
-void aes1rFillBenchmark() {
-    aes::fill1R(aes_input, hash);
-}
-
-void aes4rFillBenchmark() {
-    aes::fill4R(program_input, hash);
 }
 
 void superscalarGenerateBenchmark() {

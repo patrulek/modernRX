@@ -402,7 +402,6 @@ namespace modernRX {
 
     void BytecodeCompiler::cbranch_cmpl(const RxInstruction& instr, const uint32_t idx) noexcept {
         const uint8_t dst_register{ instr.dst_register };
-        const uint8_t src_register{ instr.src_register };
 
         constexpr uint32_t Condition_Mask{ (1 << Rx_Jump_Bits) - 1 };
         const auto shift{ instr.modCond() + Rx_Jump_Offset };
@@ -413,17 +412,29 @@ namespace modernRX {
         imm &= ~(1ULL << (shift - 1)); // Clear the bit below the condition mask - this limits the number of successive jumps to 2.
 
         const auto jmp_target{ reg_usage[dst_register] + 1 };
-        const int32_t jmp_offset{ instr_offset[jmp_target] - instr_offset[idx] - 20 };
+        if (jmp_target <= last_fp_instr) {
+            last_fp_instr = idx;
+        }
 
-        const uint64_t add{ 0x49'00'00'00'00'c0'81'49 | uint64_t(dst_register) << 16 | uint64_t(imm) << 24 };
-        std::memcpy(code_buffer + code_size, &add, sizeof(add));
-        const uint64_t test{ 0x84'0f'00'00'00'00'c0'f7 | uint64_t(dst_register) << 8 | uint64_t(mem_mask) << 16 };
-        std::memcpy(code_buffer + code_size + 8, &test, sizeof(test));
-        std::memcpy(code_buffer + code_size + 16, &jmp_offset, sizeof(jmp_offset));
-        code_size += 20;
+        int32_t jmp_offset{ instr_offset[jmp_target] - instr_offset[idx] - 16 };
 
         for (int i = 0; i < Int_Register_Count; ++i) {
             reg_usage[i] = idx; // Set all registers as used.
+        }
+
+        const uint64_t add{ 0x49'00'00'00'00'c0'81'49 | uint64_t(dst_register) << 16 | uint64_t(imm) << 24 };
+        std::memcpy(code_buffer + code_size, &add, sizeof(add));
+
+        if (jmp_offset >= -128) {
+            const uint64_t test{ 0x00'74'00'00'00'00'c0'f7 | uint64_t(dst_register) << 8 | uint64_t(mem_mask) << 16 | int64_t(jmp_offset) << 56 };
+            std::memcpy(code_buffer + code_size + 8, &test, sizeof(test));
+            code_size += 16;
+        } else {
+            jmp_offset -= 4;
+            const uint64_t test{ 0x84'0f'00'00'00'00'c0'f7 | uint64_t(dst_register) << 8 | uint64_t(mem_mask) << 16 };
+            std::memcpy(code_buffer + code_size + 8, &test, sizeof(test));
+            std::memcpy(code_buffer + code_size + 16, &jmp_offset, sizeof(jmp_offset));
+            code_size += 20;
         }
     }
 
@@ -440,6 +451,8 @@ namespace modernRX {
         const uint32_t vaddpd{ 0xc0'58'a1'c5 | uint32_t(24 - 8 * src_register) << 8 | uint32_t(9 * dst_register) << 24 };
         std::memcpy(code_buffer + code_size, &vaddpd, sizeof(vaddpd));
         code_size += 4;
+
+        last_fp_instr = idx;
     }
 
     void BytecodeCompiler::faddm_cmpl(const RxInstruction& instr, const uint32_t idx) noexcept {
@@ -465,6 +478,8 @@ namespace modernRX {
             std::memcpy(code_buffer + code_size + 16, &mov, sizeof(mov));
             code_size += 23;
         }
+
+        last_fp_instr = idx;
     }
 
     void BytecodeCompiler::fsubr_cmpl(const RxInstruction& instr, const uint32_t idx) noexcept {
@@ -473,6 +488,8 @@ namespace modernRX {
         const uint64_t vsubpd{ 0x00'00'00'c0'5c'61'c1'c4 | uint64_t(24 - 8 * dst_register) << 16 | uint64_t(8 * dst_register + src_register) << 32 };
         std::memcpy(code_buffer + code_size, &vsubpd, sizeof(vsubpd));
         code_size += 5;
+
+        last_fp_instr = idx;
     }
 
     void BytecodeCompiler::fsubm_cmpl(const RxInstruction& instr, const uint32_t idx) noexcept {
@@ -498,6 +515,8 @@ namespace modernRX {
             std::memcpy(code_buffer + code_size + 16, &mov, sizeof(mov));
             code_size += 24;
         }
+
+        last_fp_instr = idx;
     }
 
     void BytecodeCompiler::fscalr_cmpl(const RxInstruction& instr, const uint32_t idx) noexcept {
@@ -513,6 +532,8 @@ namespace modernRX {
         const uint32_t vmulpd{ 0xe4'59'81'c5 | uint32_t(56 - 8 * src_register) << 8 | uint32_t(9 * dst_register) << 24 };
         std::memcpy(code_buffer + code_size, &vmulpd, sizeof(vmulpd));
         code_size += 4;
+
+        last_fp_instr = idx;
     }
 
     void BytecodeCompiler::fdivm_cmpl(const RxInstruction& instr, const uint32_t idx) noexcept {
@@ -543,6 +564,8 @@ namespace modernRX {
             std::memcpy(code_buffer + code_size + 24, &orps, sizeof(orps));
             code_size += 32;
         }
+
+        last_fp_instr = idx;
     }
 
     void BytecodeCompiler::fsqrtr_cmpl(const RxInstruction& instr, const uint32_t idx) noexcept {
@@ -550,30 +573,41 @@ namespace modernRX {
         const uint32_t vsqrtpd{ 0xe4'51'f9'c5 | uint32_t(9 * dst_register) << 24 };
         std::memcpy(code_buffer + code_size, &vsqrtpd, sizeof(vsqrtpd));
         code_size += 4;
+
+        last_fp_instr = idx;
     }
 
     void BytecodeCompiler::cfround_cmpl(const RxInstruction& instr, const uint32_t idx) noexcept {
+        if (last_cfround_instr > last_fp_instr) {
+            constexpr uint8_t nop12[12] = { 0x66, 0x66, 0x66, 0x2e, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00 };
+
+            if (program->instructions[last_cfround_instr].imm32 % 64 != 0) {
+                // 2x8 nop
+                std::memcpy(code_buffer + instr_offset[last_cfround_instr], &nop12[4], sizeof(nop12) - 4);
+                std::memcpy(code_buffer + instr_offset[last_cfround_instr] + 8, &nop12[4], sizeof(nop12) - 4);
+            } else {
+                // 1x12 nop
+                std::memcpy(code_buffer + instr_offset[last_cfround_instr], nop12, sizeof(nop12));
+            }
+        }
+
         const uint8_t src_register{ instr.src_register };
 
         if (const uint64_t imm{ instr.imm32 % 64 }; imm != 0) {
             const uint64_t mov{ 0x48'00'c8'c1'48'c0'89'4c | imm << 48 | uint64_t(8 * src_register) << 16 };
             std::memcpy(code_buffer + code_size, &mov, sizeof(mov));
-            const uint64_t and_{ 0x48'0d'c0'c1'48'03'e0'83 };
+            const uint64_t and_{ 0xf0'86'54'ae'0f'03'e0'83 };
             std::memcpy(code_buffer + code_size + 8, &and_, sizeof(and_));
-            const uint64_t or_{ 0xae'0f'50'00'00'9f'c0'0d };
-            std::memcpy(code_buffer + code_size + 16, &or_, sizeof(or_));
-            const uint32_t ldmxcsr{ 0x00'58'24'14 };
-            std::memcpy(code_buffer + code_size + 24, &ldmxcsr, sizeof(ldmxcsr));
-            code_size += 27;
+            code_size += 16;
         } else {
-            const uint64_t mov{ 0x48'03'e0'83'48'c0'89'4c | uint64_t(8 * src_register) << 16 };
+            const uint64_t mov{ 0x0f'03'e0'83'48'c0'89'4c | uint64_t(8 * src_register) << 16 };
             std::memcpy(code_buffer + code_size, &mov, sizeof(mov));
-            const uint64_t rol{ 0x00'9f'c0'0d'48'0d'c0'c1 };
-            std::memcpy(code_buffer + code_size + 8, &rol, sizeof(rol));
-            const uint64_t or_{ 0x00'58'24'14'ae'0f'50'00 };
-            std::memcpy(code_buffer + code_size + 16, &or_, sizeof(or_));
-            code_size += 23;
+            const uint32_t ldmxcsr{ 0xf0'86'54'ae };
+            std::memcpy(code_buffer + code_size + 8, &ldmxcsr, sizeof(ldmxcsr));
+            code_size += 12;
         }
+
+        last_cfround_instr = idx;
     }
 
     void BytecodeCompiler::istore_cmpl(const RxInstruction& instr, const uint32_t idx) noexcept {

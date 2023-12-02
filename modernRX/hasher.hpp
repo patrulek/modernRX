@@ -46,6 +46,7 @@ namespace modernRX {
         std::vector<std::byte> key; // Latest key used for Dataset generation.
         HeapArray<DatasetItem, 4096> dataset; // Dataset used for program execution.
         HeapArray<std::byte, 64 * Rx_Scratchpad_L3_Size> scratchpads; // Scratchpads used for program execution.
+        jit_function_ptr<JITRxProgram> jit; // JIT-compiled RandomX program buffer.
         std::atomic<bool> running{ false }; // Stop signal for VM threads.
 
         void checkCPU() const; // Ensure CPU supports required features.

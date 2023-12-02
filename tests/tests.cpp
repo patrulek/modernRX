@@ -593,8 +593,9 @@ void testVM() {
 
         auto dataset{ generateDataset(cache.view(), programs) };
         HeapArray<std::byte, Rx_Scratchpad_L3_Size> scratchpad(VirtualMachine::requiredMemory());
+        auto jit = makeExecutable<JITRxProgram>(12 * 1024);
 
-        VirtualMachine vm(scratchpad.buffer<VirtualMachine::requiredMemory()>());
+        VirtualMachine vm(scratchpad.buffer<VirtualMachine::requiredMemory()>(), reinterpret_cast<JITRxProgram>(jit.get()));
         BlockTemplate bt;
         std::memcpy(bt.data, block_template.data(), sizeof(block_template));
         vm.reset(bt, dataset);
@@ -628,8 +629,9 @@ void testVM() {
 
         auto dataset{ generateDataset(cache.view(), programs) };
         HeapArray<std::byte, Rx_Scratchpad_L3_Size> scratchpad(VirtualMachine::requiredMemory());
+        auto jit = makeExecutable<JITRxProgram>(12 * 1024);
 
-        VirtualMachine vm(scratchpad.buffer<VirtualMachine::requiredMemory()>());
+        VirtualMachine vm(scratchpad.buffer<VirtualMachine::requiredMemory()>(), reinterpret_cast<JITRxProgram>(jit.get()));
         BlockTemplate bt;
         std::memcpy(bt.data, block_template.data(), sizeof(block_template));
         bt.data[42] = 1;

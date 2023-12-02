@@ -97,15 +97,15 @@ Sample output:
 ```console
 [ 0] Blake2b::hash                            ... Passed (<1ms)
 [ 1] Argon2d::Blake2b::hash                   ... Passed (<1ms)
-[ 2] Argon2d::fillMemory                      ... Passed (19.508s)
+[ 2] Argon2d::fillMemory                      ... Passed (19.401s)
 [ 3] AesGenerator1R::fill                     ... Passed (<1ms)
 [ 4] AesGenerator4R::fill                     ... Passed (<1ms)
 [ 5] AesHash1R                                ... Passed (<1ms)
 [ 6] Blake2brandom::get                       ... Passed (<1ms)
 [ 7] Reciprocal                               ... Passed (<1ms)
 [ 8] Superscalar::generate                    ... Passed (0.010s)
-[ 9] Dataset::generate                        ... Passed (25.748s)
-[10] VirtualMachine::execute                  ... Passed (16.866s)
+[ 9] Dataset::generate                        ... Passed (26.367s)
+[10] VirtualMachine::execute                  ... Passed (17.177s)
 ```
 
 Ideally, tests should be run before every release in `Release` and `Debug` mode with `AddressSanitizer` enabled. `ReleaseAsan` and `DebugAsan` project configurations are provided for this purpose.
@@ -153,10 +153,10 @@ Benchmarks were performed on AMD Ryzen 5800H CPU with 32GB of RAM (Dual-channel,
 CPU frequency turbo boost was disabled (3.2GHz base frequency).
 CPU temperature limit was set to 95°C.
 
-|                                |  Hash [H/s] | Efficiency [H/Watt/s] | Blake2b [H/s] | Blake2bLong [H/s] | Argon2d [MB/s] | Aes1R [MB/s] | Aes4R [MB/s] | AesHash1R [H/s] | Superscalar [Prog/s] | Dataset [MB/s] |
-| ------------------------------ |  :--------: | :-------------------: | :-----------: | :---------------: | :------------: | :----------: | :----------: | :-------------: | :------------------: | :------------: |
-| RandomX-1.2.1 (102f8acf)       |    **4554** |            **~84.33** |        3.231M |           103.46K |          881.4 |      47402.5 |      11473.4 |           23702 |                 2754 |         ~838.7 |
-| modernRX 0.8.0                 |        3105 |                ~63.62 |    **5.455M** |       **172.01K** |     **1217.6** |  **47454.3** |  **11885.5** |       **23845** |             **9690** |     **1246.1** |
+|                                |  Hash [H/s] | Efficiency [H/Watt/s] | Blake2b [H/s] | Blake2bLong [H/s] | Argon2d [MB/s] | Superscalar [Prog/s] | Dataset [MB/s] |
+| ------------------------------ |  :--------: | :-------------------: | :-----------: | :---------------: | :------------: | :------------------: | :------------: |
+| RandomX-1.2.1 (102f8acf)       |    **4554** |            **~84.33** |        3.231M |           103.46K |          881.4 |                 2754 |         ~838.7 |
+| modernRX 0.8.1                 |        3105 |                ~64.28 |    **5.454M** |       **170.66K** |     **1236.2** |             **9647** |     **1263.0** |
 
 Original RandomX provides benchmark only for calculating final hashes. All other values were estimated (based on information benchmark provides) or some custom benchmarks were written on top of RandomX implementation, thus values may not be 100% accurate.
 
@@ -199,7 +199,7 @@ Project follows [zero-based versioning](https://0ver.org/) with several specific
 
 ## Changelog
 
-* **v0.8.0 - 30.11.2023:** code preparation for optimization experiments (simple execution tracer, improved benchmarking)
+* **v0.8.1 - 02.12.2023:** first round of optimization experiments (<1% boost; check [CHANGELOG.md](CHANGELOG.md) for details)
 * ...
 * **v0.1.3 - 29.10.2023:** bugfixes, benchmarks corrections, code cleanup
 * ...
@@ -215,11 +215,11 @@ $> gocloc /exclude-ext "xml,json,txt,exp" /not-match-d "3rdparty/*|x64/*|assets/
 -------------------------------------------------------------------------------
 Language                     files          blank        comment           code
 -------------------------------------------------------------------------------
-C++                             17            646            377           3607
-C++ Header                      36            553            577           3139
-Markdown                         3            185              0            550
+C++                             17            667            376           3662
+C++ Header                      36            559            579           3176
+Markdown                         3            192              0            578
 -------------------------------------------------------------------------------
-TOTAL                           56           1384            954           7296
+TOTAL                           56           1418            955           7416
 -------------------------------------------------------------------------------
 ```
 

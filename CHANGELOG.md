@@ -1,5 +1,38 @@
 ## modernRX - Changelog
 
+### v0.8.1 - 02.12.2023:
+
+First round of optimization experiments.
+All optimization decisions made in this version:
+* use short JMP assembly instruction in CBRANCH bytecode instruction when possible (lesser code footprint)
+* prefetch some data used by JIT compiler and unroll JIT compilation loop (~20% faster JIT compilation)
+* reduce JIT compiler memory usage:
+  * replace array of pointers to functions with array of offsets to functions from a base function (2B vs 8B per opcode) - this is based on undefined behaviour of casting member function pointers
+  * change some variables to 16-bit integers
+* eliminate CFROUND instructions (in case of two consecutive CFROUND instructions without any floating operation in between, the first one is NOPed out)
+* reduce total assembly instructions for CFROUND (lesser code footprint)
+* use precomputed constants for CFROUND
+* allocate all VM's jit buffer code in single chunk
+* push/pop registers in function prologue/epilogue to/from memory used for RegisterFile (lesser memory usage)
+* avoid scratchpad overwriting - at the end of the loop 128B are written in two 64B chunks; if both chunks are written to the same 64B aligned address, skip writing the first one
+* tweak program to allow for a little bit faster initial dataset prefetch 
+
+Improvements:
+* improve benchmark output
+
+Documentation:
+* remove AES microbenchmarks (no longer relevant as there are no differences in implementations)
+
+Important notes:
+* this version relies on undefined behaviour that seems to be working on MSVC compiler, but it's not guaranteed to work on other compilers
+
+Results comparison with previous version in a single run of a 2 hour benchmark (7200 samples with 1s probing time):
+
+| Version | Average H/s | 95th percentile H/s | 50th percentile H/s | 5th percentile H/s |
+| :-----: | :---------: | :-----------------: | :-----------------: | :----------------: |
+| v0.8.1  |   3103 ± 49 |                3032 |                3113 |               3122 |
+| v0.8.0  |   3083 ± 63 |                3064 |                3095 |               3101 |
+
 ### v0.8.0 - 30.11.2023:
 
 Code preparation for optimization experiments.

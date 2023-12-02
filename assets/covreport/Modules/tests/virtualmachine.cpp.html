@@ -35,21 +35,10 @@ namespace modernRX {
         constexpr auto Sp_Offset{ Rf_Offset + 256 };
     }
 
-    // Holds RandomX program entropy and instructions: https://github.com/tevador/RandomX/blob/master/doc/specs.md#44-program-buffer
-    // Initialized by AES-filled buffer. Must preserve order of fields.
-    struct RxProgram {
-        std::array&lt;uint64_t, 16&gt; entropy{};
-        std::array&lt;RxInstruction, Rx_Program_Size&gt; instructions{};
-    };
-    static_assert(sizeof(RxProgram) == Rx_Program_Bytes_Size); // Size of random program is also used in different context. Make sure both values match.
-    static_assert(offsetof(RxProgram, entropy) == 0);
-
-
-    VirtualMachine::VirtualMachine(std::span&lt;std::byte, Required_Memory&gt; scratchpad, const uint32_t vm_id) 
-<span style = "background-color:#dfd">        : memory(scratchpad) {
-        jit = makeExecutable&lt;JITRxProgram&gt;(sizeof(Code_Buffer));
-        std::memcpy(jit.get(), Code_Buffer.data(), sizeof(Code_Buffer));
-        compiler.code_buffer = reinterpret_cast&lt;char*&gt;(jit.get()) + Program_Offset;
+    VirtualMachine::VirtualMachine(std::span&lt;std::byte, Required_Memory&gt; scratchpad, JITRxProgram jit, const uint32_t vm_id)
+<span style = "background-color:#dfd">        : memory(scratchpad), jit(jit) {
+        std::memcpy(jit, Code_Buffer.data(), sizeof(Code_Buffer));
+        compiler.code_buffer = reinterpret_cast&lt;char*&gt;(jit) + Program_Offset;
         pdata.vm_id = vm_id;
     }</span>
 
@@ -60,27 +49,45 @@ namespace modernRX {
         this-&gt;pdata.hashes = 0;
     }</span>
 
-<span style = "background-color:#dfd">    void VirtualMachine::executeNext(std::function&lt;void(const RxHash&amp;)&gt; callback) noexcept{</span>
-        // RandomX requires specific float environment before executing any program.
-        // This RAII object will set proper float flags on creation and restore its values on destruction. 
-<span style = "background-color:#dfd">        const intrinsics::sse::FloatEnvironment fenv{};
+    struct alignas(16) OtherConsts {
+        uint64_t scratchpad_offset_mask{ 0x001f'ffc0'001f'ffc0 };
+        uint64_t reserved{};
+    };
+
+    struct alignas(16) FloatingEnv {
+        uint32_t mode0{ 0x9fc0 };
+        uint32_t mode1{ 0xbfc0 };
+        uint32_t mode2{ 0xdfc0 };
+        uint32_t mode3{ 0xffc0 };
+    };
+
+    FloatingEnv global_fenv{};
+
+<span style = "background-color:#dfd">    void VirtualMachine::executeNext(std::function&lt;void(const RxHash&amp;)&gt; callback) noexcept{
+        const intrinsics::sse::FloatEnvironment fenv{};
         constexpr uint64_t Dataset_Extra_Items{ Rx_Dataset_Extra_Size / sizeof(DatasetItem) };</span>
         static_assert(Dataset_Extra_Items == 524'287);
         static_assert(Cache_Line_Size == 64);
 
 <span style = "background-color:#dfd">        const auto dataset_ptr{ reinterpret_cast&lt;uintptr_t&gt;(dataset.data()) };
         const auto rf_ptr{ reinterpret_cast&lt;uintptr_t&gt;(memory.data()) + Rf_Offset };
-        const auto scratchpad_ptr{ reinterpret_cast&lt;uintptr_t&gt;(memory.data()) + Sp_Offset };</span>
+        const auto scratchpad_ptr{ reinterpret_cast&lt;uintptr_t&gt;(memory.data()) + Sp_Offset };
+        const auto global_ptr{ static_cast&lt;uintptr_t&gt;(0) }; // Currently unused.</span>
+
+<span style = "background-color:#dfd">        OtherConsts* other_consts_ptr{ reinterpret_cast&lt;OtherConsts*&gt;(scratchpad_ptr - 32) };
+        FloatingEnv* fenv_ptr{ reinterpret_cast&lt;FloatingEnv*&gt;(scratchpad_ptr - 16) };</span>
 
 <span style = "background-color:#dfd">        RxProgram program;
-        const auto program_ptr{ reinterpret_cast&lt;uintptr_t&gt;(&amp;program) };</span>
+        const auto program_ptr{ reinterpret_cast&lt;uintptr_t&gt;(&amp;program) };
+        compiler.program = &amp;program;</span>
 
 <span style = "background-color:#dfd">        for (uint32_t i = 0; i &lt; Rx_Program_Count - 1; ++i) {
             generateProgram(program);
             compileProgram(program);</span>
 
-<span style = "background-color:#dfd">            const auto jit_program{ reinterpret_cast&lt;JITRxProgram&gt;(jit.get()) };
-            jit_program(scratchpad_ptr, dataset_ptr, program_ptr);</span>
+<span style = "background-color:#dfd">            *other_consts_ptr = OtherConsts{};
+            *fenv_ptr = FloatingEnv{};
+            jit(scratchpad_ptr, dataset_ptr, program_ptr, global_ptr);</span>
 
 <span style = "background-color:#dfd">            blake2b::hash(seed, span_cast&lt;std::byte, sizeof(RegisterFile)&gt;(reinterpret_cast&lt;std::byte*&gt;(rf_ptr)));
         }</span>
@@ -98,8 +105,9 @@ namespace modernRX {
 
         {
 <span style = "background-color:#dfd">            Trace&lt;TraceEvent::Execute&gt; _;
-            const auto jit_program{ reinterpret_cast&lt;JITRxProgram&gt;(jit.get()) };
-            jit_program(scratchpad_ptr, dataset_ptr, program_ptr);
+            *other_consts_ptr = OtherConsts{};
+            *fenv_ptr = FloatingEnv{};
+            jit(scratchpad_ptr, dataset_ptr, program_ptr, global_ptr);
         }</span>
 
 
@@ -139,6 +147,11 @@ namespace modernRX {
     }</span>
 
 <span style = "background-color:#dfd">    void VirtualMachine::generateProgram(RxProgram&amp; program) noexcept {
+        intrinsics::prefetch&lt;intrinsics::PrefetchMode::T0, 1&gt;(&amp;compiler.Base_Cmpl_Addr);
+        for (int i = 0; i &lt; 8; ++i) {
+            intrinsics::prefetch&lt;intrinsics::PrefetchMode::T0, 1&gt;(LUT_Instr_Cmpl_Offsets.data() + 32);
+            intrinsics::prefetch&lt;intrinsics::PrefetchMode::T0, 1&gt;(compiler.instr_offset.data() + 32);
+        }
         aes::fill4R(span_cast&lt;std::byte&gt;(program), seed);</span>
         // Last 64 bytes of the program are now the new seed.
 <span style = "background-color:#dfd">    }</span>
@@ -149,17 +162,37 @@ namespace modernRX {
         // RDI = rf
         // RSI = memory
         // RBP = dataset
+        
 
         // Compile all instructions.
-<span style = "background-color:#dfd">        for (uint32_t i = 0; i &lt; program.instructions.size(); ++i) {
-            compiler.instr_offset[i] = compiler.code_size;
-            const RxInstruction&amp; instr{ program.instructions[i] };
-            (compiler.*LUT_Instr_Cmpl[instr.opcode])(instr, i);
+<span style = "background-color:#dfd">        for (uint32_t i = 0; i &lt; program.instructions.size(); ) {
+            const RxInstruction&amp; instr{ program.instructions[i++] };
+            const RxInstruction&amp; instr2{ program.instructions[i++] };
+            const RxInstruction&amp; instr3{ program.instructions[i++] };
+            const RxInstruction&amp; instr4{ program.instructions[i++] };</span>
+
+<span style = "background-color:#dfd">            const auto cmpl_func{ ForceCast&lt;InstrCmpl&gt;(compiler.Base_Cmpl_Addr + LUT_Instr_Cmpl_Offsets[instr.opcode]) };
+            const auto cmpl_func2{ ForceCast&lt;InstrCmpl&gt;(compiler.Base_Cmpl_Addr + LUT_Instr_Cmpl_Offsets[instr2.opcode]) };
+            const auto cmpl_func3{ ForceCast&lt;InstrCmpl&gt;(compiler.Base_Cmpl_Addr + LUT_Instr_Cmpl_Offsets[instr3.opcode]) };
+            const auto cmpl_func4{ ForceCast&lt;InstrCmpl&gt;(compiler.Base_Cmpl_Addr + LUT_Instr_Cmpl_Offsets[instr4.opcode]) };
+            i -= 4;</span>
+
+<span style = "background-color:#dfd">            compiler.instr_offset[i] = compiler.code_size;
+            (compiler.*cmpl_func)(instr, i++);</span>
+
+<span style = "background-color:#dfd">            compiler.instr_offset[i] = compiler.code_size;
+            (compiler.*cmpl_func2)(instr2, i++);</span>
+
+<span style = "background-color:#dfd">            compiler.instr_offset[i] = compiler.code_size;
+            (compiler.*cmpl_func3)(instr3, i++);</span>
+
+<span style = "background-color:#dfd">            compiler.instr_offset[i] = compiler.code_size;
+            (compiler.*cmpl_func4)(instr4, i++);
         }</span>
 
 <span style = "background-color:#dfd">        constexpr auto loop_finalization_offset{ Loop_Finalization_Offset_3 };
         constexpr auto Jmp_Code_Size{ 5 };
-        constexpr uint8_t nops[16]{ 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90 };</span>
+        constexpr uint8_t nops[8]{ 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90 };</span>
 
 <span style = "background-color:#dfd">        if (compiler.code_size &lt; Max_Program_Size - Jmp_Code_Size) {</span>
             // do the jmp
@@ -184,20 +217,20 @@ namespace modernRX {
         static_assert(Scratchpad_L3_Mask64 == 0x001F'FFC0);
 
 <span style = "background-color:#dfd">        const uint8_t read_reg2 = static_cast&lt;uint8_t&gt;(0xc7 + 8 * (4 + ((program.entropy[12] &gt;&gt; 2) &amp; 1)));
-        const auto rr2_offset{ 8 };
-        std::memcpy(reinterpret_cast&lt;char*&gt;(jit.get()) + loop_finalization_offset + rr2_offset, &amp;read_reg2, sizeof(uint8_t));</span>
+        const auto rr2_offset{ 18 };
+        std::memcpy(reinterpret_cast&lt;char*&gt;(jit) + loop_finalization_offset + rr2_offset, &amp;read_reg2, sizeof(uint8_t));</span>
 
 <span style = "background-color:#dfd">        const uint8_t read_reg3 = static_cast&lt;uint8_t&gt;(0xc7 + 8 * (6 + ((program.entropy[12] &gt;&gt; 3) &amp; 1)));
-        const auto rr3_offset{ 11 };
-        std::memcpy(reinterpret_cast&lt;char*&gt;(jit.get()) + loop_finalization_offset + rr3_offset, &amp;read_reg3, sizeof(uint8_t));</span>
+        const auto rr3_offset{ 21 };
+        std::memcpy(reinterpret_cast&lt;char*&gt;(jit) + loop_finalization_offset + rr3_offset, &amp;read_reg3, sizeof(uint8_t));</span>
 
 <span style = "background-color:#dfd">        const uint8_t read_reg0 = static_cast&lt;uint8_t&gt;(0xc2 + 8 * (0 + ((program.entropy[12] &gt;&gt; 0) &amp; 1)));
-        const auto rr0_offset{ 149 };
-        std::memcpy(reinterpret_cast&lt;char*&gt;(jit.get()) + loop_finalization_offset + rr0_offset, &amp;read_reg0, sizeof(uint8_t));</span>
+        const auto rr0_offset{ 155 };
+        std::memcpy(reinterpret_cast&lt;char*&gt;(jit) + loop_finalization_offset + rr0_offset, &amp;read_reg0, sizeof(uint8_t));</span>
 
 <span style = "background-color:#dfd">        const uint8_t read_reg1 = static_cast&lt;uint8_t&gt;(0xc2 + 8 * (2 + ((program.entropy[12] &gt;&gt; 1) &amp; 1)));
-        const auto rr1_offset{ 152 };
-        std::memcpy(reinterpret_cast&lt;char*&gt;(jit.get()) + loop_finalization_offset + rr1_offset, &amp;read_reg1, sizeof(uint8_t));
+        const auto rr1_offset{ 158 };
+        std::memcpy(reinterpret_cast&lt;char*&gt;(jit) + loop_finalization_offset + rr1_offset, &amp;read_reg1, sizeof(uint8_t));
     }</span>
 }</pre>
         <hr />

@@ -5,7 +5,10 @@
 * Defines code generation functions for all RandomX instructions.
 */
 
+#include <print>
+
 #include "bytecode.hpp"
+#include "exception.hpp"
 
 namespace modernRX {
     inline constexpr uint32_t Float_Register_Count{ 4 };
@@ -38,15 +41,42 @@ namespace modernRX {
     };
     static_assert(sizeof(RxInstruction) == 8, "Size of single instruction must be 8 bytes");
 
-    struct alignas(32) BytecodeCompiler {
-        std::array<int32_t, Int_Register_Count> reg_usage{ -1, -1, -1, -1, -1, -1, -1, -1 };
+    // Holds RandomX program entropy and instructions: https://github.com/tevador/RandomX/blob/master/doc/specs.md#44-program-buffer
+    // Initialized by AES-filled buffer. Must preserve order of fields.
+    struct RxProgram {
+        std::array<uint64_t, 16> entropy{};
+        std::array<RxInstruction, Rx_Program_Size> instructions{};
+    };
+    static_assert(sizeof(RxProgram) == Rx_Program_Bytes_Size); // Size of random program is also used in different context. Make sure both values match.
+    static_assert(offsetof(RxProgram, entropy) == 0);
+
+    template<typename Tout, typename Tin>
+    inline Tout ForceCast(const Tin in)
+    {
+        union
+        {
+            Tin in;
+            Tout out;
+        } u = { in };
+
+        return u.out;
+    };
+
+    struct alignas(64) BytecodeCompiler {
+        std::array<int16_t, Rx_Program_Size> instr_offset{};
+        std::array<int16_t, Int_Register_Count> reg_usage{ -1, -1, -1, -1, -1, -1, -1, -1 };
+        const int64_t Base_Cmpl_Addr{ ForceCast<int64_t>(&BytecodeCompiler::irorr_cmpl) };
         char* code_buffer{ nullptr };
-        int32_t code_size{ 0 };
-        std::array<int32_t, Rx_Program_Size> instr_offset{};
+        RxProgram* program{ nullptr };
+        int16_t code_size{ 0 };
+        int16_t last_fp_instr{ -1 };
+        int16_t last_cfround_instr{ -1 };
 
         void reset() noexcept {
             code_size = 0;
             reg_usage.fill(-1);
+            last_fp_instr = -1;
+            last_cfround_instr = -1;
             // instr_offset will be overwritten during compilation
         }
 
@@ -83,104 +113,117 @@ namespace modernRX {
 
     using InstrCmpl = void(BytecodeCompiler::*)(const RxInstruction&, const uint32_t);
 
-    // Holds compilation function (code generator) for all possible instruction opcodes.
-    inline constexpr std::array<InstrCmpl, LUT_Opcode.size()> LUT_Instr_Cmpl = []() consteval {
-        std::array<InstrCmpl, LUT_Opcode.size()> LUT_Instr_Cmpl_{};
-
-        for (uint32_t i = 0; i < LUT_Instr_Cmpl_.size(); ++i) {
-            switch (LUT_Opcode[i]) { using enum Bytecode;
-            case IADD_RS:
-                LUT_Instr_Cmpl_[i] = &BytecodeCompiler::iaddrs_cmpl;
-                break;
-            case IADD_M:
-                LUT_Instr_Cmpl_[i] = &BytecodeCompiler::iaddm_cmpl;
-                break;
-            case ISUB_R:
-                LUT_Instr_Cmpl_[i] = &BytecodeCompiler::isubr_cmpl;
-                break;
-            case ISUB_M:
-                LUT_Instr_Cmpl_[i] = &BytecodeCompiler::isubm_cmpl;
-                break;
-            case IMUL_R:
-                LUT_Instr_Cmpl_[i] = &BytecodeCompiler::imulr_cmpl;
-                break;
-            case IMUL_M:
-                LUT_Instr_Cmpl_[i] = &BytecodeCompiler::imulm_cmpl;
-                break;
-            case IMULH_R:
-                LUT_Instr_Cmpl_[i] = &BytecodeCompiler::imulhr_cmpl;
-                break;
-            case IMULH_M:
-                LUT_Instr_Cmpl_[i] = &BytecodeCompiler::imulhm_cmpl;
-                break;
-            case ISMULH_R:
-                LUT_Instr_Cmpl_[i] = &BytecodeCompiler::ismulhr_cmpl;
-                break;
-            case ISMULH_M:
-                LUT_Instr_Cmpl_[i] = &BytecodeCompiler::ismulhm_cmpl;
-                break;
-            case IMUL_RCP:
-                LUT_Instr_Cmpl_[i] = &BytecodeCompiler::imulrcp_cmpl;
-                break;
-            case INEG_R:
-                LUT_Instr_Cmpl_[i] = &BytecodeCompiler::inegr_cmpl;
-                break;
-            case IXOR_R:
-                LUT_Instr_Cmpl_[i] = &BytecodeCompiler::ixorr_cmpl;
-                break;
-            case IXOR_M:
-                LUT_Instr_Cmpl_[i] = &BytecodeCompiler::ixorm_cmpl;
-                break;
-            case IROR_R:
-                LUT_Instr_Cmpl_[i] = &BytecodeCompiler::irorr_cmpl;
-                break;
-            case IROL_R:
-                LUT_Instr_Cmpl_[i] = &BytecodeCompiler::irolr_cmpl;
-                break;
-            case ISWAP_R:
-                LUT_Instr_Cmpl_[i] = &BytecodeCompiler::iswapr_cmpl;
-                break;
-            case CBRANCH:
-                LUT_Instr_Cmpl_[i] = &BytecodeCompiler::cbranch_cmpl;
-                break;
-            case FSWAP_R:
-                LUT_Instr_Cmpl_[i] = &BytecodeCompiler::fswapr_cmpl;
-                break;
-            case FADD_R:
-                LUT_Instr_Cmpl_[i] = &BytecodeCompiler::faddr_cmpl;
-                break;
-            case FADD_M:
-                LUT_Instr_Cmpl_[i] = &BytecodeCompiler::faddm_cmpl;
-                break;
-            case FSUB_R:
-                LUT_Instr_Cmpl_[i] = &BytecodeCompiler::fsubr_cmpl;
-                break;
-            case FSUB_M:
-                LUT_Instr_Cmpl_[i] = &BytecodeCompiler::fsubm_cmpl;
-                break;
-            case FSCAL_R:
-                LUT_Instr_Cmpl_[i] = &BytecodeCompiler::fscalr_cmpl;
-                break;
-            case FMUL_R:
-                LUT_Instr_Cmpl_[i] = &BytecodeCompiler::fmulr_cmpl;
-                break;
-            case FDIV_M:
-                LUT_Instr_Cmpl_[i] = &BytecodeCompiler::fdivm_cmpl;
-                break;
-            case FSQRT_R:
-                LUT_Instr_Cmpl_[i] = &BytecodeCompiler::fsqrtr_cmpl;
-                break;
-            case CFROUND:
-                LUT_Instr_Cmpl_[i] = &BytecodeCompiler::cfround_cmpl;
-                break;
-            case ISTORE:
-                LUT_Instr_Cmpl_[i] = &BytecodeCompiler::istore_cmpl;
-                break;
-            default:
-                throw "invalid instruction";
-            }
+    inline int16_t bcCmplDiff(InstrCmpl base, InstrCmpl func) {
+        const auto dist{ ForceCast<int32_t>(func) - ForceCast<int32_t>(base) };
+        if (dist > std::numeric_limits<int16_t>::max() || dist < std::numeric_limits<int16_t>::min()) {
+            throw Exception(std::format("Distance between functions out of bounds; should be true {} <= {} <= {}", 
+                std::numeric_limits<int16_t>::min(), dist, std::numeric_limits<int16_t>::max()));
         }
 
-        return LUT_Instr_Cmpl_;
-        }();
+        return static_cast<int16_t>(dist);
+    }
+
+    inline const alignas(64) std::array<int16_t, LUT_Opcode.size()> LUT_Instr_Cmpl_Offsets = []() {
+        std::array<int16_t, LUT_Opcode.size()> LUT_Instr_Cmpl_Offsets_{};
+        const auto Base_Cmpl_Func{ ForceCast<InstrCmpl>(&BytecodeCompiler::irorr_cmpl) };
+
+        try {
+            for (uint32_t i = 0; i < LUT_Instr_Cmpl_Offsets_.size(); ++i) {
+                switch (LUT_Opcode[i]) { using enum Bytecode;
+                case IADD_RS:
+                    LUT_Instr_Cmpl_Offsets_[i] = bcCmplDiff(Base_Cmpl_Func, &BytecodeCompiler::iaddrs_cmpl);
+                    break;
+                case IADD_M:
+                    LUT_Instr_Cmpl_Offsets_[i] = bcCmplDiff(Base_Cmpl_Func, &BytecodeCompiler::iaddm_cmpl);
+                    break;
+                case ISUB_R:
+                    LUT_Instr_Cmpl_Offsets_[i] = bcCmplDiff(Base_Cmpl_Func, &BytecodeCompiler::isubr_cmpl);
+                    break;
+                case ISUB_M:
+                    LUT_Instr_Cmpl_Offsets_[i] = bcCmplDiff(Base_Cmpl_Func, &BytecodeCompiler::isubm_cmpl);
+                    break;
+                case IMUL_R:
+                    LUT_Instr_Cmpl_Offsets_[i] = bcCmplDiff(Base_Cmpl_Func, &BytecodeCompiler::imulr_cmpl);
+                    break;
+                case IMUL_M:
+                    LUT_Instr_Cmpl_Offsets_[i] = bcCmplDiff(Base_Cmpl_Func, &BytecodeCompiler::imulm_cmpl);
+                    break;
+                case IMULH_R:
+                    LUT_Instr_Cmpl_Offsets_[i] = bcCmplDiff(Base_Cmpl_Func, &BytecodeCompiler::imulhr_cmpl);
+                    break;
+                case IMULH_M:
+                    LUT_Instr_Cmpl_Offsets_[i] = bcCmplDiff(Base_Cmpl_Func, &BytecodeCompiler::imulhm_cmpl);
+                    break;
+                case ISMULH_R:
+                    LUT_Instr_Cmpl_Offsets_[i] = bcCmplDiff(Base_Cmpl_Func, &BytecodeCompiler::ismulhr_cmpl);
+                    break;
+                case ISMULH_M:
+                    LUT_Instr_Cmpl_Offsets_[i] = bcCmplDiff(Base_Cmpl_Func, &BytecodeCompiler::ismulhm_cmpl);
+                    break;
+                case IMUL_RCP:
+                    LUT_Instr_Cmpl_Offsets_[i] = bcCmplDiff(Base_Cmpl_Func, &BytecodeCompiler::imulrcp_cmpl);
+                    break;
+                case INEG_R:
+                    LUT_Instr_Cmpl_Offsets_[i] = bcCmplDiff(Base_Cmpl_Func, &BytecodeCompiler::inegr_cmpl);
+                    break;
+                case IXOR_R:
+                    LUT_Instr_Cmpl_Offsets_[i] = bcCmplDiff(Base_Cmpl_Func, &BytecodeCompiler::ixorr_cmpl);
+                    break;
+                case IXOR_M:
+                    LUT_Instr_Cmpl_Offsets_[i] = bcCmplDiff(Base_Cmpl_Func, &BytecodeCompiler::ixorm_cmpl);
+                    break;
+                case IROR_R:
+                    LUT_Instr_Cmpl_Offsets_[i] = bcCmplDiff(Base_Cmpl_Func, &BytecodeCompiler::irorr_cmpl);
+                    break;
+                case IROL_R:
+                    LUT_Instr_Cmpl_Offsets_[i] = bcCmplDiff(Base_Cmpl_Func, &BytecodeCompiler::irolr_cmpl);
+                    break;
+                case ISWAP_R:
+                    LUT_Instr_Cmpl_Offsets_[i] = bcCmplDiff(Base_Cmpl_Func, &BytecodeCompiler::iswapr_cmpl);
+                    break;
+                case CBRANCH:
+                    LUT_Instr_Cmpl_Offsets_[i] = bcCmplDiff(Base_Cmpl_Func, &BytecodeCompiler::cbranch_cmpl);
+                    break;
+                case FSWAP_R:
+                    LUT_Instr_Cmpl_Offsets_[i] = bcCmplDiff(Base_Cmpl_Func, &BytecodeCompiler::fswapr_cmpl);
+                    break;
+                case FADD_R:
+                    LUT_Instr_Cmpl_Offsets_[i] = bcCmplDiff(Base_Cmpl_Func, &BytecodeCompiler::faddr_cmpl);
+                    break;
+                case FADD_M:
+                    LUT_Instr_Cmpl_Offsets_[i] = bcCmplDiff(Base_Cmpl_Func, &BytecodeCompiler::faddm_cmpl);
+                    break;
+                case FSUB_R:
+                    LUT_Instr_Cmpl_Offsets_[i] = bcCmplDiff(Base_Cmpl_Func, &BytecodeCompiler::fsubr_cmpl);
+                    break;
+                case FSUB_M:
+                    LUT_Instr_Cmpl_Offsets_[i] = bcCmplDiff(Base_Cmpl_Func, &BytecodeCompiler::fsubm_cmpl);
+                    break;
+                case FSCAL_R:
+                    LUT_Instr_Cmpl_Offsets_[i] = bcCmplDiff(Base_Cmpl_Func, &BytecodeCompiler::fscalr_cmpl);
+                    break;
+                case FMUL_R:
+                    LUT_Instr_Cmpl_Offsets_[i] = bcCmplDiff(Base_Cmpl_Func, &BytecodeCompiler::fmulr_cmpl);
+                    break;
+                case FDIV_M:
+                    LUT_Instr_Cmpl_Offsets_[i] = bcCmplDiff(Base_Cmpl_Func, &BytecodeCompiler::fdivm_cmpl);
+                    break;
+                case FSQRT_R:
+                    LUT_Instr_Cmpl_Offsets_[i] = bcCmplDiff(Base_Cmpl_Func, &BytecodeCompiler::fsqrtr_cmpl);
+                    break;
+                case CFROUND:
+                    LUT_Instr_Cmpl_Offsets_[i] = bcCmplDiff(Base_Cmpl_Func, &BytecodeCompiler::cfround_cmpl);
+                    break;
+                case ISTORE:
+                    LUT_Instr_Cmpl_Offsets_[i] = bcCmplDiff(Base_Cmpl_Func, &BytecodeCompiler::istore_cmpl);
+                    break;
+                }
+            }
+        } catch (const std::exception& ex) {
+            std::println("Failed to initialize LUT_Instr_Cmpl_Offsets: {}", ex.what());
+            std::terminate();
+        }
+
+        return LUT_Instr_Cmpl_Offsets_;
+    }();
 }

@@ -412,8 +412,7 @@ namespace modernRX {
 <span style = "background-color:#dfd">    }</span>
 
 <span style = "background-color:#dfd">    void BytecodeCompiler::cbranch_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept {
-        const uint8_t dst_register{ instr.dst_register };
-        const uint8_t src_register{ instr.src_register };</span>
+        const uint8_t dst_register{ instr.dst_register };</span>
 
 <span style = "background-color:#dfd">        constexpr uint32_t Condition_Mask{ (1 &lt;&lt; Rx_Jump_Bits) - 1 };
         const auto shift{ instr.modCond() + Rx_Jump_Offset };
@@ -424,19 +423,31 @@ namespace modernRX {
         imm &amp;= ~(1ULL &lt;&lt; (shift - 1)); // Clear the bit below the condition mask - this limits the number of successive jumps to 2.</span>
 
 <span style = "background-color:#dfd">        const auto jmp_target{ reg_usage[dst_register] + 1 };
-        const int32_t jmp_offset{ instr_offset[jmp_target] - instr_offset[idx] - 20 };</span>
+        if (jmp_target &lt;= last_fp_instr) {
+            last_fp_instr = idx;</span>
+        }
 
-<span style = "background-color:#dfd">        const uint64_t add{ 0x49'00'00'00'00'c0'81'49 | uint64_t(dst_register) &lt;&lt; 16 | uint64_t(imm) &lt;&lt; 24 };
-        std::memcpy(code_buffer + code_size, &amp;add, sizeof(add));
-        const uint64_t test{ 0x84'0f'00'00'00'00'c0'f7 | uint64_t(dst_register) &lt;&lt; 8 | uint64_t(mem_mask) &lt;&lt; 16 };
-        std::memcpy(code_buffer + code_size + 8, &amp;test, sizeof(test));
-        std::memcpy(code_buffer + code_size + 16, &amp;jmp_offset, sizeof(jmp_offset));
-        code_size += 20;</span>
+<span style = "background-color:#dfd">        int32_t jmp_offset{ instr_offset[jmp_target] - instr_offset[idx] - 16 };</span>
 
 <span style = "background-color:#dfd">        for (int i = 0; i &lt; Int_Register_Count; ++i) {
             reg_usage[i] = idx; // Set all registers as used.
+        }</span>
+
+<span style = "background-color:#dfd">        const uint64_t add{ 0x49'00'00'00'00'c0'81'49 | uint64_t(dst_register) &lt;&lt; 16 | uint64_t(imm) &lt;&lt; 24 };
+        std::memcpy(code_buffer + code_size, &amp;add, sizeof(add));</span>
+
+<span style = "background-color:#dfd">        if (jmp_offset &gt;= -128) {
+            const uint64_t test{ 0x00'74'00'00'00'00'c0'f7 | uint64_t(dst_register) &lt;&lt; 8 | uint64_t(mem_mask) &lt;&lt; 16 | int64_t(jmp_offset) &lt;&lt; 56 };
+            std::memcpy(code_buffer + code_size + 8, &amp;test, sizeof(test));
+            code_size += 16;
+        } else {
+            jmp_offset -= 4;
+            const uint64_t test{ 0x84'0f'00'00'00'00'c0'f7 | uint64_t(dst_register) &lt;&lt; 8 | uint64_t(mem_mask) &lt;&lt; 16 };
+            std::memcpy(code_buffer + code_size + 8, &amp;test, sizeof(test));
+            std::memcpy(code_buffer + code_size + 16, &amp;jmp_offset, sizeof(jmp_offset));
+            code_size += 20;</span>
         }
-    }</span>
+<span style = "background-color:#dfd">    }</span>
 
 <span style = "background-color:#dfd">    void BytecodeCompiler::fswapr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept {
         const uint8_t dst_register{ instr.dst_register };
@@ -450,7 +461,9 @@ namespace modernRX {
         const uint8_t src_register{ instr.src_register % Float_Register_Count };
         const uint32_t vaddpd{ 0xc0'58'a1'c5 | uint32_t(24 - 8 * src_register) &lt;&lt; 8 | uint32_t(9 * dst_register) &lt;&lt; 24 };
         std::memcpy(code_buffer + code_size, &amp;vaddpd, sizeof(vaddpd));
-        code_size += 4;
+        code_size += 4;</span>
+
+<span style = "background-color:#dfd">        last_fp_instr = idx;
     }</span>
 
 <span style = "background-color:#dfd">    void BytecodeCompiler::faddm_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept {
@@ -476,14 +489,18 @@ namespace modernRX {
             std::memcpy(code_buffer + code_size + 16, &amp;mov, sizeof(mov));
             code_size += 23;</span>
         }
-<span style = "background-color:#dfd">    }</span>
+
+<span style = "background-color:#dfd">        last_fp_instr = idx;
+    }</span>
 
 <span style = "background-color:#dfd">    void BytecodeCompiler::fsubr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept {
         const uint8_t dst_register{ instr.dst_register % Float_Register_Count };
         const uint8_t src_register{ instr.src_register % Float_Register_Count };
         const uint64_t vsubpd{ 0x00'00'00'c0'5c'61'c1'c4 | uint64_t(24 - 8 * dst_register) &lt;&lt; 16 | uint64_t(8 * dst_register + src_register) &lt;&lt; 32 };
         std::memcpy(code_buffer + code_size, &amp;vsubpd, sizeof(vsubpd));
-        code_size += 5;
+        code_size += 5;</span>
+
+<span style = "background-color:#dfd">        last_fp_instr = idx;
     }</span>
 
 <span style = "background-color:#dfd">    void BytecodeCompiler::fsubm_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept {
@@ -509,7 +526,9 @@ namespace modernRX {
             std::memcpy(code_buffer + code_size + 16, &amp;mov, sizeof(mov));
             code_size += 24;</span>
         }
-<span style = "background-color:#dfd">    }</span>
+
+<span style = "background-color:#dfd">        last_fp_instr = idx;
+    }</span>
 
 <span style = "background-color:#dfd">    void BytecodeCompiler::fscalr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept {
         const uint8_t dst_register{ instr.dst_register % Float_Register_Count };
@@ -523,7 +542,9 @@ namespace modernRX {
         const uint8_t src_register{ instr.src_register % Float_Register_Count };
         const uint32_t vmulpd{ 0xe4'59'81'c5 | uint32_t(56 - 8 * src_register) &lt;&lt; 8 | uint32_t(9 * dst_register) &lt;&lt; 24 };
         std::memcpy(code_buffer + code_size, &amp;vmulpd, sizeof(vmulpd));
-        code_size += 4;
+        code_size += 4;</span>
+
+<span style = "background-color:#dfd">        last_fp_instr = idx;
     }</span>
 
 <span style = "background-color:#dfd">    void BytecodeCompiler::fdivm_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept {
@@ -554,38 +575,51 @@ namespace modernRX {
             std::memcpy(code_buffer + code_size + 24, &amp;orps, sizeof(orps));
             code_size += 32;</span>
         }
-<span style = "background-color:#dfd">    }</span>
+
+<span style = "background-color:#dfd">        last_fp_instr = idx;
+    }</span>
 
 <span style = "background-color:#dfd">    void BytecodeCompiler::fsqrtr_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept {
         const uint8_t dst_register{ instr.dst_register % Float_Register_Count };
         const uint32_t vsqrtpd{ 0xe4'51'f9'c5 | uint32_t(9 * dst_register) &lt;&lt; 24 };
         std::memcpy(code_buffer + code_size, &amp;vsqrtpd, sizeof(vsqrtpd));
-        code_size += 4;
+        code_size += 4;</span>
+
+<span style = "background-color:#dfd">        last_fp_instr = idx;
     }</span>
 
 <span style = "background-color:#dfd">    void BytecodeCompiler::cfround_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept {
-        const uint8_t src_register{ instr.src_register };</span>
+        if (last_cfround_instr &gt; last_fp_instr) {</span>
+<span style = "background-color:#fdd">            constexpr uint8_t nop12[12] = { 0x66, 0x66, 0x66, 0x2e, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00 };</span>
+
+<span style = "background-color:#fdd">            if (program-&gt;instructions[last_cfround_instr].imm32 % 64 != 0) {</span>
+                // 2x8 nop
+<span style = "background-color:#fdd">                std::memcpy(code_buffer + instr_offset[last_cfround_instr], &amp;nop12[4], sizeof(nop12) - 4);
+                std::memcpy(code_buffer + instr_offset[last_cfround_instr] + 8, &amp;nop12[4], sizeof(nop12) - 4);
+            } else {</span>
+                // 1x12 nop
+<span style = "background-color:#fdd">                std::memcpy(code_buffer + instr_offset[last_cfround_instr], nop12, sizeof(nop12));</span>
+            }
+        }
+
+<span style = "background-color:#dfd">        const uint8_t src_register{ instr.src_register };</span>
 
 <span style = "background-color:#dfd">        if (const uint64_t imm{ instr.imm32 % 64 }; imm != 0) {
             const uint64_t mov{ 0x48'00'c8'c1'48'c0'89'4c | imm &lt;&lt; 48 | uint64_t(8 * src_register) &lt;&lt; 16 };
             std::memcpy(code_buffer + code_size, &amp;mov, sizeof(mov));
-            const uint64_t and_{ 0x48'0d'c0'c1'48'03'e0'83 };
+            const uint64_t and_{ 0xf0'86'54'ae'0f'03'e0'83 };
             std::memcpy(code_buffer + code_size + 8, &amp;and_, sizeof(and_));
-            const uint64_t or_{ 0xae'0f'50'00'00'9f'c0'0d };
-            std::memcpy(code_buffer + code_size + 16, &amp;or_, sizeof(or_));
-            const uint32_t ldmxcsr{ 0x00'58'24'14 };
-            std::memcpy(code_buffer + code_size + 24, &amp;ldmxcsr, sizeof(ldmxcsr));
-            code_size += 27;
+            code_size += 16;
         } else {</span>
-<span style = "background-color:#fdd">            const uint64_t mov{ 0x48'03'e0'83'48'c0'89'4c | uint64_t(8 * src_register) &lt;&lt; 16 };
+<span style = "background-color:#fdd">            const uint64_t mov{ 0x0f'03'e0'83'48'c0'89'4c | uint64_t(8 * src_register) &lt;&lt; 16 };
             std::memcpy(code_buffer + code_size, &amp;mov, sizeof(mov));
-            const uint64_t rol{ 0x00'9f'c0'0d'48'0d'c0'c1 };
-            std::memcpy(code_buffer + code_size + 8, &amp;rol, sizeof(rol));
-            const uint64_t or_{ 0x00'58'24'14'ae'0f'50'00 };
-            std::memcpy(code_buffer + code_size + 16, &amp;or_, sizeof(or_));
-            code_size += 23;</span>
+            const uint32_t ldmxcsr{ 0xf0'86'54'ae };
+            std::memcpy(code_buffer + code_size + 8, &amp;ldmxcsr, sizeof(ldmxcsr));
+            code_size += 12;</span>
         }
-<span style = "background-color:#dfd">    }</span>
+
+<span style = "background-color:#dfd">        last_cfround_instr = idx;
+    }</span>
 
 <span style = "background-color:#dfd">    void BytecodeCompiler::istore_cmpl(const RxInstruction&amp; instr, const uint32_t idx) noexcept {
         const uint8_t dst_register{ instr.dst_register };
