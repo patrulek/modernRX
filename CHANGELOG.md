@@ -1,5 +1,12 @@
 ## Changelog
 
+### 0.1.4 - 08.08.2024:
+
+Changes in current version:
+
+* modify code to be compliant with Visual Studio 17.10.5
+* run benchmark for new platform setup
+
 ### 0.1.3 - 29.10.2023:
 
 Changes in current version:

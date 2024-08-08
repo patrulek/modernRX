@@ -6,7 +6,7 @@
 */
 
 #include <array>
-#include <numeric>
+#include <limits>
 #include <span>
 
 // Convenient alias for `const std::span<const T>`.

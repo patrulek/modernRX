@@ -30,31 +30,31 @@ Current state of this project does not provide sensible performance to use in mi
 
 ## Build and run
 
-To build this repository you should download the most recent Visual Studio version (at least 17.7) with C++ tools.
+To build this repository you should download the most recent Visual Studio version (at least 17.10) with C++ tools.
 
-To run tests open solution, set `tests` project as the startup one and click "run". Please be aware that tests will run for about an hour, because of unoptimized dataset generation in this branch.
+To run tests open solution, set `tests` project as the startup one and click "run". Please be aware that tests can run up to an hour, because of unoptimized dataset generation in this branch.
 Sample output:
 
 ```console
 [ 0] Blake2b::hash                            ... Passed (<1ms)
 [ 1] Argon2d::Blake2b::hash                   ... Passed (<1ms)
-[ 2] Argon2d::fillMemory                      ... Passed (1.363s)
+[ 2] Argon2d::fillMemory                      ... Passed (1.170s)
 [ 3] AesGenerator1R::fill                     ... Passed (<1ms)
 [ 4] AesGenerator4R::fill                     ... Passed (<1ms)
 [ 5] AesHash1R                                ... Passed (<1ms)
 [ 6] Blake2brandom::get                       ... Passed (<1ms)
 [ 7] Reciprocal                               ... Passed (<1ms)
-[ 8] Superscalar::generate                    ... Passed (0.001s)
-[ 9] Dataset::generate                        ... Passed (1070.067s)
-[10] Hasher::run                              ... Passed (1069.176s)
+[ 8] Superscalar::generate                    ... Passed (0.002s)
+[ 9] Dataset::generate                        ... Passed (348.839s)
+[10] Hasher::run                              ... Passed (412.079s)
 ```
 
 ### Portability
 
 No plans for support multi OSes, platforms or architectures in the nearest future and the only guaranteed environment is the one i develop on, which is:
 
-* System: Windows 11
-* CPU: Zen 3 (Ryzen 5800H)
+* System: Windows 11 Home
+* CPU: Zen 4 (Ryzen 7840HS)
 
 But it should work with Windows 7 and higher and any 64-bit little-endian CPU.
 
@@ -84,18 +84,18 @@ void calcHash() {
 
 ## Benchmarks
 
-Benchmarks were performed on Ryzen 5800H CPU with 32GB of RAM (Dual-channel, 3200 MT/s) and Windows 11.
+Benchmarks were performed on AMD Ryzen 7 7840HS (Radeon 780M Graphics) with 32GB of RAM (4x8GB, dual-channel, 6400 MT/s, DDR5) and Windows 11 Home.
+Code was compiled with Microsoft Visual Studio 17.10.5 version.
 
-CPU frequency turbo boost was disabled (3.2GHz base frequency).
-CPU temperature limit was set to 95°C.
+CPU frequency turbo boost was disabled (3.8GHz base frequency).
 
 Benchmarks compare modernRX implementation with fully optimized RandomX implementation and with RandomX implementation that match optimizations available in current modernRX version.
 
 |                                      | Blake2b [H/s] | Blake2bLong [H/s] | Argon2d [MB/s] | Aes1R [MB/s] | Aes4R [MB/s] | AesHash1R [H/s] | Superscalar [Prog/s] | Dataset [MB/s] | Hash [H/s] | Efficiency [H/Watt/s] |
 | ------------------------------------ | :-----------: | :---------------: | :------------: | :----------: | :----------: | :-------------: | :------------------: | :------------: | :--------: | :-------------------: |
-| RandomX-1.2.1 (102f8acf)             |    **3.231M** |       **103.46K** |      **881.4** |  **47402.5** |  **11473.4** |       **23702** |                 2754 |     **~838.7** |   **4554** |            **~84.33** |
-| RandomX-1.2.1 (102f8acf)<sup>1</sup> |        3.231M |           103.46K |          386.7 |       2333.3 |        524.7 |            1166 |                 2754 |            1.9 |       18.6 |                 ~0.84 |
-| modernRX 0.1.3 (reference)           |        2.130M |            69.51K |          392.1 |       2761.9 |        724.7 |            1446 |             **8317** |            2.0 |       32.4 |                 ~1.32 |
+| RandomX-1.2.1 (102f8acf)             |    **4.098M** |       **131.76K** |      **884.9** |  **56978.1** |  **13764.3** |       **28528** |                 5921 |     **~932.4** |   **3753** |            **~87.27** |
+| RandomX-1.2.1 (102f8acf)<sup>1</sup> |        4.098M |           131.76K |          426.0 |       2844.8 |        639.6 |            1368 |                 5921 |            3.4 |       25.7 |                 ~1.51 |
+| modernRX 0.1.4 (reference)           |        3.296M |           107.71K |          465.5 |       3326.9 |        870.5 |            1738 |            **11754** |            7.0 |       40.4 |                 ~2.29 |
 
  <sup>1)</sup> no avx argon2d, interpreted mode, software AES mode, small pages mode, no batch, single-threaded, full memory mode
 
@@ -157,6 +157,7 @@ Project follows [zero-based versioning](https://0ver.org/) with several specific
 
 ## Changelog
 
+* **v0.1.4 - 08.08.2024:** upgrade code to MSVC 17.10.5, add benchmark for new setup
 * **v0.1.3 - 29.10.2023:** bugfixes, benchmarks corrections, code cleanup
 * **v0.1.2 - 28.09.2023:** bugfixes, renaming, documentation updates
 * **v0.1.1 - 07.09.2023:** cleanup some code and projects properties
@@ -168,15 +169,15 @@ For more details see [CHANGELOG.md](CHANGELOG.md).
 ### Code statistics (via [gocloc](https://github.com/hhatto/gocloc))
 
 ```console
-$> gocloc /exclude-ext xml,json,txt .
+$> gocloc /exclude-ext "xml,json,txt,exp" /not-match-d "3rdparty/*|x64/*|assets/*" .
 -------------------------------------------------------------------------------
 Language                     files          blank        comment           code
 -------------------------------------------------------------------------------
-C++                             14            477            263           2270
+C++                             14            477            263           2271
 C++ Header                      22            202            265           1001
-Markdown                         2             60              0            179
+Markdown                         2             63              0            184
 -------------------------------------------------------------------------------
-TOTAL                           38            739            528           3450
+TOTAL                           38            742            528           3456
 -------------------------------------------------------------------------------
 ```
 
