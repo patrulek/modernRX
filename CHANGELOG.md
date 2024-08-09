@@ -1,5 +1,16 @@
 ## modernRX - Changelog
 
+### v0.8.2 - 09.08.2024:
+
+Make code compliant with Visual Studio 17.10.5.
+Run benchmark for new platform setup.
+
+### v0.1.4 - 08.08.2024:
+
+Changes in current version:
+* modify code to be compliant with Visual Studio 17.10.5
+* run benchmark for new platform setup
+
 ### v0.8.1 - 02.12.2023:
 
 First round of optimization experiments.
@@ -151,7 +162,7 @@ Bug fixes:
 * fix bugs reported by AddressSanitizer
 * fix bugs in superscalar generator
 
-### 0.1.3 - 29.10.2023:
+### v0.1.3 - 29.10.2023:
 
 Changes in current version:
 
@@ -369,7 +380,7 @@ Lessons learned:
 * using native SIMD types may be faster than equally sized std::array (easier for compiler to optimize)
 * unrolling loops may slow down code (Argon2d example; i guess that unrolled version grew too much and compiler denied to inline calls to avx2 wrapper functions)
 
-### 0.1.1 - 07.09.2023:
+### v0.1.1 - 07.09.2023:
 
 Some cleanup and improvements:
 
@@ -381,13 +392,13 @@ Some cleanup and improvements:
 * clean up some code in blake2b and argon2d
 * clean up projects properties
 
-### 0.1.0 - 03.09.2023:
+### v0.1.0 - 03.09.2023:
 
 Reference implementation of the project.
 Later optimization and improvements will base on this version.
 All of the code was meant to be tested, documented and followed coding guidelines.
 
-### 0.0.1 - 10.08.2023:
+### v0.0.1 - 10.08.2023:
 
 Initial implementation of the project.
 RandomX hashes are calculated correctly, but no optimizatons are included.

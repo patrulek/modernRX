@@ -1,4 +1,5 @@
 #include <print>
+#include <thread>
 
 #include "3rdparty/RandomX/src/dataset.hpp"
 #include "3rdparty/RandomX/src/jit_compiler.hpp"

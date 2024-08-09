@@ -19,7 +19,7 @@ int main(int argc, char *argv[]) {
         modernRX::Hasher hasher{ block_template };
 
         for (size_t i = 0; i < 150; ++i) {
-            [[maybe_unused]] auto _ { hasher.run(block_template) };
+            hasher.run([](const modernRX::RxHash&) {});
             block_template[i % block_template.size()] = static_cast<std::byte>(static_cast<uint8_t>(block_template[i]) + 1);
         }
     } catch (const modernRX::Exception &ex) {

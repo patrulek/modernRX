@@ -5,6 +5,7 @@
 */
 
 #include <atomic>
+#include <thread>
 #include <vector>
 
 #include "dataset.hpp"

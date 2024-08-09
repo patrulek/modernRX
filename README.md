@@ -30,7 +30,7 @@ Current state of this project does not provide sensible performance to use in mi
 
 ## Build and run
 
-To build this repository you should download the most recent Visual Studio version (at least 17.7) with C++ tools.
+To build this repository you should download the most recent Visual Studio version (at least 17.10) with C++ tools.
 
 Library requires support for AVX2 and AES instructions. In a case of lacking support, exception will be thrown at runtime.
 
@@ -38,8 +38,8 @@ Library requires support for AVX2 and AES instructions. In a case of lacking sup
 
 No plans for support multi OSes, platforms or architectures in the nearest future and the only guaranteed environment is the one i develop on, which is:
 
-* System: Windows 11
-* CPU: Zen 3 (Ryzen 5800H)
+* System: Windows 11 Home
+* CPU: Zen 4 (Ryzen 7840HS)
 
 But it should work with Windows 7 and higher and any 64-bit little-endian CPU with AVX2/AES support.
 
@@ -97,15 +97,15 @@ Sample output:
 ```console
 [ 0] Blake2b::hash                            ... Passed (<1ms)
 [ 1] Argon2d::Blake2b::hash                   ... Passed (<1ms)
-[ 2] Argon2d::fillMemory                      ... Passed (19.401s)
+[ 2] Argon2d::fillMemory                      ... Passed (11.099s)
 [ 3] AesGenerator1R::fill                     ... Passed (<1ms)
 [ 4] AesGenerator4R::fill                     ... Passed (<1ms)
 [ 5] AesHash1R                                ... Passed (<1ms)
 [ 6] Blake2brandom::get                       ... Passed (<1ms)
 [ 7] Reciprocal                               ... Passed (<1ms)
-[ 8] Superscalar::generate                    ... Passed (0.010s)
-[ 9] Dataset::generate                        ... Passed (26.367s)
-[10] VirtualMachine::execute                  ... Passed (17.177s)
+[ 8] Superscalar::generate                    ... Passed (0.007s)
+[ 9] Dataset::generate                        ... Passed (15.725s)
+[10] VirtualMachine::execute                  ... Passed (10.539s)
 ```
 
 Ideally, tests should be run before every release in `Release` and `Debug` mode with `AddressSanitizer` enabled. `ReleaseAsan` and `DebugAsan` project configurations are provided for this purpose.
@@ -148,15 +148,15 @@ Generated profiles are used for benchmarking (experimental).
 
 ## Benchmarks
 
-Benchmarks were performed on AMD Ryzen 5800H CPU with 32GB of RAM (Dual-channel, 3200 MT/s) and Windows 11.
+Benchmarks were performed on AMD Ryzen 7 7840HS (Radeon 780M Graphics) with 32GB of RAM (4x8GB, dual-channel, 6400 MT/s, DDR5) and Windows 11 Home. 
+Code was compiled with Microsoft Visual Studio 17.10.5 version.
 
-CPU frequency turbo boost was disabled (3.2GHz base frequency).
-CPU temperature limit was set to 95°C.
+CPU frequency turbo boost was disabled (3.8GHz base frequency).
 
 |                                |  Hash [H/s] | Efficiency [H/Watt/s] | Blake2b [H/s] | Blake2bLong [H/s] | Argon2d [MB/s] | Superscalar [Prog/s] | Dataset [MB/s] |
 | ------------------------------ |  :--------: | :-------------------: | :-----------: | :---------------: | :------------: | :------------------: | :------------: |
-| RandomX-1.2.1 (102f8acf)       |    **4554** |            **~84.33** |        3.231M |           103.46K |          881.4 |                 2754 |         ~838.7 |
-| modernRX 0.8.1                 |        3105 |                ~64.28 |    **5.454M** |       **170.66K** |     **1236.2** |             **9647** |     **1263.0** |
+| RandomX-1.2.1 (102f8acf)       |    **3753** |            **~87.27** |        4.098M |           131.76K |          884.9 |                 5921 |         ~932.4 |
+| modernRX 0.8.2                 |        3070 |                ~77.72 |    **6.461M** |       **205.22K** |     **1223.9** |            **12934** |     **1437.7** |
 
 Original RandomX provides benchmark only for calculating final hashes. All other values were estimated (based on information benchmark provides) or some custom benchmarks were written on top of RandomX implementation, thus values may not be 100% accurate.
 
@@ -199,9 +199,9 @@ Project follows [zero-based versioning](https://0ver.org/) with several specific
 
 ## Changelog
 
-* **v0.8.1 - 02.12.2023:** first round of optimization experiments (<1% boost; check [CHANGELOG.md](CHANGELOG.md) for details)
+* **v0.8.2 - 09.08.2024:** compiler and benchmark platform upgrade
 * ...
-* **v0.1.3 - 29.10.2023:** bugfixes, benchmarks corrections, code cleanup
+* **v0.1.4 - 08.08.2024:** compiler and benchmark platform upgrade
 * ...
 * **v0.1.0 - 03.09.2023:** reference implementation
 * **v0.0.1 - 10.08.2023:** initial implementation
@@ -215,11 +215,11 @@ $> gocloc /exclude-ext "xml,json,txt,exp" /not-match-d "3rdparty/*|x64/*|assets/
 -------------------------------------------------------------------------------
 Language                     files          blank        comment           code
 -------------------------------------------------------------------------------
-C++                             17            667            376           3662
-C++ Header                      36            559            579           3176
-Markdown                         3            192              0            578
+C++                             17            667            376           3663
+C++ Header                      36            559            579           3177
+Markdown                         3            205              0            606
 -------------------------------------------------------------------------------
-TOTAL                           56           1418            955           7416
+TOTAL                           56           1431            955           7446
 -------------------------------------------------------------------------------
 ```
 

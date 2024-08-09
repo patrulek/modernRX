@@ -13,9 +13,39 @@ Several options are also available:
 * `--verbose` - set verbosity level <0-2> (default: 1)
 * `--no-microbenchmarks` - disable microbenchmarks (default: `Release: false` | `ReleaseTrace: true`)
 
+## AMD Ryzen 7840HS
+
+RAM: 32GB (4x8GB, dual-channel, 6400 MT/s, DDR5)
+
+System: Windows 11 Home
+
+### Base clock (boost disabled - 3.8Ghz)
+
+|                                      | Hash [H/s] | Efficiency [H/Watt/s] | Blake2b [H/s] | Blake2bLong [H/s] | Argon2d [MB/s] | Superscalar [Prog/s] | Dataset [MB/s] |
+| ------------------------------------ | :--------: | :-------------------: | :-----------: | :---------------: | :------------: | :------------------: | :------------: |
+| RandomX-1.2.1 (102f8acf)             |   **3753** |            **~87.27** |        4.098M |           131.76K |          884.9 |                 5921 |         ~932.4 |
+| RandomX-1.2.1 (102f8acf)<sup>7</sup> |       3068 |                ~77.67 |        4.098M |           131.76K |          884.9 |                 5921 |         ~859.2 |
+| modernRX 0.8.2                       |       3070 |                ~77.72 |    **6.461M** |       **205.22K** |     **1223.9** |            **12934** |     **1437.7** |
+|||||||||
+| RandomX-1.2.1 (102f8acf)<sup>1</sup> |       25.7 |                 ~1.51 |        4.098M |           131.76K |          426.0 |                 5921 |            3.4 |
+| modernRX 0.1.4 (reference)           |       40.4 |                 ~2.29 |        3.296M |           107.71K |          465.5 |                11754 |            7.0 |
+
+
+### Boost clock (up to 5.1Ghz)
+
+|                                      | Hash [H/s] | Efficiency [H/Watt/s] | Blake2b [H/s] | Blake2bLong [H/s] | Argon2d [MB/s] | Superscalar [Prog/s] | Dataset [MB/s] |
+| ------------------------------------ | :--------: | :-------------------: | :-----------: | :---------------: | :------------: | :------------------: | :------------: |
+| RandomX-1.2.1 (102f8acf)             |   **4020** |            **~58.00** |        5.424M |           173.40K |         1036.1 |                 7660 |        ~1046.3 |
+| RandomX-1.2.1 (102f8acf)<sup>7</sup> |       3260 |                ~46.90 |        5.424M |           173.40K |         1036.1 |                 7660 |         ~911.5 |
+| modernRX 0.8.2                       |       3294 |                ~47.39 |    **8.248M** |       **268.26K** |     **1368.6** |            **16895** |     **1437.0** |
+|||||||||
+| RandomX-1.2.1 (102f8acf)<sup>1</sup> |       34.2 |                 ~0.87 |        5.424M |           173.40K |          530.8 |                 7660 |            4.5 |
+| modernRX 0.1.4 (reference)           |       50.9 |                 ~1.30 |        4.351M |           141.63K |          597.6 |                15562 |            9.6 |
+
+
 ## AMD Ryzen 5800h
 
-RAM: 32GB (Dual-channel, 3200 MT/s)
+RAM: 32GB (2x16GB, dual-channel, 3200 MT/s, DDR4)
 
 System: Windows 11
 
