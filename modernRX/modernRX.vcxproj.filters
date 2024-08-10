@@ -87,10 +87,7 @@
     <ClInclude Include="assertume.hpp">
       <Filter>utils</Filter>
     </ClInclude>
-    <ClInclude Include="blake2bavx2.hpp">
-      <Filter>blake2b</Filter>
-    </ClInclude>
-    <ClInclude Include="argon2davx2.hpp">
+    <ClInclude Include="argon2davx512.hpp">
       <Filter>argon2d</Filter>
     </ClInclude>
     <ClInclude Include="heaparray.hpp">
@@ -143,6 +140,12 @@
     </ClInclude>
     <ClInclude Include="trace.hpp">
       <Filter>utils</Filter>
+    </ClInclude>
+    <ClInclude Include="avx512.hpp">
+      <Filter>utils\intrinsics</Filter>
+    </ClInclude>
+    <ClInclude Include="blake2bavx512.hpp">
+      <Filter>blake2b</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

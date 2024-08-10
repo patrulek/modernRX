@@ -139,20 +139,6 @@ namespace modernRX::intrinsics::avx2 {
         }
     }
 
-    // Right rotate packed 64-bit integers.
-    // shift cannot be greater than 63.
-    template<typename T, uint32_t Shift>
-    [[nodiscard]] constexpr ymm<T> vrorpi64(const ymm<T> x) noexcept {
-        static_assert(Shift > 0 && Shift < 64, "Shift must be in range 1-63");
-
-        if constexpr (std::is_same_v<T, uint64_t>) {
-            // value >> shift | value << (64 - shift);
-            return vor<T>(_mm256_srli_epi64(x, Shift), _mm256_slli_epi64(x, 64 - Shift));
-        } else {
-            static_assert(!sizeof(T), "the only supported type for this operation is: uint64");
-        }
-    }
-
 
     template<typename T, int imm8>
     [[nodiscard]] constexpr ymm<T> vpermuteepi64(const ymm<T> x) noexcept {

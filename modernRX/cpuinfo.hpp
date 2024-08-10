@@ -16,8 +16,11 @@ class CPUInfo
 class CPUInfo_Internal;
 
 public:
-    // Returns true if CPU supports AVX2 instructions.
-    [[nodiscard]] static bool AVX2() { return cpuinfo().f_7_EBX_[5]; };
+    // Returns true if CPU supports AVX512F instructions.
+	 [[nodiscard]] static bool AVX512F() { return cpuinfo().f_7_EBX_[16]; };
+
+    // Returns true if CPU supports AVX512VL instructions.
+    [[nodiscard]] static bool AVX512VL() { return cpuinfo().f_7_EBX_[31]; };
 
     // Returns true if CPU supports AES instructions.
     [[nodiscard]] static bool AES() { return cpuinfo().f_1_ECX_[25]; };

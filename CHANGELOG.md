@@ -1,5 +1,14 @@
 ## modernRX - Changelog
 
+### v0.9.0 - 10.08.2024:
+
+Introduce support for AVX512 instructions.
+All optimization decisions made in this version:
+* replace AVX2 rotate emulation with native AVX512 instruction
+
+Improvements:
+* tiny improvements in blake2b and argon2d algorithms
+
 ### v0.8.2 - 09.08.2024:
 
 Make code compliant with Visual Studio 17.10.5.

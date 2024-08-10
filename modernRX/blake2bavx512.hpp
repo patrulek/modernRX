@@ -1,11 +1,12 @@
 #pragma once
 
 /*
-* Blake2b AVX2 single round function implementation based on libsodium implementation: 
+* Blake2b AVX512 single round function implementation based on libsodium implementation: 
 * https://github.com/jedisct1/libsodium/blob/1.0.16/src/libsodium/crypto_generichash/blake2b/ref/blake2b-compress-avx2.h
 */
 
 #include "avx2.hpp"
+#include "avx512.hpp"
 
 namespace modernRX::blake2b {
     // Exception from rule to not use macros.
@@ -33,7 +34,7 @@ namespace modernRX::blake2b {
         v4 = intrinsics::avx2::vshuffleepi8<uint64_t>(v4, rot16);                   \
         v3 = intrinsics::avx2::vadd<uint64_t>(v3, v4);                              \
         v2 = intrinsics::avx2::vxor<uint64_t>(v2, v3);                              \
-        v2 = intrinsics::avx2::vrorpi64<uint64_t, 63>(v2);                          \
+        v2 = intrinsics::avx512::vprorq<ymm<uint64_t>, 63>(v2);                     \
 /*DIAG_V1*/                                                                         \
         v2 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b00'11'10'01>(v2);          \
         v4 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b10'01'00'11>(v4);          \
@@ -55,7 +56,7 @@ namespace modernRX::blake2b {
         v4 = intrinsics::avx2::vshuffleepi8<uint64_t>(v4, rot16);                   \
         v3 = intrinsics::avx2::vadd<uint64_t>(v3, v4);                              \
         v2 = intrinsics::avx2::vxor<uint64_t>(v2, v3);                              \
-        v2 = intrinsics::avx2::vrorpi64<uint64_t, 63>(v2);                          \
+        v2 = intrinsics::avx512::vprorq<ymm<uint64_t>, 63>(v2);                     \
 /*UNDIAG_V1*/                                                                       \
         v2 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b10'01'00'11>(v2);          \
         v4 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b00'11'10'01>(v4);          \

@@ -3,7 +3,7 @@
 
 #include "assertume.hpp"
 #include "blake2b.hpp"
-#include "blake2bavx2.hpp"
+#include "blake2bavx512.hpp"
 #include "cast.hpp"
 #include "randomxparams.hpp"
 

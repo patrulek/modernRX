@@ -2,20 +2,21 @@
 
 
 /*
-* Argon2d AVX2 single round function implementation based on libsodium implementation:
+* Argon2d AVX512 single round function implementation based on libsodium implementation:
 * https://github.com/jedisct1/libsodium/blob/master/src/libsodium/crypto_pwhash/argon2/argon2-fill-block-avx2.c
 * https://github.com/jedisct1/libsodium/blob/master/src/libsodium/crypto_pwhash/argon2/blamka-round-avx2.h
 */
 
 #include "avx2.hpp"
+#include "avx512.hpp"
 
 namespace modernRX::argon2d {
-// vshuffleepi32 performs right rotation by 32 bits.
-// vshuffleepi8 performs right rotation by 24 or 16 bits accordingly to mask.
-// vpermuteepi64 performs rotation by 64, 128 or 192 bits.
-    
-// Exception from rule to not use macros.
-// Inlining is crucial for performance and i had hard time to make it work just with functions.
+   // vshuffleepi32 performs right rotation by 32 bits.
+   // vshuffleepi8 performs right rotation by 24 or 16 bits accordingly to mask.
+   // vpermuteepi64 performs rotation by 64, 128 or 192 bits.
+
+   // Exception from rule to not use macros.
+   // Inlining is crucial for performance and i had hard time to make it work just with functions.
 #define G21(ymm1, ymm2, ymm3, ymm4, ymm5, ymm6, ymm7, ymm8, ymm_rot24, ymm_rot16) do {          \
     ml = intrinsics::avx2::vmul<uint64_t>(ymm1, ymm3);                                          \
     ml2 = intrinsics::avx2::vmul<uint64_t>(ymm2, ymm4);                                         \
@@ -66,8 +67,8 @@ namespace modernRX::argon2d {
                                                                                                 \
     ymm3 = intrinsics::avx2::vxor<uint64_t>(ymm3, ymm5);                                        \
     ymm4 = intrinsics::avx2::vxor<uint64_t>(ymm4, ymm6);                                        \
-    ymm3 = intrinsics::avx2::vrorpi64<uint64_t, 63>(ymm3);                                      \
-    ymm4 = intrinsics::avx2::vrorpi64<uint64_t, 63>(ymm4);                                      \
+    ymm3 = intrinsics::avx512::vprorq<ymm<uint64_t>, 63>(ymm3);                                 \
+    ymm4 = intrinsics::avx512::vprorq<ymm<uint64_t>, 63>(ymm4);                                 \
 } while(0);
 
 // Exception from rule to not use macros.
@@ -203,7 +204,7 @@ namespace modernRX::argon2d {
                                                                                                             \
     ymm3 = intrinsics::avx2::vxor<uint64_t>(ymm3, ymm5);                                                    \
     ymm4 = intrinsics::avx2::vxor<uint64_t>(ymm4, ymm6);                                                    \
-    ymm3 = intrinsics::avx2::vrorpi64<uint64_t, 63>(ymm3);                                                  \
-    ymm4 = intrinsics::avx2::vrorpi64<uint64_t, 63>(ymm4);                                                  \
+    ymm3 = intrinsics::avx512::vprorq<ymm<uint64_t>, 63>(ymm3);                                             \
+    ymm4 = intrinsics::avx512::vprorq<ymm<uint64_t>, 63>(ymm4);                                             \
 } while(0);
 }

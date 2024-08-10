@@ -2,7 +2,7 @@
 #include <format>
 
 #include "argon2d.hpp"
-#include "argon2davx2.hpp"
+#include "argon2davx512.hpp"
 #include "assertume.hpp"
 #include "avx2.hpp"
 #include "blake2b.hpp"
