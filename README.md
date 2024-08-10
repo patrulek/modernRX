@@ -36,7 +36,7 @@ Current state of this project does not provide sensible performance to use in mi
 
 To build this repository you should download the most recent Visual Studio version (at least 17.10) with C++ tools.
 
-Library requires support for AVX512F, AVX512VL and AES instructions. In a case of lacking support, exception will be thrown at runtime.
+Library requires support for AVX512F, AVX512VL, AVX512DQ and AES instructions. In a case of lacking support, exception will be thrown at runtime.
 
 ### Portability
 
@@ -45,7 +45,7 @@ No plans for support multi OSes, platforms or architectures in the nearest futur
 * System: Windows 11 Home
 * CPU: Zen 4 (Ryzen 7840HS)
 
-But it should work with Windows 7 and higher and any 64-bit little-endian CPU with AVX512F/AVX512VL/AES support.
+But it should work with Windows 7 and higher and any 64-bit little-endian CPU with AVX512{F/VL/DQ}/AES support.
 
 ## Quick start
 
@@ -101,15 +101,15 @@ Sample output:
 ```console
 [ 0] Blake2b::hash                            ... Passed (<1ms)
 [ 1] Argon2d::Blake2b::hash                   ... Passed (<1ms)
-[ 2] Argon2d::fillMemory                      ... Passed (10.900s)
+[ 2] Argon2d::fillMemory                      ... Passed (10.742s)
 [ 3] AesGenerator1R::fill                     ... Passed (<1ms)
 [ 4] AesGenerator4R::fill                     ... Passed (<1ms)
 [ 5] AesHash1R                                ... Passed (<1ms)
 [ 6] Blake2brandom::get                       ... Passed (<1ms)
 [ 7] Reciprocal                               ... Passed (<1ms)
-[ 8] Superscalar::generate                    ... Passed (0.008s)
-[ 9] Dataset::generate                        ... Passed (15.706s)
-[10] VirtualMachine::execute                  ... Passed (10.467s)
+[ 8] Superscalar::generate                    ... Passed (0.007s)
+[ 9] Dataset::generate                        ... Passed (14.155s)
+[10] VirtualMachine::execute                  ... Passed (9.499s)
 ```
 
 Ideally, tests should be run before every release in `Release` and `Debug` mode with `AddressSanitizer` enabled. `ReleaseAsan` and `DebugAsan` project configurations are provided for this purpose.
@@ -160,7 +160,7 @@ CPU frequency turbo boost was disabled (3.8GHz base frequency).
 |                                |  Hash [H/s] | Efficiency [H/Watt/s] | Blake2b [H/s] | Blake2bLong [H/s] | Argon2d [MB/s] | Superscalar [Prog/s] | Dataset [MB/s] |
 | ------------------------------ |  :--------: | :-------------------: | :-----------: | :---------------: | :------------: | :------------------: | :------------: |
 | RandomX-1.2.1 (102f8acf)       |    **3753** |            **~87.27** |        4.098M |           131.76K |          884.9 |                 5921 |         ~932.4 |
-| modernRX 0.9.0                 |        3084 |                ~78.67 |    **6.552M** |       **210.36K** |     **1247.8** |            **12828** |     **1445.4** |
+| modernRX 0.9.1                 |        3087 |                ~78.35 |    **6.566M** |       **210.64K** |     **1236.5** |            **12875** |     **2146.3** |
 
 Original RandomX provides benchmark only for calculating final hashes. All other values were estimated (based on information benchmark provides) or some custom benchmarks were written on top of RandomX implementation, thus values may not be 100% accurate.
 
@@ -203,7 +203,7 @@ Project follows [zero-based versioning](https://0ver.org/) with several specific
 
 ## Changelog
 
-* **v0.9.0 - 10.08.2024:** introduce AVX512 support
+* **v0.9.1 - 10.08.2024:** optimize dataset generation with native AVX512 instructions
 * ...
 * **v0.1.4 - 08.08.2024:** compiler and benchmark platform upgrade
 * ...
@@ -219,11 +219,11 @@ $> gocloc /exclude-ext "xml,json,txt,exp" /not-match-d "3rdparty/*|x64/*|assets/
 -------------------------------------------------------------------------------
 Language                     files          blank        comment           code
 -------------------------------------------------------------------------------
-C++                             17            667            376           3663
-C++ Header                      37            562            582           3185
-Markdown                         3            210              0            616
+C++                             17            667            376           3658
+C++ Header                      37            576            593           3240
+Markdown                         3            212              0            623
 -------------------------------------------------------------------------------
-TOTAL                           57           1439            958           7464
+TOTAL                           57           1455            969           7521
 -------------------------------------------------------------------------------
 ```
 

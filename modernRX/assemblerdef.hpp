@@ -213,6 +213,40 @@ namespace modernRX::assembler {
         return static_cast<Ret>(three_byte ? 0xc4 : 0xc5);
     }
 
+    // generates 4rd byte of EVEX prefix.
+    template<typename Ret = std::byte>
+    [[nodiscard]] constexpr Ret evex4(const uint8_t z = 0, const uint8_t l = 0, const uint8_t b = 0,
+                                      const uint8_t v4 = 0, const uint8_t a = 0) noexcept {
+       // bit        7    6    5    4    3    2    1    0
+       //            z    l2   l1   b    v4   a2   a1   a0
+       return static_cast<Ret>((z << 7) | (l << 5) | (b << 4) | (v4 << 3) | a);
+    }
+
+    // generates 3rd byte of EVEX prefix.
+    template<typename Ret = std::byte>
+    [[nodiscard]] constexpr Ret evex3(const reg_idx_t src1, const PP pp, const int w = 0, const uint8_t x4 = 0) noexcept {
+       // bit        7    6    5    4    3    2    1    0
+       //            W    v3   v2   v1   v0   X4   p1   p0
+       uint8_t src_val = ~src1; // 1's complement; 15 -> ymm0, 14 -> ymm1 ... 0 -> ymm15
+       src_val &= 0x0f; // zero out upper bits
+       return static_cast<Ret>((w << 7) | (src_val << 3) | (x4 << 2) | static_cast<uint8_t>(pp));
+    }
+
+    // generates 2rd byte of EVEX prefix.
+    template<typename Ret = std::byte>
+    [[nodiscard]] constexpr Ret evex2(const MM mm, const int r3 = 0, const int x3 = 0, const int b3 = 0, const int r4 = 0, const int b4 = 0) noexcept {
+       // bit        7      6      5      4      3      2      1      0
+       //            R3     X3     B3     R4     B4     m2     m1     m0
+
+       return static_cast<Ret>((r3 << 7) | (x3 << 6) | (b3 << 5) | (r4 << 4) | (b4 << 3) | static_cast<uint8_t>(mm));
+    }
+
+    // generates 1rd byte of EVEX prefix.
+    template<typename Ret = std::byte>
+    [[nodiscard]] constexpr Ret evex1() noexcept {
+       return static_cast<Ret>(0x62);
+    }
+
     // by default uses MOD11 (register addressing)
     template<typename Ret = std::byte>
     [[nodiscard]] constexpr Ret modregrm(const reg_idx_t reg, const reg_idx_t rm, const MOD mod = MOD::MOD11) noexcept {

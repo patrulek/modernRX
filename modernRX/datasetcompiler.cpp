@@ -11,14 +11,14 @@ namespace modernRX {
     [[nodiscard]] jit_function_ptr<JITDatasetItemProgram> compile(const_span<SuperscalarProgram, Rx_Cache_Accesses> programs) {
         using namespace assembler::registers;
         using namespace assembler;
-        assembler::Context asmb(128 * 1024, 32 * 1024);
+        assembler::Context asmb(64 * 1024, 32 * 1024);
 
         // I. Prolog
         // 1) Push registers to stack and align it to 64 bytes boundary.
         asmb.push(RBX, RSI, RDI, R13, R14, R15, XMM6, XMM7, XMM8, XMM9, XMM10, XMM11, XMM12, XMM13, XMM14, XMM15);
         asmb.alignStack();
-        // 2) Declare local variable (in order: cache_indexes, cache_item_mask, vpmulhuq mask, vpmullq mask, v4q_add_consts, v4q_item_numbers_step).
-        asmb.sub(RSP, 0xC0); // 6x ymm registers
+        // 2) Declare local variable (in order: cache_indexes, cache_item_mask, v4q_add_consts, v4q_item_numbers_step).
+        asmb.sub(RSP, 0x80); // 4x ymm registers
         // 3) Move data ptr to RBX.
         asmb.movDataPtr(RBX);
         // 4) Prepare const values used in step 1 of: https://github.com/tevador/RandomX/blob/master/doc/specs.md#73-dataset-block-generation
@@ -45,10 +45,8 @@ namespace modernRX {
 
         // 9) Initialize local variables
         const auto cache_item_mask{ asmb.put4qVectorOnStack(R08, 32) };
-        asmb.put4qVectorOnStack(0x00000000ffffffff, 64); // vpmulhuq mask
-        const auto v4q_mullq_mask{ asmb.put4qVectorOnStack(0xffffffff00000000, 96) };
-        const auto v4q_add_consts{ asmb.put4qVectorOnStack(7009800821677620404ULL, 128) }; // This value is v4q_mul_consts multiplied by 4.
-        const auto v4q_item_numbers_step{ asmb.put4qVectorOnStack(4, 160) };
+        const auto v4q_add_consts{ asmb.put4qVectorOnStack(7009800821677620404ULL, 64) }; // This value is v4q_mul_consts multiplied by 4.
+        const auto v4q_item_numbers_step{ asmb.put4qVectorOnStack(4, 96) };
         asmb.vpbroadcastq(YMM5, R09);
         asmb.vonereg(YMM4);
         asmb.vpaddq(YMM5, YMM5, v4q_item_numbers_add);
@@ -59,9 +57,7 @@ namespace modernRX {
 
         // 10) Set initial ymmitem0 in YMM7. ymmitem0 = (v4q(start_item) + v4q_item_numbers_add) * v4q_mul_consts
         // YMM7 will never be used for anything else.
-        asmb.vmovdqa(YMM4, v4q_mullq_mask);
         asmb.vpmullq(YMM7, YMM5, v4q_mul_consts);
-        const auto& ymmitem0{ YMM7 };
 
         // II. Main loop
         // 11) Start loop over all elements.
@@ -92,8 +88,9 @@ namespace modernRX {
             const auto& program{ programs[i] };
 
             // 15) Prepare registers for program execution.
-            asmb.vmovdqa(YMM4, v4q_mullq_mask); // Set vpmullq mask in YMM4.
             asmb.vzeroreg(YMM5); // Zero out YMM5.
+            asmb.vmaxreg(YMM4);
+            asmb.vpsrlq(YMM4, YMM4, 32);
 
             // 16) Set cache item indexes.
             if (i == 0) {
@@ -223,8 +220,8 @@ namespace modernRX {
         asmb.jne(Loop_Label);
 
         // IV. Epilogue
-        // 29) Destroy local variable (cache_indexes, cache_item_mask, vpmulhuq mask, vpmullq mask, v4q_add_consts, v4q_item_numbers_step).
-        asmb.add(RSP, 0xC0);
+        // 29) Destroy local variable (cache_indexes, cache_item_mask, v4q_add_consts, v4q_item_numbers_step).
+        asmb.add(RSP, 0x80);
 
         // 30) Unalign stack.
         asmb.unalignStack();
@@ -287,9 +284,7 @@ namespace modernRX {
                 asmb.vpxor(dst, dst, src);
                 break;
             case SuperscalarInstructionType::IROR_C:
-                asmb.vpsrlq(YMM0, dst, instr.imm32);
-                asmb.vpsllq(dst, dst, 64 - instr.imm32);
-                asmb.vpor(dst, dst, YMM0);
+                asmb.vprorq(dst, dst, instr.imm32);
                 break;
             case SuperscalarInstructionType::IMUL_R:
                 asmb.vpmullq(dst, dst, src);

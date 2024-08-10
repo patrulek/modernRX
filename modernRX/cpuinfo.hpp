@@ -22,6 +22,9 @@ public:
     // Returns true if CPU supports AVX512VL instructions.
     [[nodiscard]] static bool AVX512VL() { return cpuinfo().f_7_EBX_[31]; };
 
+    // Returns true if CPU supports AVX512DQ instructions.
+	 [[nodiscard]] static bool AVX512DQ() { return cpuinfo().f_7_EBX_[17]; };
+
     // Returns true if CPU supports AES instructions.
     [[nodiscard]] static bool AES() { return cpuinfo().f_1_ECX_[25]; };
 

@@ -190,7 +190,7 @@ namespace modernRX::assembler {
         // https://stackoverflow.com/a/28827013
         // Multiply packed unsigned quadwords and store high result.
         // This is emulated instruction (not available in AVX2).
-        // Requires an 0x00000000ffffffff mask in RSP[64] register.
+        // Requires an 0x00000000ffffffff mask in YMM4 register.
         // Uses YMM0-YMM3 registers.
         constexpr void vpmulhuq(const Register dst_reg, const Register src_reg1, const Register src_reg2) {
             vpshufd(registers::YMM1, src_reg1, 0xb1); // vpshufd dst
@@ -200,7 +200,7 @@ namespace modernRX::assembler {
             vpmuludq(registers::YMM2, src_reg1, registers::YMM2); // vpmuludq_w1
             vpsrlq(registers::YMM3, registers::YMM3, 32); // vpsrlq_w0h
             vpaddq(registers::YMM3, registers::YMM3, registers::YMM2); // vpaddq_s1
-            vpand(registers::YMM2, registers::YMM3, registers::RSP[64]); // vpand_s1l
+            vpand(registers::YMM2, registers::YMM3, registers::YMM4); // vpand_s1l
             vpmuludq(registers::YMM1, src_reg2, registers::YMM1); // vpmuludq_w2
             vpsrlq(registers::YMM3, registers::YMM3, 32); // vpsrlq_s1h
             vpaddq(registers::YMM0, registers::YMM0, registers::YMM3); // vpaddq_hi
@@ -265,26 +265,22 @@ namespace modernRX::assembler {
             add(registers::RSP, registers::RAX);
         }
 
-        // https://stackoverflow.com/a/37322570
         // Multiply packed quadwords and store low result.
-        // This is emulated instruction (not available in AVX2).
-        // Requires an 0xffffffff00000000 mask in YMM4 register.
-        // Uses YMM0-YMM2 registers.
+        // Uses native AVX512 instruction.
         template<typename Operand>
         constexpr void vpmullq(const Register dst_reg, const Register src_reg1, const Operand src_reg2) {
-            vpshufd(registers::YMM0, src_reg1, 0xb1);
-            // VEX.256.66.0F38.WIG 40 /r VPMULLD ymm1, ymm2, ymm3/m256
+            // EVEX.256.66.0F38.W1 40 /r VPMULLQ ymm1 {k1}{z}, ymm2, ymm3/m256/m64bcst
             if constexpr (std::is_same_v<Operand, Register>) {
-                vex256 < PP::PP0x66, MM::MM0x0F38, Opcode{ 0x40, -1 } > (registers::YMM0, src_reg2, registers::YMM0);
-            } else {
-                vex256 < PP::PP0x66, MM::MM0x0F38, Opcode{ 0x40, -1 } > (registers::YMM0, registers::YMM0, src_reg2);
+               evex256 < PP::PP0x66, MM::MM0x0F38, Opcode{ 0x40, -1 }, 1, 0 > (dst_reg, src_reg1, src_reg2);
             }
-            vpsllq(registers::YMM1, registers::YMM0, 32);
-            // VEX.256.66.0F.WIG FE /r VPADDD ymm1, ymm2, ymm3/m256
-            vex256 < PP::PP0x66, MM::MM0x0F, Opcode{ 0xfe, -1 } > (registers::YMM1, registers::YMM1, registers::YMM0);
-            vpmuludq(registers::YMM2, src_reg1, src_reg2);
-            vpand(registers::YMM1, registers::YMM1, registers::YMM4);
-            vpaddq(dst_reg, registers::YMM2, registers::YMM1);
+            else {
+               evex256 < PP::PP0x66, MM::MM0x0F38, Opcode{ 0x40, -1 }, 1, 0 > (dst_reg, src_reg1, src_reg2);
+            }
+        }
+
+        constexpr void vprorq(const Register dst_reg, const Register src_reg1, const int imm32) {
+           // EVEX.256.66.0F.W1 72 / 0 ib VPRORQ ymm1{ k1 }{z}, ymm2 / m256 / m64bcst, imm8
+           evex256 < PP::PP0x66, MM::MM0x0F, Opcode{ 0x72, 0 }, 1, 0 > (dst_reg, src_reg1, imm32);
         }
 
         // Broadcasts 64-bit value from XMM register into YMM register.
@@ -525,10 +521,14 @@ namespace modernRX::assembler {
             vpxor(dst_reg, dst_reg, dst_reg);
         }
 
+        constexpr void vmaxreg(const Register dst_reg) {
+           // VEX.256.66.0F38.WIG 29 / r VPCMPEQQ ymm1, ymm2, ymm3 / m256
+           vex256 < PP::PP0x66, MM::MM0x0F38, Opcode{ 0x29, -1 } > (dst_reg, dst_reg, dst_reg);
+        }
+
         // Convenient function for broadcasting 4 one's (quadwords equal 1) to YMM register.
         constexpr void vonereg(const Register dst_reg) {
-            // VEX.256.66.0F38.WIG 29 / r VPCMPEQQ ymm1, ymm2, ymm3 / m256
-            vex256< PP::PP0x66, MM::MM0x0F38, Opcode{ 0x29, -1 }>(dst_reg, dst_reg, dst_reg);
+            vmaxreg(dst_reg);
             vpsrlq(dst_reg, dst_reg, 63);
         }
 
@@ -792,7 +792,7 @@ namespace modernRX::assembler {
         }
 
 
-        constexpr void addr(const reg_idx_t dst, const Memory& src, const uint32_t scale = 1) {
+        constexpr void addr(const reg_idx_t dst, const Memory& src, const uint32_t scale = 1, const uint8_t vecsize = 1) {
             // RIP relative addressing (displacement only).
             if (src.lowIdx() == registers::RBP.idx && src.index_reg == registers::DUMMY.idx && src.rip) {
                 encode(modregrm<uint8_t>(0, registers::RBP.idx, MOD::MOD00)); // Indirect or SIB mode if RSP used.
@@ -835,16 +835,18 @@ namespace modernRX::assembler {
                 }
             }
 
+            auto offset = src.offset / vecsize;
+
             // Disp8
-            if (src.offset != 0 || basereg == registers::RBP.idx) {
-                encode((uint8_t)byte<0>(src.offset));
+            if (offset != 0 || basereg == registers::RBP.idx) {
+                encode((uint8_t)byte<0>(offset));
             }
 
             // Disp32
-            if (src.offset < std::numeric_limits<int8_t>::min() || src.offset > std::numeric_limits<int8_t>::max()) {
-                encode((uint8_t)byte<1>(src.offset));
-                encode((uint8_t)byte<2>(src.offset));
-                encode((uint8_t)byte<3>(src.offset));
+            if (offset < std::numeric_limits<int8_t>::min() || offset > std::numeric_limits<int8_t>::max()) {
+                encode((uint8_t)byte<1>(offset));
+                encode((uint8_t)byte<2>(offset));
+                encode((uint8_t)byte<3>(offset));
             }
         }
 
@@ -1002,6 +1004,47 @@ namespace modernRX::assembler {
             encode(opcode.code);
             addr(dst.idx, src1);
             schedule();
+        }
+
+
+        // Generates instruction with EVEX256 prefix and Register/Register as operands (eg. vpmullq).
+        template<PP pp, MM mm, Opcode opcode, uint8_t w = 0, uint8_t mask = 0>
+        constexpr void evex256(const Register dst, const Register src1, const Register src2) {
+           encode(evex1<uint8_t>());
+           encode(evex2<uint8_t>(mm, dst.isLow(), 1, src2.isLow(), 1, 0));
+           encode(evex3<uint8_t>(src1.idx, pp, w, 1));
+           encode(evex4<uint8_t>(0, 1, 0, 1, mask));
+           encode(opcode.code);
+           encode(modregrm<uint8_t>(dst.lowIdx(), src2.lowIdx()));
+           schedule();
+        }
+
+        // Generates instruction with EVEX256 prefix and Register/Register/Immediate as operands (eg. vprorq).
+        template<PP pp, MM mm, Opcode opcode, uint8_t w = 0, uint8_t mask = 0>
+        constexpr void evex256(const Register dst, const Register src1, const int imm32) {
+           const reg_idx_t vvvv{ opcode.mod > -1 ? dst.idx : uint8_t(0) };
+           const reg_idx_t reg{ opcode.mod > -1 ? (uint8_t)opcode.mod : dst.lowIdx() };
+
+           encode(evex1<uint8_t>());
+           encode(evex2<uint8_t>(mm, dst.isLow(), 1, src1.isLow(), 1, 0));
+           encode(evex3<uint8_t>(src1.idx, pp, w, 1));
+           encode(evex4<uint8_t>(0, 1, 0, 1, mask));
+           encode(opcode.code);
+           encode(modregrm<uint8_t>(reg, src1.lowIdx()));
+           encode((uint8_t)byte<0>(imm32));
+           schedule();
+        }
+
+        // Generates instruction with EVEX256 prefix and Register/Register/Memory as operands (eg. vpxor).
+        template<PP pp, MM mm, Opcode opcode, uint8_t w = 0, uint8_t mask = 0>
+        constexpr void evex256(const Register dst, const Register src1, const Memory src2) {
+           encode(evex1<uint8_t>());
+           encode(evex2<uint8_t>(mm, dst.isLow(), 1, src2.isLow(), 1, 0));
+           encode(evex3<uint8_t>(src1.idx, pp, w, 1));
+           encode(evex4<uint8_t>(0, 1, 0, 1, mask));
+           encode(opcode.code);
+           addr(dst.idx, src2, 1, 32);
+           schedule();
         }
 
         // Generates instruction with VEX256 prefix and Register/Register/Register as operands (eg. vpxor).

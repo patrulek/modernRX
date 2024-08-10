@@ -1,5 +1,12 @@
 ## modernRX - Changelog
 
+### v0.9.1 - 10.08.2024:
+
+Optimize dataset generation with AVX512 native instructions.
+All optimization decisions made in this version:
+* replace emulated `vpmullq` instruction with native one
+* replace emulated `vprorq` instruction with native one
+
 ### v0.9.0 - 10.08.2024:
 
 Introduce support for AVX512 instructions.

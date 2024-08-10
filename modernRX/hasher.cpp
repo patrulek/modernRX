@@ -108,7 +108,7 @@ namespace modernRX {
     }
 
     void Hasher::checkCPU() const {
-        if (!CPUInfo::AVX512F() || !CPUInfo::AVX512VL()) {
+        if (!CPUInfo::AVX512F() || !CPUInfo::AVX512VL() || !CPUInfo::AVX512DQ()) {
             throw Exception{ "AVX512 instructions required but not supported on current CPU" };
         }
 
