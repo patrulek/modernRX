@@ -4,7 +4,6 @@
 #include "argon2d.hpp"
 #include "argon2davx512.hpp"
 #include "assertume.hpp"
-#include "avx2.hpp"
 #include "blake2b.hpp"
 #include "cast.hpp"
 #include "intrinsics.hpp"
@@ -173,15 +172,18 @@ namespace modernRX::argon2d {
             std::memcpy(input.data(), hash.data(), Initial_Hash_Size);
 
             // First block.
+            intrinsics::prefetch<intrinsics::PrefetchMode::T0, 16>(&memory[2]);
             blake2b::hash(std::span<std::byte>{ memory[0] }, input);
 
             // Second block.
+            intrinsics::prefetch<intrinsics::PrefetchMode::T0, 16>(&memory[3]);
             input[Initial_Hash_Size] = std::byte{ 0x01 };
             blake2b::hash(std::span<std::byte>{ memory[1] }, input);
 
             // Third block is always mix of first two.
             // Calculate next blocks in a lane.
             for (BlockContext ctx{ 2, 1, 0 }; ctx.cur_idx < blocksPerLane(); ) {
+                intrinsics::prefetch<intrinsics::PrefetchMode::T0, 16>(&memory[(ctx.cur_idx + 2) % Rx_Argon2d_Memory_Blocks]);
                 mixBlocks<false>(memory, ctx);
             }
         }
@@ -216,18 +218,16 @@ namespace modernRX::argon2d {
                 const auto z{ ref_length - 1 - y };
                 const auto ref_index{ shift_index + z }; // No need to modulo by blocks_per_lane because it will always be less than blocks_per_lane.
 
-                BlockContext ctx{ 0, prev_idx, ref_index };
-                mixBlocks<true>(memory, ctx);
-
                 // Calculate all next blocks in a lane.
-                for (; ctx.cur_idx < blocksPerLane(); ) {
+                for (BlockContext ctx{ 0, prev_idx, ref_index }; ctx.cur_idx < blocksPerLane(); ) {
+                    intrinsics::prefetch<intrinsics::PrefetchMode::T0, 16>(&memory[(ctx.cur_idx + 2) % Rx_Argon2d_Memory_Blocks]);
                     mixBlocks<true>(memory, ctx);
                 }
             }
         }
 
         // Calculates reference index needed for mixing function and updates BlockContext for next iteration.
-        // This function is called inside ROUND_V2WithPrefetch macro to prefetch referenced block as soon as possible and reduce stalls because of cache misses.
+        // This function is called inside ROUND_V2 macro to prefetch referenced block as soon as possible and reduce stalls because of cache misses.
         template<bool XorBlocks>
         void calcRefIndex(std::span<Block> memory, BlockContext& ctx, const uint32_t tmp_value) noexcept {
             static_assert(Rx_Argon2d_Parallelism == 1, "This simplification requires parallelism to be 1.");
@@ -267,59 +267,49 @@ namespace modernRX::argon2d {
         // Calculates current block based on previous and referenced random block.
         // If its first iteration XorBlocks should be false, otherwise should be true and will perform xor operation with overwritten block.
         // The mixing function refers to https://github.com/P-H-C/phc-winner-argon2/blob/master/argon2-specs.pdf section 3.4.
-        // Enhanced by AVX2 intrinsics.
+        // Enhanced by AVX512 intrinsics.
         template<bool XorBlocks>
         void mixBlocks(std::span<Block> memory, BlockContext& ctx) noexcept {
             using namespace intrinsics;
 
-            constexpr uint32_t YMM_Per_Block{ Block_Size / sizeof(ymm<uint64_t>) };
+            constexpr uint32_t ZMM_Per_Block{ Block_Size / sizeof(zmm<uint64_t>) };
 
             // For some reason its faster to use C-array than std::array (at least for tmp_block_ymm).
             // It's already reported as a compiler bug: https://developercommunity.visualstudio.com/t/Performance-degradation-when-using-std::/10460894.
-            alignas(64) ymm<uint64_t> tmp_block_ymm[YMM_Per_Block];
-            ymm<uint64_t> (&cur_block_ymm)[YMM_Per_Block]{ reinterpret_cast<ymm<uint64_t>(&)[YMM_Per_Block]>(memory[ctx.cur_idx]) };
-            const ymm<uint64_t> (&prev_block_ymm)[YMM_Per_Block] { reinterpret_cast<const ymm<uint64_t>(&)[YMM_Per_Block]>(memory[ctx.prev_idx]) };
-            const ymm<uint64_t> (&ref_block_ymm)[YMM_Per_Block] { reinterpret_cast<const ymm<uint64_t>(&)[YMM_Per_Block]>(memory[ctx.ref_idx]) };
+            alignas(64) zmm<uint64_t> tmp_block_zmm[ZMM_Per_Block];
+            zmm<uint64_t> (&cur_block_zmm)[ZMM_Per_Block]{ reinterpret_cast<zmm<uint64_t>(&)[ZMM_Per_Block]>(memory[ctx.cur_idx]) };
+            const zmm<uint64_t> (&prev_block_zmm)[ZMM_Per_Block] { reinterpret_cast<const zmm<uint64_t>(&)[ZMM_Per_Block]>(memory[ctx.prev_idx]) };
+            const zmm<uint64_t> (&ref_block_zmm)[ZMM_Per_Block] { reinterpret_cast<const zmm<uint64_t>(&)[ZMM_Per_Block]>(memory[ctx.ref_idx]) };
 
             // Initialize new block with previous and referenced ones.
-            for (uint32_t i = 0; i < YMM_Per_Block; ++i) {
-                tmp_block_ymm[i] = avx2::vxor<uint64_t>(prev_block_ymm[i], ref_block_ymm[i]);
+            for (uint32_t i = 0; i < ZMM_Per_Block; ++i) {
+                tmp_block_zmm[i] = avx512::vpxorq(prev_block_zmm[i], ref_block_zmm[i]);
             }
 
-            // Prepare rotation constant. Taken from: https://github.com/jedisct1/libsodium/blob/1.0.16/src/libsodium/crypto_generichash/blake2b/ref/blake2b-compress-avx2.h
-            const auto avx_rot24{ avx2::vsetrepi8<uint64_t>(3, 4, 5, 6, 7, 0, 1, 2, 11, 12, 13, 14, 15, 8, 9, 10, 3, 4, 5, 6, 7, 0, 1, 2, 11, 12, 13, 14, 15, 8, 9, 10) };
-            const auto avx_rot16{ avx2::vsetrepi8<uint64_t>(2, 3, 4, 5, 6, 7, 0, 1, 10, 11, 12, 13, 14, 15, 8, 9, 2, 3, 4, 5, 6, 7, 0, 1, 10, 11, 12, 13, 14, 15, 8, 9) };
+            // Apply blake2b "rowwise", ie. elements (0,1,...,63), then (64,65,...,127).
+            ROUND_V1(tmp_block_zmm[0], tmp_block_zmm[1], tmp_block_zmm[2], tmp_block_zmm[3],
+                    tmp_block_zmm[4], tmp_block_zmm[5], tmp_block_zmm[6], tmp_block_zmm[7]);
 
-            // Used in macros.
-            ymm<uint64_t> ml, ml2;
-
-            // Both rounding loops are crucial for performance, otherwise function would expand too much and compiler would not be willing to inline it.
-
-            // Apply blake2b "rowwise", ie. elements (0,1,...,31), then (32,33,...,63) ... finally (96,97,...,127).
-            for (uint32_t i = 0; i < 4; ++i) {
-                ROUND_V1(tmp_block_ymm[8 * i], tmp_block_ymm[8 * i + 4], tmp_block_ymm[8 * i + 1], tmp_block_ymm[8 * i + 5],
-                    tmp_block_ymm[8 * i + 2], tmp_block_ymm[8 * i + 6], tmp_block_ymm[8 * i + 3], tmp_block_ymm[8 * i + 7], avx_rot24, avx_rot16);
-            }
-
-            // Apply first iteration of blake2b "columnwise".
-            // This macro version calls calcRefIndex to calculate reference index early for prefetching to reduce stalls.
-            ROUND_V2WithPrefetch(tmp_block_ymm[0], tmp_block_ymm[4], tmp_block_ymm[8], tmp_block_ymm[12],
-                tmp_block_ymm[16], tmp_block_ymm[20], tmp_block_ymm[24], tmp_block_ymm[28], avx_rot24, avx_rot16);
+            ROUND_V1(tmp_block_zmm[8], tmp_block_zmm[9], tmp_block_zmm[10], tmp_block_zmm[11],
+					tmp_block_zmm[12], tmp_block_zmm[13], tmp_block_zmm[14], tmp_block_zmm[15]);
 
 
-            // Apply all other blake2b "columnwise" rounds, ie. elements (0,1,2,3,16,17,18,19,...,112,113,114,115), then (4,5,6,7,20,21,22,23,...,116,117,118,119) 
-            // ... finally (12,13,14,15,28,29,30,31,...,124,125,126,127).
-            for (uint32_t i = 1; i < 4; ++i) {
-                ROUND_V2(tmp_block_ymm[i], tmp_block_ymm[4 + i], tmp_block_ymm[8 + i], tmp_block_ymm[12 + i],
-                    tmp_block_ymm[16 + i], tmp_block_ymm[20 + i], tmp_block_ymm[24 + i], tmp_block_ymm[28 + i], avx_rot24, avx_rot16);
-            }
+            // Apply first iteration of blake2b "columnwise" ie. elements 
+            // (0,1,2,3,4,5,6,7,16,17,18,19,20,21,22,23,...,112,113,114,115,116,117,118,119), then 
+            // (8,9,10,11,12,13,14,15,24,25,26,27,28,29,...,120,121,122,123,124,125,126,127) 
+            // First execuction will call calcRefIndex to calculate reference index early for prefetching to reduce stalls.
+            ROUND_V2(tmp_block_zmm[0], tmp_block_zmm[2], tmp_block_zmm[4], tmp_block_zmm[6],
+                    tmp_block_zmm[8], tmp_block_zmm[10], tmp_block_zmm[12], tmp_block_zmm[14], true);
+
+            ROUND_V2(tmp_block_zmm[1], tmp_block_zmm[3], tmp_block_zmm[5], tmp_block_zmm[7],
+                    tmp_block_zmm[9], tmp_block_zmm[11], tmp_block_zmm[13], tmp_block_zmm[15], false);
 
             // Finalize new block.
-            for (uint32_t i = 0; i < YMM_Per_Block; ++i) {
+            for (uint32_t i = 0; i < ZMM_Per_Block; ++i) {
                 if constexpr (XorBlocks) {
-                    cur_block_ymm[i] = avx2::vxor<uint64_t>(avx2::vxor<uint64_t>(avx2::vxor<uint64_t>(prev_block_ymm[i], tmp_block_ymm[i]), cur_block_ymm[i]), ref_block_ymm[i]);
+                    cur_block_zmm[i] = avx512::vpxorq(avx512::vpxorq(avx512::vpxorq(prev_block_zmm[i], tmp_block_zmm[i]), cur_block_zmm[i]), ref_block_zmm[i]);
                 } else {
-                    cur_block_ymm[i] = avx2::vxor<uint64_t>(avx2::vxor<uint64_t>(prev_block_ymm[i], tmp_block_ymm[i]), ref_block_ymm[i]);
+                    cur_block_zmm[i] = avx512::vpxorq(avx512::vpxorq(prev_block_zmm[i], tmp_block_zmm[i]), ref_block_zmm[i]);
                 }
             }
         }

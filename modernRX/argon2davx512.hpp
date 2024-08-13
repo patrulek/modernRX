@@ -3,208 +3,149 @@
 
 /*
 * Argon2d AVX512 single round function implementation based on libsodium implementation:
-* https://github.com/jedisct1/libsodium/blob/master/src/libsodium/crypto_pwhash/argon2/argon2-fill-block-avx2.c
-* https://github.com/jedisct1/libsodium/blob/master/src/libsodium/crypto_pwhash/argon2/blamka-round-avx2.h
+* https://github.com/jedisct1/libsodium/blob/master/src/libsodium/crypto_pwhash/argon2/argon2-fill-block-avx512f.c
+* https://github.com/jedisct1/libsodium/blob/master/src/libsodium/crypto_pwhash/argon2/blamka-round-avx512f.h
 */
 
-#include "avx2.hpp"
 #include "avx512.hpp"
 
 namespace modernRX::argon2d {
-   // vshuffleepi32 performs right rotation by 32 bits.
-   // vshuffleepi8 performs right rotation by 24 or 16 bits accordingly to mask.
-   // vpermuteepi64 performs rotation by 64, 128 or 192 bits.
+    namespace {
+        inline intrinsics::zmm<uint64_t> muladd(const intrinsics::zmm<uint64_t> x, const intrinsics::zmm<uint64_t> y) noexcept {
+            const auto z{ intrinsics::avx512::vpmuludq(x, y) };
+            return intrinsics::avx512::vpaddq(intrinsics::avx512::vpaddq(x, y), intrinsics::avx512::vpaddq(z, z));
+        }
+    }
 
-   // Exception from rule to not use macros.
-   // Inlining is crucial for performance and i had hard time to make it work just with functions.
-#define G21(ymm1, ymm2, ymm3, ymm4, ymm5, ymm6, ymm7, ymm8, ymm_rot24, ymm_rot16) do {          \
-    ml = intrinsics::avx2::vmul<uint64_t>(ymm1, ymm3);                                          \
-    ml2 = intrinsics::avx2::vmul<uint64_t>(ymm2, ymm4);                                         \
-    ymm1 = intrinsics::avx2::vadd<uint64_t>(ymm1, ymm3);                                        \
-    ymm2 = intrinsics::avx2::vadd<uint64_t>(ymm2, ymm4);                                        \
-    ymm1 = intrinsics::avx2::vadd<uint64_t>(ymm1, intrinsics::avx2::vadd<uint64_t>(ml, ml));    \
-    ymm2 = intrinsics::avx2::vadd<uint64_t>(ymm2, intrinsics::avx2::vadd<uint64_t>(ml2, ml2));  \
-                                                                                                \
-    ymm7 = intrinsics::avx2::vxor<uint64_t>(ymm7, ymm1);                                        \
-    ymm8 = intrinsics::avx2::vxor<uint64_t>(ymm8, ymm2);                                        \
-    ymm7 = intrinsics::avx2::vshuffleepi32<uint64_t, 0b10'11'00'01>(ymm7);                      \
-    ymm8 = intrinsics::avx2::vshuffleepi32<uint64_t, 0b10'11'00'01>(ymm8);                      \
-                                                                                                \
-    ml = intrinsics::avx2::vmul<uint64_t>(ymm5, ymm7);                                          \
-    ml2 = intrinsics::avx2::vmul<uint64_t>(ymm6, ymm8);                                         \
-    ymm5 = intrinsics::avx2::vadd<uint64_t>(ymm5, ymm7);                                        \
-    ymm6 = intrinsics::avx2::vadd<uint64_t>(ymm6, ymm8);                                        \
-    ymm5 = intrinsics::avx2::vadd<uint64_t>(ymm5, intrinsics::avx2::vadd<uint64_t>(ml, ml));    \
-    ymm6 = intrinsics::avx2::vadd<uint64_t>(ymm6, intrinsics::avx2::vadd<uint64_t>(ml2, ml2));  \
-                                                                                                \
-    ymm3 = intrinsics::avx2::vxor<uint64_t>(ymm3, ymm5);                                        \
-    ymm4 = intrinsics::avx2::vxor<uint64_t>(ymm4, ymm6);                                        \
-    ymm3 = intrinsics::avx2::vshuffleepi8<uint64_t>(ymm3, ymm_rot24);                           \
-    ymm4 = intrinsics::avx2::vshuffleepi8<uint64_t>(ymm4, ymm_rot24);                           \
-} while(0);
+#define G1(zmmA0, zmmB0, zmmC0, zmmD0, zmmA1, zmmB1, zmmC1, zmmD1)                                                  \
+    do {                                                                                                            \
+         zmmA0 = muladd(zmmA0, zmmB0);                                                                              \
+         zmmA1 = muladd(zmmA1, zmmB1);                                                                              \
+                                                                                                                    \
+         zmmD0 = intrinsics::avx512::vpxorq(zmmD0, zmmA0);                                                          \
+         zmmD1 = intrinsics::avx512::vpxorq(zmmD1, zmmA1);                                                          \
+                                                                                                                    \
+         zmmD0 = intrinsics::avx512::vprorq<intrinsics::zmm<uint64_t>, 32>(zmmD0);                                  \
+         zmmD1 = intrinsics::avx512::vprorq<intrinsics::zmm<uint64_t>, 32>(zmmD1);                                  \
+                                                                                                                    \
+         zmmC0 = muladd(zmmC0, zmmD0);                                                                              \
+         zmmC1 = muladd(zmmC1, zmmD1);                                                                              \
+                                                                                                                    \
+         zmmB0 = intrinsics::avx512::vpxorq(zmmB0, zmmC0);                                                          \
+         zmmB1 = intrinsics::avx512::vpxorq(zmmB1, zmmC1);                                                          \
+                                                                                                                    \
+         zmmB0 = intrinsics::avx512::vprorq<intrinsics::zmm<uint64_t>, 24>(zmmB0);                                  \
+         zmmB1 = intrinsics::avx512::vprorq<intrinsics::zmm<uint64_t>, 24>(zmmB1);                                  \
+    } while(0);
 
-// Exception from rule to not use macros.
-// Inlining is crucial for performance and i had hard time to make it work just with functions.
-#define G22(ymm1, ymm2, ymm3, ymm4, ymm5, ymm6, ymm7, ymm8, ymm_rot24, ymm_rot16) do {          \
-    ml = intrinsics::avx2::vmul<uint64_t>(ymm1, ymm3);                                          \
-    ml2 = intrinsics::avx2::vmul<uint64_t>(ymm2, ymm4);                                         \
-    ymm1 = intrinsics::avx2::vadd<uint64_t>(ymm1, ymm3);                                        \
-    ymm2 = intrinsics::avx2::vadd<uint64_t>(ymm2, ymm4);                                        \
-    ymm1 = intrinsics::avx2::vadd<uint64_t>(ymm1, intrinsics::avx2::vadd<uint64_t>(ml, ml));    \
-    ymm2 = intrinsics::avx2::vadd<uint64_t>(ymm2, intrinsics::avx2::vadd<uint64_t>(ml2, ml2));  \
-                                                                                                \
-    ymm7 = intrinsics::avx2::vxor<uint64_t>(ymm7, ymm1);                                        \
-    ymm8 = intrinsics::avx2::vxor<uint64_t>(ymm8, ymm2);                                        \
-    ymm7 = intrinsics::avx2::vshuffleepi8<uint64_t>(ymm7, ymm_rot16);                           \
-    ymm8 = intrinsics::avx2::vshuffleepi8<uint64_t>(ymm8, ymm_rot16);                           \
-                                                                                                \
-    ml = intrinsics::avx2::vmul<uint64_t>(ymm5, ymm7);                                          \
-    ml2 = intrinsics::avx2::vmul<uint64_t>(ymm6, ymm8);                                         \
-    ymm5 = intrinsics::avx2::vadd<uint64_t>(ymm5, ymm7);                                        \
-    ymm6 = intrinsics::avx2::vadd<uint64_t>(ymm6, ymm8);                                        \
-    ymm5 = intrinsics::avx2::vadd<uint64_t>(ymm5, intrinsics::avx2::vadd<uint64_t>(ml, ml));    \
-    ymm6 = intrinsics::avx2::vadd<uint64_t>(ymm6, intrinsics::avx2::vadd<uint64_t>(ml2, ml2));  \
-                                                                                                \
-    ymm3 = intrinsics::avx2::vxor<uint64_t>(ymm3, ymm5);                                        \
-    ymm4 = intrinsics::avx2::vxor<uint64_t>(ymm4, ymm6);                                        \
-    ymm3 = intrinsics::avx512::vprorq<ymm<uint64_t>, 63>(ymm3);                                 \
-    ymm4 = intrinsics::avx512::vprorq<ymm<uint64_t>, 63>(ymm4);                                 \
-} while(0);
+#define G2(zmmA0, zmmB0, zmmC0, zmmD0, zmmA1, zmmB1, zmmC1, zmmD1, fetch)                                           \
+   do {                                                                                                             \
+         zmmA0 = muladd(zmmA0, zmmB0);                                                                              \
+         if (fetch) {                                                                                               \
+            calcRefIndex<XorBlocks>(memory, ctx, tmp_block_zmm[0].m512i_u32[0]);                                    \
+            intrinsics::prefetch<PrefetchMode::NTA, 16>(memory[ctx.ref_idx].data());                                \
+         }                                                                                                          \
+                                                                                                                    \
+        zmmA1 = muladd(zmmA1, zmmB1);                                                                               \
+                                                                                                                    \
+        zmmD0 = intrinsics::avx512::vpxorq(zmmD0, zmmA0);                                                           \
+        zmmD1 = intrinsics::avx512::vpxorq(zmmD1, zmmA1);                                                           \
+                                                                                                                    \
+        zmmD0 = intrinsics::avx512::vprorq<intrinsics::zmm<uint64_t>, 16>(zmmD0);                                   \
+        zmmD1 = intrinsics::avx512::vprorq<intrinsics::zmm<uint64_t>, 16>(zmmD1);                                   \
+                                                                                                                    \
+        zmmC0 = muladd(zmmC0, zmmD0);                                                                               \
+        zmmC1 = muladd(zmmC1, zmmD1);                                                                               \
+                                                                                                                    \
+        zmmB0 = intrinsics::avx512::vpxorq(zmmB0, zmmC0);                                                           \
+        zmmB1 = intrinsics::avx512::vpxorq(zmmB1, zmmC1);                                                           \
+                                                                                                                    \
+        zmmB0 = intrinsics::avx512::vprorq<intrinsics::zmm<uint64_t>, 63>(zmmB0);                                   \
+        zmmB1 = intrinsics::avx512::vprorq<intrinsics::zmm<uint64_t>, 63>(zmmB1);                                   \
+    } while(0);
 
-// Exception from rule to not use macros.
-// Inlining is crucial for performance and i had hard time to make it work just with functions.
-#define ROUND_V1(ymm1, ymm2, ymm3, ymm4, ymm5, ymm6, ymm7, ymm8, ymm_rot24, ymm_rot16) do {     \
-    G21(ymm1, ymm2, ymm3, ymm4, ymm5, ymm6, ymm7, ymm8, ymm_rot24, ymm_rot16);                  \
-    G22(ymm1, ymm2, ymm3, ymm4, ymm5, ymm6, ymm7, ymm8, ymm_rot24, ymm_rot16);                  \
-                                                                                                \
-    /*DIAG_V1*/                                                                                 \
-    ymm3 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b00'11'10'01>(ymm3);                      \
-    ymm4 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b00'11'10'01>(ymm4);                      \
-    ymm7 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b10'01'00'11>(ymm7);                      \
-    ymm8 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b10'01'00'11>(ymm8);                      \
-    ymm5 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b01'00'11'10>(ymm5);                      \
-    ymm6 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b01'00'11'10>(ymm6);                      \
-                                                                                                \
-    G21(ymm1, ymm2, ymm3, ymm4, ymm5, ymm6, ymm7, ymm8, ymm_rot24, ymm_rot16);                  \
-    G22(ymm1, ymm2, ymm3, ymm4, ymm5, ymm6, ymm7, ymm8, ymm_rot24, ymm_rot16);                  \
-                                                                                                \
-    /*UNDIAG_V1*/                                                                               \
-    ymm3 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b10'01'00'11>(ymm3);                      \
-    ymm4 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b10'01'00'11>(ymm4);                      \
-    ymm7 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b00'11'10'01>(ymm7);                      \
-    ymm8 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b00'11'10'01>(ymm8);                      \
-    ymm5 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b01'00'11'10>(ymm5);                      \
-    ymm6 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b01'00'11'10>(ymm6);                      \
-} while(0);
+#define DIAGONALIZE(zmmA0, zmmB0, zmmC0, zmmD0, zmmA1, zmmB1, zmmC1, zmmD1)                                         \
+    do {                                                                                                            \
+        zmmB0 = intrinsics::avx512::vpermq<intrinsics::zmm<uint64_t>, 0x39>(zmmB0);                                 \
+        zmmB1 = intrinsics::avx512::vpermq<intrinsics::zmm<uint64_t>, 0x39>(zmmB1);                                 \
+                                                                                                                    \
+        zmmC0 = intrinsics::avx512::vpermq<intrinsics::zmm<uint64_t>, 0x4e>(zmmC0);                                 \
+        zmmC1 = intrinsics::avx512::vpermq<intrinsics::zmm<uint64_t>, 0x4e>(zmmC1);                                 \
+                                                                                                                    \
+        zmmD0 = intrinsics::avx512::vpermq<intrinsics::zmm<uint64_t>, 0x93>(zmmD0);                                 \
+        zmmD1 = intrinsics::avx512::vpermq<intrinsics::zmm<uint64_t>, 0x93>(zmmD1);                                 \
+    } while(0);
 
-// Exception from rule to not use macros.
-// Inlining is crucial for performance and i had hard time to make it work just with functions.
-#define ROUND_V2(ymm1, ymm2, ymm3, ymm4, ymm5, ymm6, ymm7, ymm8, ymm_rot24, ymm_rot16) do {     \
-    G21(ymm1, ymm2, ymm3, ymm4, ymm5, ymm6, ymm7, ymm8, ymm_rot24, ymm_rot16);                  \
-    G22(ymm1, ymm2, ymm3, ymm4, ymm5, ymm6, ymm7, ymm8, ymm_rot24, ymm_rot16);                  \
-                                                                                                \
-    /*DIAG_V2*/                                                                                 \
-    auto tmp1{ intrinsics::avx2::vblendepi32<uint64_t, 0b11'00'11'00>(ymm3, ymm4) };            \
-    auto tmp2{ intrinsics::avx2::vblendepi32<uint64_t, 0b00'11'00'11>(ymm3, ymm4) };            \
-    ymm4 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b10'11'00'01>(tmp1);                      \
-    ymm3 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b10'11'00'01>(tmp2);                      \
-                                                                                                \
-    tmp1 = ymm5;                                                                                \
-    ymm5 = ymm6;                                                                                \
-    ymm6 = tmp1;                                                                                \
-                                                                                                \
-    tmp1 = intrinsics::avx2::vblendepi32<uint64_t, 0b11'00'11'00>(ymm7, ymm8);                  \
-    tmp2 = intrinsics::avx2::vblendepi32<uint64_t, 0b00'11'00'11>(ymm7, ymm8);                  \
-    ymm7 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b10'11'00'01>(tmp1);                      \
-    ymm8 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b10'11'00'01>(tmp2);                      \
-                                                                                                \
-    G21(ymm1, ymm2, ymm3, ymm4, ymm5, ymm6, ymm7, ymm8, ymm_rot24, ymm_rot16);                  \
-    G22(ymm1, ymm2, ymm3, ymm4, ymm5, ymm6, ymm7, ymm8, ymm_rot24, ymm_rot16);                  \
-                                                                                                \
-    /*UNDIAG_V1*/                                                                               \
-    tmp1 = intrinsics::avx2::vblendepi32<uint64_t, 0b11'00'11'00>(ymm3, ymm4);                  \
-    tmp2 = intrinsics::avx2::vblendepi32<uint64_t, 0b00'11'00'11>(ymm3, ymm4);                  \
-    ymm3 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b10'11'00'01>(tmp1);                      \
-    ymm4 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b10'11'00'01>(tmp2);                      \
-                                                                                                \
-    tmp1 = ymm5;                                                                                \
-    ymm5 = ymm6;                                                                                \
-    ymm6 = tmp1;                                                                                \
-                                                                                                \
-    tmp1 = intrinsics::avx2::vblendepi32<uint64_t, 0b00'11'00'11>(ymm7, ymm8);                  \
-    tmp2 = intrinsics::avx2::vblendepi32<uint64_t, 0b11'00'11'00>(ymm7, ymm8);                  \
-    ymm7 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b10'11'00'01>(tmp1);                      \
-    ymm8 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b10'11'00'01>(tmp2);                      \
-} while(0);
+#define UNDIAGONALIZE(zmmA0, zmmB0, zmmC0, zmmD0, zmmA1, zmmB1, zmmC1, zmmD1)                                       \
+    do {                                                                                                            \
+        zmmB0 = intrinsics::avx512::vpermq<intrinsics::zmm<uint64_t>, 0x93>(zmmB0);                                 \
+        zmmB1 = intrinsics::avx512::vpermq<intrinsics::zmm<uint64_t>, 0x93>(zmmB1);                                 \
+                                                                                                                    \
+        zmmC0 = intrinsics::avx512::vpermq<intrinsics::zmm<uint64_t>, 0x4e>(zmmC0);                                 \
+        zmmC1 = intrinsics::avx512::vpermq<intrinsics::zmm<uint64_t>, 0x4e>(zmmC1);                                 \
+                                                                                                                    \
+        zmmD0 = intrinsics::avx512::vpermq<intrinsics::zmm<uint64_t>, 0x39>(zmmD0);                                 \
+        zmmD1 = intrinsics::avx512::vpermq<intrinsics::zmm<uint64_t>, 0x39>(zmmD1);                                 \
+    } while(0);
 
-// Exception from rule to not use macros.
-// Inlining is crucial for performance and i had hard time to make it work just with functions.
-#define ROUND_V2WithPrefetch(ymm1, ymm2, ymm3, ymm4, ymm5, ymm6, ymm7, ymm8, ymm_rot24, ymm_rot16) do {     \
-    G21(ymm1, ymm2, ymm3, ymm4, ymm5, ymm6, ymm7, ymm8, ymm_rot24, ymm_rot16);                              \
-    G22(ymm1, ymm2, ymm3, ymm4, ymm5, ymm6, ymm7, ymm8, ymm_rot24, ymm_rot16);                              \
-                                                                                                            \
-    /*DIAG_V2*/                                                                                             \
-    auto tmp1{ intrinsics::avx2::vblendepi32<uint64_t, 0b11'00'11'00>(ymm3, ymm4) };                        \
-    auto tmp2{ intrinsics::avx2::vblendepi32<uint64_t, 0b00'11'00'11>(ymm3, ymm4) };                        \
-    ymm3 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b10'11'00'01>(tmp2);                                  \
-    ymm4 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b10'11'00'01>(tmp1);                                  \
-                                                                                                            \
-    tmp1 = intrinsics::avx2::vblendepi32<uint64_t, 0b11'00'11'00>(ymm7, ymm8);                              \
-    tmp2 = intrinsics::avx2::vblendepi32<uint64_t, 0b00'11'00'11>(ymm7, ymm8);                              \
-    ymm7 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b10'11'00'01>(tmp1);                                  \
-    ymm8 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b10'11'00'01>(tmp2);                                  \
-                                                                                                            \
-    tmp1 = ymm5;                                                                                            \
-    ymm5 = ymm6;                                                                                            \
-    ymm6 = tmp1;                                                                                            \
-                                                                                                            \
-    G21(ymm1, ymm2, ymm3, ymm4, ymm5, ymm6, ymm7, ymm8, ymm_rot24, ymm_rot16);                              \
-    G22WithPrefetch(ymm1, ymm2, ymm3, ymm4, ymm5, ymm6, ymm7, ymm8, ymm_rot24, ymm_rot16);                  \
-                                                                                                            \
-    /*UNDIAG_V1*/                                                                                           \
-    tmp1 = intrinsics::avx2::vblendepi32<uint64_t, 0b11'00'11'00>(ymm3, ymm4);                              \
-    tmp2 = intrinsics::avx2::vblendepi32<uint64_t, 0b00'11'00'11>(ymm3, ymm4);                              \
-    ymm3 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b10'11'00'01>(tmp1);                                  \
-    ymm4 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b10'11'00'01>(tmp2);                                  \
-                                                                                                            \
-    tmp1 = intrinsics::avx2::vblendepi32<uint64_t, 0b00'11'00'11>(ymm7, ymm8);                              \
-    tmp2 = intrinsics::avx2::vblendepi32<uint64_t, 0b11'00'11'00>(ymm7, ymm8);                              \
-    ymm7 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b10'11'00'01>(tmp1);                                  \
-    ymm8 = intrinsics::avx2::vpermuteepi64<uint64_t, 0b10'11'00'01>(tmp2);                                  \
-                                                                                                            \
-    tmp1 = ymm5;                                                                                            \
-    ymm5 = ymm6;                                                                                            \
-    ymm6 = tmp1;                                                                                            \
-} while(0);
+#define SWAP_HALVES(zmm0, zmm1)                                                                                     \
+    do {                                                                                                            \
+        const __m512i t = intrinsics::avx512::vshufi64x2<intrinsics::zmm<uint64_t>, 0x44>(zmm0, zmm1);              \
+        zmm1 = intrinsics::avx512::vshufi64x2<intrinsics::zmm<uint64_t>, 0xee>(zmm0, zmm1);                         \
+        zmm0 = t;                                                                                                   \
+    } while (0);
 
-// Exception from rule to not use macros.
-// Inlining is crucial for performance and i had hard time to make it work just with functions.
-#define G22WithPrefetch(ymm1, ymm2, ymm3, ymm4, ymm5, ymm6, ymm7, ymm8, ymm_rot24, ymm_rot16) do {          \
-    ml = intrinsics::avx2::vmul<uint64_t>(ymm1, ymm3);                                                      \
-    ymm1 = intrinsics::avx2::vadd<uint64_t>(ymm1, ymm3);                                                    \
-    ymm1 = intrinsics::avx2::vadd<uint64_t>(ymm1, intrinsics::avx2::vadd<uint64_t>(ml, ml));                \
-    calcRefIndex<XorBlocks>(memory, ctx, tmp_block_ymm[0].m256i_u32[0]);                                    \
-    intrinsics::prefetch<PrefetchMode::NTA, 16>(memory[ctx.ref_idx].data());                                \
-                                                                                                            \
-    ml2 = intrinsics::avx2::vmul<uint64_t>(ymm2, ymm4);                                                     \
-    ymm2 = intrinsics::avx2::vadd<uint64_t>(ymm2, ymm4);                                                    \
-    ymm2 = intrinsics::avx2::vadd<uint64_t>(ymm2, intrinsics::avx2::vadd<uint64_t>(ml2, ml2));              \
-                                                                                                            \
-    ymm7 = intrinsics::avx2::vxor<uint64_t>(ymm7, ymm1);                                                    \
-    ymm8 = intrinsics::avx2::vxor<uint64_t>(ymm8, ymm2);                                                    \
-    ymm7 = intrinsics::avx2::vshuffleepi8<uint64_t>(ymm7, ymm_rot16);                                       \
-    ymm8 = intrinsics::avx2::vshuffleepi8<uint64_t>(ymm8, ymm_rot16);                                       \
-                                                                                                            \
-    ml = intrinsics::avx2::vmul<uint64_t>(ymm5, ymm7);                                                      \
-    ml2 = intrinsics::avx2::vmul<uint64_t>(ymm6, ymm8);                                                     \
-    ymm5 = intrinsics::avx2::vadd<uint64_t>(ymm5, ymm7);                                                    \
-    ymm6 = intrinsics::avx2::vadd<uint64_t>(ymm6, ymm8);                                                    \
-    ymm5 = intrinsics::avx2::vadd<uint64_t>(ymm5, intrinsics::avx2::vadd<uint64_t>(ml, ml));                \
-    ymm6 = intrinsics::avx2::vadd<uint64_t>(ymm6, intrinsics::avx2::vadd<uint64_t>(ml2, ml2));              \
-                                                                                                            \
-    ymm3 = intrinsics::avx2::vxor<uint64_t>(ymm3, ymm5);                                                    \
-    ymm4 = intrinsics::avx2::vxor<uint64_t>(ymm4, ymm6);                                                    \
-    ymm3 = intrinsics::avx512::vprorq<ymm<uint64_t>, 63>(ymm3);                                             \
-    ymm4 = intrinsics::avx512::vprorq<ymm<uint64_t>, 63>(ymm4);                                             \
-} while(0);
+#define SWAP_QUARTERS(zmmA0, zmmA1)                                                                                 \
+    do {                                                                                                            \
+        SWAP_HALVES(zmmA0, zmmA1);                                                                                  \
+        zmmA0 = intrinsics::avx512::vshufi64x2<intrinsics::zmm<uint64_t>, 0xd8>(zmmA0, zmmA0);                      \
+        zmmA1 = intrinsics::avx512::vshufi64x2<intrinsics::zmm<uint64_t>, 0xd8>(zmmA1, zmmA1);                      \
+    } while(0);
+
+#define UNSWAP_QUARTERS(zmmA0, zmmA1)                                                                               \
+    do {                                                                                                            \
+        zmmA0 = intrinsics::avx512::vshufi64x2<intrinsics::zmm<uint64_t>, 0xd8>(zmmA0, zmmA0);                      \
+        zmmA1 = intrinsics::avx512::vshufi64x2<intrinsics::zmm<uint64_t>, 0xd8>(zmmA1, zmmA1);                      \
+        SWAP_HALVES(zmmA0, zmmA1);                                                                                  \
+    } while(0);
+
+
+#define ROUND(zmmA0, zmmB0, zmmC0, zmmD0, zmmA1, zmmB1, zmmC1, zmmD1, fetch)                                        \
+    do {                                                                                                            \
+        G1(zmmA0, zmmB0, zmmC0, zmmD0, zmmA1, zmmB1, zmmC1, zmmD1);                                                 \
+        G2(zmmA0, zmmB0, zmmC0, zmmD0, zmmA1, zmmB1, zmmC1, zmmD1, false);                                          \
+                                                                                                                    \
+        DIAGONALIZE(zmmA0, zmmB0, zmmC0, zmmD0, zmmA1, zmmB1, zmmC1, zmmD1);                                        \
+                                                                                                                    \
+        G1(zmmA0, zmmB0, zmmC0, zmmD0, zmmA1, zmmB1, zmmC1, zmmD1);                                                 \
+        G2(zmmA0, zmmB0, zmmC0, zmmD0, zmmA1, zmmB1, zmmC1, zmmD1, fetch);                                          \
+                                                                                                                    \
+        UNDIAGONALIZE(zmmA0, zmmB0, zmmC0, zmmD0, zmmA1, zmmB1, zmmC1, zmmD1);                                      \
+    } while(0);
+
+#define ROUND_V1(zmmA0, zmmC0, zmmB0, zmmD0, zmmA1, zmmC1, zmmB1, zmmD1)                                            \
+    do {                                                                                                            \
+        SWAP_HALVES(zmmA0, zmmB0);                                                                                  \
+        SWAP_HALVES(zmmC0, zmmD0);                                                                                  \
+        SWAP_HALVES(zmmA1, zmmB1);                                                                                  \
+        SWAP_HALVES(zmmC1, zmmD1);                                                                                  \
+        ROUND(zmmA0, zmmB0, zmmC0, zmmD0, zmmA1, zmmB1, zmmC1, zmmD1, false);                                       \
+        SWAP_HALVES(zmmA0, zmmB0);                                                                                  \
+        SWAP_HALVES(zmmC0, zmmD0);                                                                                  \
+        SWAP_HALVES(zmmA1, zmmB1);                                                                                  \
+        SWAP_HALVES(zmmC1, zmmD1);                                                                                  \
+    } while(0);
+
+#define ROUND_V2(zmmA0, zmmA1, zmmB0, zmmB1, zmmC0, zmmC1, zmmD0, zmmD1, fetch)                                     \
+    do {                                                                                                            \
+        SWAP_QUARTERS(zmmA0, zmmA1);                                                                                \
+        SWAP_QUARTERS(zmmB0, zmmB1);                                                                                \
+        SWAP_QUARTERS(zmmC0, zmmC1);                                                                                \
+        SWAP_QUARTERS(zmmD0, zmmD1);                                                                                \
+        ROUND(zmmA0, zmmB0, zmmC0, zmmD0, zmmA1, zmmB1, zmmC1, zmmD1, fetch);                                       \
+        UNSWAP_QUARTERS(zmmA0, zmmA1);                                                                              \
+        UNSWAP_QUARTERS(zmmB0, zmmB1);                                                                              \
+        UNSWAP_QUARTERS(zmmC0, zmmC1);                                                                              \
+        UNSWAP_QUARTERS(zmmD0, zmmD1);                                                                              \
+    } while(0);
 }

@@ -101,15 +101,15 @@ Sample output:
 ```console
 [ 0] Blake2b::hash                            ... Passed (<1ms)
 [ 1] Argon2d::Blake2b::hash                   ... Passed (<1ms)
-[ 2] Argon2d::fillMemory                      ... Passed (10.742s)
+[ 2] Argon2d::fillMemory                      ... Passed (3.493s)
 [ 3] AesGenerator1R::fill                     ... Passed (<1ms)
 [ 4] AesGenerator4R::fill                     ... Passed (<1ms)
 [ 5] AesHash1R                                ... Passed (<1ms)
 [ 6] Blake2brandom::get                       ... Passed (<1ms)
 [ 7] Reciprocal                               ... Passed (<1ms)
-[ 8] Superscalar::generate                    ... Passed (0.007s)
-[ 9] Dataset::generate                        ... Passed (14.155s)
-[10] VirtualMachine::execute                  ... Passed (9.499s)
+[ 8] Superscalar::generate                    ... Passed (0.009s)
+[ 9] Dataset::generate                        ... Passed (6.737s)
+[10] VirtualMachine::execute                  ... Passed (4.582s)
 ```
 
 Ideally, tests should be run before every release in `Release` and `Debug` mode with `AddressSanitizer` enabled. `ReleaseAsan` and `DebugAsan` project configurations are provided for this purpose.
@@ -160,7 +160,7 @@ CPU frequency turbo boost was disabled (3.8GHz base frequency).
 |                                |  Hash [H/s] | Efficiency [H/Watt/s] | Blake2b [H/s] | Blake2bLong [H/s] | Argon2d [MB/s] | Superscalar [Prog/s] | Dataset [MB/s] |
 | ------------------------------ |  :--------: | :-------------------: | :-----------: | :---------------: | :------------: | :------------------: | :------------: |
 | RandomX-1.2.1 (102f8acf)       |    **3753** |            **~87.27** |        4.098M |           131.76K |          884.9 |                 5921 |         ~932.4 |
-| modernRX 0.9.1                 |        3087 |                ~78.35 |    **6.566M** |       **210.64K** |     **1236.5** |            **12875** |     **2146.3** |
+| modernRX 0.9.2                 |        3105 |                ~77.81 |    **6.618M** |       **211.00K** |     **1299.0** |            **12858** |     **2133.0** |
 
 Original RandomX provides benchmark only for calculating final hashes. All other values were estimated (based on information benchmark provides) or some custom benchmarks were written on top of RandomX implementation, thus values may not be 100% accurate.
 
@@ -203,7 +203,7 @@ Project follows [zero-based versioning](https://0ver.org/) with several specific
 
 ## Changelog
 
-* **v0.9.1 - 10.08.2024:** optimize dataset generation with native AVX512 instructions
+* **v0.9.2 - 13.08.2024:** adapt argon2d algorithm to AVX512 version
 * ...
 * **v0.1.4 - 08.08.2024:** compiler and benchmark platform upgrade
 * ...
@@ -219,11 +219,11 @@ $> gocloc /exclude-ext "xml,json,txt,exp" /not-match-d "3rdparty/*|x64/*|assets/
 -------------------------------------------------------------------------------
 Language                     files          blank        comment           code
 -------------------------------------------------------------------------------
-C++                             17            667            376           3658
-C++ Header                      37            576            593           3240
-Markdown                         3            212              0            623
+C++                             17            664            373           3654
+C++ Header                      37            589            578           3228
+Markdown                         3            214              0            630
 -------------------------------------------------------------------------------
-TOTAL                           57           1455            969           7521
+TOTAL                           57           1467            951           7512
 -------------------------------------------------------------------------------
 ```
 
