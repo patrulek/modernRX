@@ -29,15 +29,27 @@ namespace modernRX::intrinsics {
 
     template<typename T>
     struct ymm_wrapper {
-        using type = std::conditional_t<std::is_integral_v<T>, __m256i,
-            std::conditional_t<std::is_same_v<T, double>, __m256d,
-            std::conditional_t<std::is_same_v<T, float>, __m256, void>>>;
+       using type = std::conditional_t<std::is_integral_v<T>, __m256i,
+          std::conditional_t<std::is_same_v<T, double>, __m256d,
+          std::conditional_t<std::is_same_v<T, float>, __m256, void>>>;
 
-        static_assert(!std::is_same_v<type, void>, "type can be one of integral types, double or float");
+       static_assert(!std::is_same_v<type, void>, "type can be one of integral types, double or float");
     };
 
     template<typename T>
     using ymm = ymm_wrapper<T>::type;
+
+    template<typename T>
+    struct zmm_wrapper {
+       using type = std::conditional_t<std::is_integral_v<T>, __m512i,
+          std::conditional_t<std::is_same_v<T, double>, __m512d,
+          std::conditional_t<std::is_same_v<T, float>, __m512, void>>>;
+
+       static_assert(!std::is_same_v<type, void>, "type can be one of integral types, double or float");
+    };
+
+    template<typename T>
+    using zmm = zmm_wrapper<T>::type;
 
     [[nodiscard]] inline uint64_t smulh(const int64_t a, const int64_t b) noexcept {
         int64_t hi;

@@ -1,5 +1,12 @@
 ## modernRX - Changelog
 
+### v0.9.2 - 13.08.2024:
+
+Optimize argon2d algorithm with AVX512 instructions.
+All optimization decisions made in this version:
+* adapt argon2d to AVX512 version
+* add some more prefetches to argon2d algorithm
+
 ### v0.9.1 - 10.08.2024:
 
 Optimize dataset generation with AVX512 native instructions.

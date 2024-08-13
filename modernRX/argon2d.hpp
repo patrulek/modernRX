@@ -1,7 +1,7 @@
 #pragma once
 
 /*
-* Single-threaded, AVX2 supported and RandomX-specialized implementation of Argon2d based on: https://github.com/P-H-C/phc-winner-argon2
+* Single-threaded, AVX512 supported and RandomX-specialized implementation of Argon2d based on: https://github.com/P-H-C/phc-winner-argon2
 * Implementation does not contain calculating final hash, this only provide memory filling step.
 * This is used to fill RandomX cache memory.
 */
